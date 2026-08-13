@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production & Build outputs
+dist/
+build/
+.vite/
+
+# Python Virtual Environments & Bytecode
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/__pycache__/
+backend/app/__pycache__/
+backend/app/**/__pycache__/
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# SQLite & Runtime Database / Log files
+*.db
+*.sqlite3
+*.sqlite
+campussphere.db
+backend/campussphere.db
+seed.log
+*.log
+
+# Media uploads (runtime user uploads)
+media_uploads/
+backend/media_uploads/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Temp test files
+test.txt
+test.cjs
