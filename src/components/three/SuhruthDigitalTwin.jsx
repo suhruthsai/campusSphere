@@ -203,9 +203,15 @@ const BUILDINGS = [
         { floor: "Ground Floor", rooms: [
             {type: 'admin', label: 'Administration', id: 'ADMINISTRATION', location_type: 'ADMINISTRATION'},
             {type: 'lab', label: 'IoT Lab (CE-IT-18)', id: 'CE-IT-18', location_type: 'LABORATORY'},
-            {type: 'lab', label: 'Transportation Engineering Lab (TE Lab)', id: 'TE-LAB', location_type: 'LABORATORY'},
-            {type: 'lab', label: 'Environmental Engineering Lab (EE Lab)', id: 'EE-LAB', location_type: 'LABORATORY'},
-            {type: 'lab', label: 'Concrete Technology Lab (CT Lab)', id: 'CT-LAB', location_type: 'LABORATORY'},
+            {type: 'lab', label: 'Surveying Lab (Civil)', id: 'SUR-LAB-CE', location_type: 'LABORATORY'},
+            {type: 'lab', label: 'Engineering Geology Lab', id: 'EG-LAB-CE', location_type: 'LABORATORY'},
+            {type: 'lab', label: 'Fluid Mechanics Lab (FM Lab)', id: 'FM-LAB-CE', location_type: 'LABORATORY'},
+            {type: 'lab', label: 'Transportation Engg Lab', id: 'TE-LAB', location_type: 'LABORATORY'},
+            {type: 'lab', label: 'Environmental Engg Lab', id: 'EE-LAB', location_type: 'LABORATORY'},
+            {type: 'lab', label: 'Concrete Technology Lab', id: 'CT-LAB', location_type: 'LABORATORY'},
+            {type: 'lab', label: 'Ada Lab (CRT)', id: 'ADA-LAB', location_type: 'LABORATORY'},
+            {type: 'lab', label: 'Charles Babbage Lab (CB-01)', id: 'CB-01', location_type: 'LABORATORY'},
+            {type: 'lab', label: 'CSE Lab-IV (CEP Lab)', id: 'CSE-LAB-IV', location_type: 'LABORATORY'},
             {type: 'washroom', label: 'Boys Washroom'}, {type: 'washroom', label: 'Girls Washroom'}
           ] 
         },
@@ -347,6 +353,7 @@ export default function SuhruthDigitalTwin() {
   const [visualizerFloor, setVisualizerFloor]   = useState(0);
   const [selectedRoom, setSelectedRoom]         = useState(null);
   const [room3DModal, setRoom3DModal]           = useState(null);
+  const [room3DModalTime, setRoom3DModalTime]   = useState(null);
   const [simulatedDateTime, setSimulatedDateTime] = useState(null);
   const [fromBuilding, setFromBuilding]         = useState('cant');
   const [toBuilding, setToBuilding]             = useState('lib');
@@ -2367,6 +2374,15 @@ export default function SuhruthDigitalTwin() {
                         bgColor = 'bg-red-900/30'; borderColor = 'border-red-500/50'; textColor = 'text-red-300'; icon = '🏋️';
                       }
 
+                      const isNonTimetableCard = room.type === 'admin' || room.location_type === 'ADMINISTRATION' || room.id === 'ADMINISTRATION' || 
+                                                room.type === 'iqac' || room.id?.toUpperCase().includes('IQAC') || room.label?.toUpperCase().includes('IQAC') || 
+                                                room.type === 'principal' || room.id?.toUpperCase().includes('PRINCIPAL') || room.label?.toUpperCase().includes('PRINCIPAL') ||
+                                                room.type === 'office' || room.type === 'staff' || room.location_type === 'STAFF_ROOM' || room.location_type === 'OFFICE' ||
+                                                room.id?.toUpperCase().includes('STAFF') || room.label?.toUpperCase().includes('STAFF') ||
+                                                room.id?.toUpperCase().includes('DEPT') || room.label?.toUpperCase().includes('DEPT') ||
+                                                room.id?.toUpperCase().includes('OFFICE') || room.label?.toUpperCase().includes('OFFICE') ||
+                                                room.type === 'washroom' || room.type === 'restroom' || room.id?.toUpperCase().includes('WASHROOM') || room.label?.toUpperCase().includes('WASHROOM');
+
                       return (
                         <div 
                           key={idx} 
@@ -2381,16 +2397,18 @@ export default function SuhruthDigitalTwin() {
                           </div>
 
                           <div className="mt-2.5 pt-2 border-t border-white/10 flex gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedRoom({ ...room, floor: floorData.floor });
-                              }}
-                              className="flex-1 rounded bg-slate-700/60 hover:bg-slate-600 text-[10px] font-mono font-semibold text-slate-200 py-1 transition text-center"
-                            >
-                              📅 Timetable
-                            </button>
+                            {!isNonTimetableCard && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedRoom({ ...room, floor: floorData.floor });
+                                }}
+                                className="flex-1 rounded bg-slate-700/60 hover:bg-slate-600 text-[10px] font-mono font-semibold text-slate-200 py-1 transition text-center"
+                              >
+                                📅 Timetable
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={(e) => {
@@ -2430,9 +2448,10 @@ export default function SuhruthDigitalTwin() {
           classroomId={selectedRoom.id || (selectedRoom.label?.includes('(') ? selectedRoom.label.split('(')[1]?.replace(')', '') : selectedRoom.label)}
           simulatedDateTime={simulatedDateTime}
           onClose={() => setSelectedRoom(null)}
-          onOpen3DView={(r) => {
+          onOpen3DView={(r, slot) => {
             setSelectedRoom(null);
             setRoom3DModal(r);
+            setRoom3DModalTime(slot);
           }}
         />
       )}
@@ -2442,7 +2461,11 @@ export default function SuhruthDigitalTwin() {
         <RoomInterior3DModal
           room={room3DModal}
           classroomId={room3DModal.id || (room3DModal.label?.includes('(') ? room3DModal.label.split('(')[1]?.replace(')', '') : room3DModal.label)}
-          onClose={() => setRoom3DModal(null)}
+          simulatedDateTime={room3DModalTime}
+          onClose={() => {
+            setRoom3DModal(null);
+            setRoom3DModalTime(null);
+          }}
           onOpenTimetable={() => {
             setSelectedRoom(room3DModal);
             setRoom3DModal(null);

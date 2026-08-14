@@ -1,90 +1,49 @@
-// ── Mock floor + room data for Suhruth University ────────────────────────────
+// ── CampusSphere — Floors & Physical Layout Data ─────────────────────────────
 
 export const floors = [
-  // ── CSE Block ─────────────────────────────────────────────────────────────
+  // ── Civil & IT Block ───────────────────────────────────────────────────────
   {
-    building: 'CSE Block', floor: 1, totalRooms: 6, occupiedRooms: 4,
+    building: 'Civil & IT Block', floor: 0, totalRooms: 11, occupiedRooms: 8,
     rooms: [
-      { id: 'r001', name: 'CSE-101', type: 'Lecture Hall',     capacity: 60, occupied: true,  department: 'CSE' },
-      { id: 'r002', name: 'CSE-102', type: 'Seminar Room',     capacity: 40, occupied: false, department: 'CSE' },
-      { id: 'r003', name: 'Coding Lab', type: 'Lab',           capacity: 40, occupied: true,  department: 'CSE' },
-      { id: 'r004', name: 'Faculty Room', type: 'Staff Room',  capacity: 10, occupied: true,  department: 'CSE' },
-      { id: 'r005', name: 'HOD Office', type: 'Office',        capacity: 4,  occupied: true,  department: 'CSE' },
-      { id: 'r006', name: 'Store Room', type: 'Storage',       capacity: 0,  occupied: false, department: 'CSE' },
-    ],
+      { id: 'ADMINISTRATION', name: 'Administration', type: 'Administration', capacity: 20, occupied: false, department: 'Admin' },
+      { id: 'CE-IT-18', name: 'IoT Lab (CE-IT-18)', type: 'Lab', capacity: 35, occupied: true, department: 'IT' },
+      { id: 'SUR-LAB-CE', name: 'Surveying Lab (Civil)', type: 'Lab', capacity: 40, occupied: true, department: 'Civil' },
+      { id: 'EG-LAB-CE', name: 'Engineering Geology Lab', type: 'Lab', capacity: 35, occupied: true, department: 'Civil' },
+      { id: 'FM-LAB-CE', name: 'Fluid Mechanics Lab', type: 'Lab', capacity: 35, occupied: true, department: 'Civil' },
+      { id: 'TE-LAB', name: 'Transportation Engineering Lab', type: 'Lab', capacity: 35, occupied: true, department: 'Civil' },
+      { id: 'EE-LAB', name: 'Environmental Engineering Lab', type: 'Lab', capacity: 35, occupied: true, department: 'Civil' },
+      { id: 'CT-LAB', name: 'Concrete Technology Lab', type: 'Lab', capacity: 35, occupied: true, department: 'Civil' },
+      { id: 'ADA-LAB', name: 'Ada Lab (CRT)', type: 'Lab', capacity: 40, occupied: true, department: 'IT' },
+      { id: 'CB-01', name: 'Charles Babbage Lab (CB-01)', type: 'Lab', capacity: 40, occupied: true, department: 'IT' },
+      { id: 'CSE-LAB-IV', name: 'CSE Lab-IV (CEP Lab)', type: 'Lab', capacity: 35, occupied: true, department: 'Civil' },
+    ]
   },
   {
-    building: 'CSE Block', floor: 2, totalRooms: 5, occupiedRooms: 3,
+    building: 'Civil & IT Block', floor: 1, totalRooms: 7, occupiedRooms: 4,
     rooms: [
-      { id: 'r007', name: 'CSE-201', type: 'Lecture Hall',     capacity: 60, occupied: true,  department: 'CSE' },
-      { id: 'r008', name: 'CSE-202', type: 'Conference Room',  capacity: 30, occupied: false, department: 'CSE' },
-      { id: 'r009', name: 'AI Research Lab', type: 'Lab',      capacity: 30, occupied: true,  department: 'CSE' },
-      { id: 'r010', name: 'Research Room',   type: 'Lab',      capacity: 12, occupied: true,  department: 'CSE' },
-      { id: 'r011', name: 'Server Room',     type: 'Technical', capacity: 0, occupied: false, department: 'CSE' },
-    ],
-  },
-
-  // ── ECE Block ─────────────────────────────────────────────────────────────
-  {
-    building: 'ECE Block', floor: 1, totalRooms: 6, occupiedRooms: 4,
-    rooms: [
-      { id: 'r012', name: 'ECE-101', type: 'Lecture Hall',     capacity: 60, occupied: true,  department: 'ECE' },
-      { id: 'r013', name: 'ECE-102', type: 'Lecture Hall',     capacity: 60, occupied: false, department: 'ECE' },
-      { id: 'r014', name: 'Communication Lab', type: 'Lab',    capacity: 30, occupied: true,  department: 'ECE' },
-      { id: 'r015', name: 'Faculty Room', type: 'Staff Room',  capacity: 10, occupied: true,  department: 'ECE' },
-      { id: 'r016', name: 'HOD Office', type: 'Office',        capacity: 4,  occupied: true,  department: 'ECE' },
-      { id: 'r017', name: 'Store Room', type: 'Storage',       capacity: 0,  occupied: false, department: 'ECE' },
-    ],
+      { id: 'CE-IT-101', name: 'Classroom CE-IT-101 (IT-2A)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'IT' },
+      { id: 'CE-IT-102', name: 'Classroom CE-IT-102 (IT-2B)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'IT' },
+      { id: 'CE-IT-104', name: 'Computer Lab (CE-IT-104)', type: 'Lab', capacity: 40, occupied: true, department: 'IT' },
+      { id: 'PRINCIPAL-OFFICE', name: 'Principal / Directors Office', type: 'Office', capacity: 15, occupied: false, department: 'Admin' },
+      { id: 'IT-STAFF-ROOM', name: 'IT Staff Room', type: 'Staff Room', capacity: 25, occupied: true, department: 'IT' },
+      { id: 'CIVIL-DEPT-OFFICE', name: 'Civil Department Office', type: 'Office', capacity: 15, occupied: true, department: 'Civil' },
+      { id: 'IQAC-ROOM', name: 'IQAC Room', type: 'Office', capacity: 20, occupied: false, department: 'Admin' },
+    ]
   },
   {
-    building: 'ECE Block', floor: 2, totalRooms: 4, occupiedRooms: 2,
+    building: 'Civil & IT Block', floor: 2, totalRooms: 10, occupiedRooms: 9,
     rooms: [
-      { id: 'r018', name: 'ECE-201', type: 'Seminar Room',     capacity: 40, occupied: true,  department: 'ECE' },
-      { id: 'r019', name: 'VLSI Lab', type: 'Lab',             capacity: 25, occupied: false, department: 'ECE' },
-      { id: 'r020', name: 'Project Lab', type: 'Lab',          capacity: 20, occupied: true,  department: 'ECE' },
-      { id: 'r021', name: 'Instrument Store', type: 'Storage', capacity: 0,  occupied: false, department: 'ECE' },
-    ],
-  },
-
-  // ── Mech & EEE Block ─────────────────────────────────────────────────────
-  {
-    building: 'Mech & EEE Block', floor: 1, totalRooms: 6, occupiedRooms: 5,
-    rooms: [
-      { id: 'r022', name: 'ME-101',  type: 'Lecture Hall', capacity: 60, occupied: true,  department: 'Mech' },
-      { id: 'r023', name: 'EEE-101', type: 'Lecture Hall', capacity: 60, occupied: false, department: 'EEE'  },
-      { id: 'r024', name: 'Workshop', type: 'Lab',         capacity: 35, occupied: true,  department: 'Mech' },
-      { id: 'r025', name: 'EEE Lab',  type: 'Lab',         capacity: 30, occupied: true,  department: 'EEE'  },
-      { id: 'r026', name: 'Mech Faculty Room', type: 'Staff Room', capacity: 12, occupied: true, department: 'Mech' },
-      { id: 'r027', name: 'EEE Faculty Room',  type: 'Staff Room', capacity: 10, occupied: true, department: 'EEE'  },
-    ],
-  },
-  {
-    building: 'Mech & EEE Block', floor: 2, totalRooms: 4, occupiedRooms: 2,
-    rooms: [
-      { id: 'r028', name: 'ME-201', type: 'Lecture Hall',   capacity: 60, occupied: true,  department: 'Mech' },
-      { id: 'r029', name: 'Thermal Lab', type: 'Lab',        capacity: 20, occupied: false, department: 'Mech' },
-      { id: 'r030', name: 'Power Electronics Lab', type: 'Lab', capacity: 25, occupied: true, department: 'EEE' },
-      { id: 'r031', name: 'Drawing Hall', type: 'Lab',       capacity: 40, occupied: false, department: 'Mech' },
-    ],
-  },
-
-  // ── Library ───────────────────────────────────────────────────────────────
-  {
-    building: 'Library', floor: 1, totalRooms: 4, occupiedRooms: 3,
-    rooms: [
-      { id: 'r032', name: 'Reading Hall', type: 'Study Area', capacity: 80, occupied: true,  department: 'Library' },
-      { id: 'r033', name: 'Digital Archive', type: 'Lab',     capacity: 20, occupied: true,  department: 'Library' },
-      { id: 'r034', name: 'Discussion Room', type: 'Seminar', capacity: 15, occupied: true,  department: 'Library' },
-      { id: 'r035', name: 'Book Stacks', type: 'Storage',     capacity: 0,  occupied: false, department: 'Library' },
-    ],
-  },
-  {
-    building: 'Library', floor: 2, totalRooms: 3, occupiedRooms: 1,
-    rooms: [
-      { id: 'r036', name: 'Reading Hall 2', type: 'Study Area', capacity: 60, occupied: false, department: 'Library' },
-      { id: 'r037', name: 'Media Studio', type: 'Lab',           capacity: 15, occupied: true,  department: 'Library' },
-      { id: 'r038', name: 'Rare Books Section', type: 'Storage', capacity: 0,  occupied: false, department: 'Library' },
-    ],
+      { id: 'CE-IT-201', name: 'Classroom CE-IT-201 (IT-2C)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'IT' },
+      { id: 'CE-IT-202', name: 'Classroom CE-IT-202 (IT-3A)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'IT' },
+      { id: 'CE-IT-203', name: 'Classroom CE-IT-203 (IT-4C/4B)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'IT' },
+      { id: 'CE-IT-211', name: 'CN & NS / DS / AI Lab (CE-IT-211)', type: 'Lab', capacity: 35, occupied: true, department: 'IT' },
+      { id: 'CE-IT-212', name: 'Classroom CE-IT-212 (IT-3B)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'IT' },
+      { id: 'CE-IT-213', name: 'Classroom CE-IT-213 (IT-3C)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'IT' },
+      { id: 'CE-IT-214', name: 'Electronics Laboratory (CE-IT-214)', type: 'Lab', capacity: 35, occupied: true, department: 'IT' },
+      { id: 'CE-204', name: 'Classroom CE-204 (Civil-7)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'Civil' },
+      { id: 'CE-205', name: 'Classroom CE-205 (Civil-5)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'Civil' },
+      { id: 'CE-206', name: 'Classroom CE-206 (Civil-3)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'Civil' },
+    ]
   },
 ];
 
@@ -95,6 +54,7 @@ export const roomTypes = {
   'Conference Room':{ color: '#F472B6', icon: '🤝' },
   'Staff Room':    { color: '#F59E0B', icon: '👨‍🏫' },
   'Office':        { color: '#A78BFA', icon: '🏢' },
+  'Administration':{ color: '#38BDF8', icon: '🏛️' },
   'Storage':       { color: '#64748b', icon: '📦' },
   'Technical':     { color: '#ef4444', icon: '⚙️' },
   'Study Area':    { color: '#34D399', icon: '📚' },

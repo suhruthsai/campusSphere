@@ -1,27 +1,49 @@
 import { useState, useEffect, useRef } from 'react';
 import { timetableApi, classroomsApi, subjectsApi, facultyApi } from '../../utils/api';
 
-const DAY_NAMES = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 const PERIOD_TIMES = {
-  1:['09:30','10:30'], 2:['10:30','11:30'], 3:['11:40','12:40'],
-  4:['14:15','15:15'], 5:['15:15','16:15']
+  1: ['09:30', '10:30'],
+  2: ['10:30', '11:30'],
+  3: ['11:40', '12:40'],
+  4: ['12:40', '13:40'],
+  5: ['14:15', '15:15'],
+  6: ['15:15', '16:15']
 };
+
+const SECTIONS = [
+  'IT-2A', 'IT-2B', 'IT-2C',
+  'IT-3A', 'IT-3B', 'IT-3C',
+  'IT-4A', 'IT-4B', 'IT-4C',
+  'Civil-3', 'Civil-5', 'Civil-7'
+];
+
 const SUBJECT_COLORS = {
-  'IOT':'#06B6D4','NS':'#8B5CF6','CS':'#EF4444','BCT':'#F59E0B',
-  'ASE':'#10B981','RSE':'#F97316','IOT_LAB':'#0891B2','CNNS_LAB':'#7C3AED',
-  'PW_I':'#059669','SI_II':'#DB2777','COUNSEL':'#6B7280',
+  'IOT': '#06B6D4', 'NS': '#8B5CF6', 'CS': '#EF4444', 'BCT': '#F59E0B',
+  'ASE': '#10B981', 'RSE': '#F97316', 'DS': '#3B82F6', 'OS': '#10B981',
+  'MFIT': '#8B5CF6', 'DELD': '#EC4899', 'EDS': '#06B6D4', 'F&A': '#F59E0B',
+  'SE': '#F59E0B', 'DM': '#06B6D4', 'DAA': '#3B82F6', 'AI': '#8B5CF6',
+  'AT': '#10B981', 'BDA': '#EC4899', 'TE': '#10B981', 'FE': '#F59E0B',
+  'EH': '#06B6D4', 'SA-I': '#8B5CF6', 'EE': '#3B82F6', 'E&S': '#EF4444',
+  'PSC': '#8B5CF6', 'CMA': '#F59E0B', 'DMM': '#EC4899', 'TLP': '#10B981',
+  'SUR': '#06B6D4', 'CEM': '#F97316', 'EM': '#EF4444', 'FM': '#3B82F6',
+  'EG': '#10B981', 'P&S': '#8B5CF6'
 };
+
 const getSubjectColor = (code) => SUBJECT_COLORS[code] || '#6366F1';
 
 export default function TimetableManagement() {
   const [tab, setTab]                     = useState('grid');
+  const [viewMode, setViewMode]           = useState('section'); // 'section' or 'classroom'
   const [entries, setEntries]             = useState([]);
   const [classrooms, setClassrooms]       = useState([]);
   const [subjects, setSubjects]           = useState([]);
   const [faculty, setFaculty]             = useState([]);
   const [conflicts, setConflicts]         = useState(null);
   const [loading, setLoading]             = useState(true);
-  const [filterSection, setFilterSection] = useState('IT-4B');
+  const [filterSection, setFilterSection] = useState('IT-2A');
+  const [filterRoom, setFilterRoom]       = useState('CE-IT-101');
   const [csvFile, setCsvFile]             = useState(null);
   const [csvResult, setCsvResult]         = useState(null);
   const [csvLoading, setCsvLoading]       = useState(false);
@@ -31,22 +53,35 @@ export default function TimetableManagement() {
   const load = async () => {
     setLoading(true);
     try {
+      const params = {};
+      if (viewMode === 'section' && filterSection) {
+        params.section = filterSection;
+      } else if (viewMode === 'classroom' && filterRoom) {
+        params.classroom_id = filterRoom;
+      }
+
       const [e, c, s, f] = await Promise.all([
-        timetableApi.list(filterSection ? { section: filterSection } : {}),
+        timetableApi.list(params),
         classroomsApi.list(),
         subjectsApi.list(),
         facultyApi.list(),
       ]);
-      setEntries(e || []); setClassrooms(c || []); setSubjects(s || []); setFaculty(f || []);
-    } catch(err){ console.error(err); }
-    finally { setLoading(false); }
+      setEntries(e || []);
+      setClassrooms(c || []);
+      setSubjects(s || []);
+      setFaculty(f || []);
+    } catch(err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadConflicts = async () => {
     try { setConflicts(await timetableApi.conflicts()); } catch(err) { console.error(err); }
   };
 
-  useEffect(() => { load(); }, [filterSection]);
+  useEffect(() => { load(); }, [viewMode, filterSection, filterRoom]);
   useEffect(() => { if (tab === 'conflicts') loadConflicts(); }, [tab]);
 
   const handleDelete = async (id) => {
@@ -58,15 +93,21 @@ export default function TimetableManagement() {
   const handleCsvUpload = async (dryRun) => {
     if (!csvFile) return;
     setCsvLoading(true); setCsvResult(null);
-    try { const r = await timetableApi.importCsv(csvFile, dryRun); setCsvResult(r); if (!dryRun) load(); }
-    catch(err){ setCsvResult({ error: err.message }); }
-    finally { setCsvLoading(false); }
+    try {
+      const r = await timetableApi.importCsv(csvFile, dryRun);
+      setCsvResult(r);
+      if (!dryRun) load();
+    } catch(err) {
+      setCsvResult({ error: err.message });
+    } finally {
+      setCsvLoading(false);
+    }
   };
 
   const grid = {};
   for (const day of DAY_NAMES) {
     grid[day] = {};
-    for (let p = 1; p <= 5; p++) grid[day][p] = [];
+    for (let p = 1; p <= 6; p++) grid[day][p] = [];
   }
   entries.forEach(e => {
     const dayName = DAY_NAMES[e.day_of_week];
@@ -76,63 +117,113 @@ export default function TimetableManagement() {
   });
 
   const tabs = [
-    { id:'grid',     label:'📅 Schedule Grid' },
-    { id:'entries',  label:'📋 Entries' },
-    { id:'import',   label:'📤 CSV Import' },
-    { id:'conflicts',label:'⚠️ Conflicts' },
+    { id: 'grid',      label: '📅 Schedule Grid' },
+    { id: 'entries',   label: '📋 All Entries' },
+    { id: 'import',    label: '📤 CSV Import' },
+    { id: 'conflicts', label: '⚠️ Conflicts' },
   ];
 
   return (
     <div style={s.page}>
       <div style={s.topBar}>
         <div>
-          <h1 style={s.title}>Timetable Management</h1>
-          <p style={s.subtitle}>MVSR Engineering College · Civil & IT Block · IT 4B Sem VII</p>
+          <h1 style={s.title}>Timetable Management & Mapping</h1>
+          <p style={s.subtitle}>
+            Civil & IT Block · 12 Academic Sections (IT-2A..4C & Civil Sem-3..7) · Full Week Monday–Saturday
+          </p>
         </div>
         <div style={s.topActions}>
-          <select style={s.select} value={filterSection} onChange={e => setFilterSection(e.target.value)}>
-            <option value="IT-4B">IT-4B</option>
-            <option value="">All sections</option>
-          </select>
+          <div style={s.toggleGroup}>
+            <button
+              style={{ ...s.toggleBtn, ...(viewMode === 'section' ? s.toggleActive : {}) }}
+              onClick={() => setViewMode('section')}
+            >
+              By Section
+            </button>
+            <button
+              style={{ ...s.toggleBtn, ...(viewMode === 'classroom' ? s.toggleActive : {}) }}
+              onClick={() => setViewMode('classroom')}
+            >
+              By Classroom
+            </button>
+          </div>
+
+          {viewMode === 'section' ? (
+            <select style={s.select} value={filterSection} onChange={e => setFilterSection(e.target.value)}>
+              {SECTIONS.map(sec => (
+                <option key={sec} value={sec}>Section: {sec}</option>
+              ))}
+              <option value="">All Sections</option>
+            </select>
+          ) : (
+            <select style={s.select} value={filterRoom} onChange={e => setFilterRoom(e.target.value)}>
+              {classrooms.map(rm => (
+                <option key={rm.id} value={rm.id}>{rm.id} ({rm.name})</option>
+              ))}
+            </select>
+          )}
+
           <button style={s.btnPrimary} onClick={() => setShowAddModal(true)}>+ Add Entry</button>
         </div>
       </div>
 
       <div style={s.tabRow}>
-        {tabs.map(t => <button key={t.id} style={{ ...s.tabBtn, ...(tab===t.id?s.tabActive:{}) }} onClick={()=>setTab(t.id)}>{t.label}</button>)}
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            style={{ ...s.tabBtn, ...(tab === t.id ? s.tabActive : {}) }}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {loading && <div style={s.center}>Loading…</div>}
+      {loading && <div style={s.center}>Loading timetable database…</div>}
 
       {!loading && tab === 'grid' && (
         <div style={s.gridWrap}>
           <div style={s.gridTable}>
-            <div style={s.gridCell('header')}></div>
-            {DAY_NAMES.map(d => <div key={d} style={s.gridCell('dayhead')}>{d}</div>)}
-            {[1,2,3,4,5].map(p => (
-              <div key={p} style={{display:'contents'}}>
+            <div style={s.gridCell('header')}>
+              <span style={{ fontSize: 11, color: '#94A3B8' }}>PERIODS \ DAYS</span>
+            </div>
+            {DAY_NAMES.map(d => (
+              <div key={d} style={s.gridCell('dayhead')}>
+                <b>{d.toUpperCase()}</b>
+              </div>
+            ))}
+            {[1, 2, 3, 4, 5, 6].map(p => (
+              <div key={p} style={{ display: 'contents' }}>
                 <div style={s.gridCell('periodlabel')}>
-                  <div style={{fontWeight:700}}>P{p}</div>
-                  <div style={{fontSize:10,color:'#6B7280',marginTop:2}}>{PERIOD_TIMES[p][0]}</div>
+                  <div style={{ fontWeight: 800, color: '#00E5FF', fontSize: 13 }}>P{p}</div>
+                  <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>{PERIOD_TIMES[p][0]} - {PERIOD_TIMES[p][1]}</div>
                 </div>
                 {DAY_NAMES.map(day => {
                   const cell = grid[day][p];
                   return (
                     <div key={`${day}-${p}`} style={s.gridCell('cell')}>
-                      {cell.length === 0
-                        ? <div style={s.freeSlot}>Free</div>
-                        : cell.map(e => {
-                            const subj = subjects.find(x=>x.id===e.subject_id);
-                            const col = getSubjectColor(subj?.code || '');
-                            return (
-                              <div key={e.id} style={{ ...s.entryChip, background:`${col}22`, borderLeft:`3px solid ${col}` }}>
-                                <div style={{color:col,fontWeight:700,fontSize:11}}>{subj?.code || e.subject_name.slice(0,6)}</div>
-                                <div style={{color:'#9CA3AF',fontSize:10,marginTop:2}}>{e.classroom_id}</div>
-                                {e.batch && <div style={{color:'#6B7280',fontSize:10}}>B{e.batch}</div>}
+                      {cell.length === 0 ? (
+                        <div style={s.freeSlot}>— Free —</div>
+                      ) : (
+                        cell.map(e => {
+                          const col = getSubjectColor(e.subject_name.slice(0, 4));
+                          return (
+                            <div key={e.id} style={{ ...s.entryChip, background: `${col}18`, borderLeft: `3px solid ${col}` }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: col, fontWeight: 700, fontSize: 12 }}>{e.subject_name}</span>
+                                {e.batch && <span style={s.batchBadge}>Batch {e.batch}</span>}
                               </div>
-                            );
-                          })
-                      }
+                              <div style={{ color: '#F1F5F9', fontSize: 11, marginTop: 3, fontWeight: 600 }}>
+                                👩‍🏫 {e.faculty_name}
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94A3B8', fontSize: 10, marginTop: 4 }}>
+                                <span>🏛️ {e.classroom_id}</span>
+                                <span>👥 {e.section}</span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   );
                 })}
@@ -146,247 +237,92 @@ export default function TimetableManagement() {
         <div style={s.tableWrap}>
           <table style={s.table}>
             <thead>
-              <tr>{['Day','Period','Time','Room','Subject','Faculty','Section','Batch','Actions'].map(h =>
-                <th key={h} style={s.th}>{h}</th>
-              )}</tr>
+              <tr>
+                <th style={s.th}>Day</th>
+                <th style={s.th}>Period</th>
+                <th style={s.th}>Time</th>
+                <th style={s.th}>Section</th>
+                <th style={s.th}>Room</th>
+                <th style={s.th}>Subject</th>
+                <th style={s.th}>Faculty</th>
+                <th style={s.th}>Batch</th>
+                <th style={s.th}>Actions</th>
+              </tr>
             </thead>
             <tbody>
-              {entries.map(e => {
-                const subj = subjects.find(x=>x.id===e.subject_id);
-                const col = getSubjectColor(subj?.code||'');
-                return (
-                  <tr key={e.id} style={s.tr}>
-                    <td style={s.td}>{DAY_NAMES[e.day_of_week]}</td>
-                    <td style={s.td}>P{e.period_number}</td>
-                    <td style={s.td}><span style={{fontFamily:'monospace',fontSize:11}}>{e.start_time}–{e.end_time}</span></td>
-                    <td style={s.td}><span style={{color:'#818CF8',fontWeight:600}}>{e.classroom_id}</span></td>
-                    <td style={s.td}><span style={{...s.badge, background:`${col}22`,color:col}}>{e.subject_name}</span></td>
-                    <td style={s.td}>{e.faculty_name}</td>
-                    <td style={s.td}>{e.section}</td>
-                    <td style={s.td}>{e.batch||'—'}</td>
-                    <td style={s.td}>
-                      <button style={s.btnDanger} onClick={()=>handleDelete(e.id)}>✕</button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {entries.length === 0 && <tr><td colSpan={9} style={{...s.td,textAlign:'center',color:'#6B7280'}}>No entries found</td></tr>}
+              {entries.map(e => (
+                <tr key={e.id} style={s.tr}>
+                  <td style={s.td}>{DAY_NAMES[e.day_of_week]}</td>
+                  <td style={s.td}>P{e.period_number}</td>
+                  <td style={s.td}>{e.start_time} - {e.end_time}</td>
+                  <td style={s.td}><b>{e.section}</b></td>
+                  <td style={s.td}><code style={s.code}>{e.classroom_id}</code></td>
+                  <td style={s.td}>{e.subject_name}</td>
+                  <td style={s.td}>{e.faculty_name}</td>
+                  <td style={s.td}>{e.batch || 'Full Class'}</td>
+                  <td style={s.td}>
+                    <button style={s.btnDanger} onClick={() => handleDelete(e.id)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       )}
 
-      {tab === 'import' && (
-        <div style={s.importBox}>
-          <h3 style={{color:'#E5E7EB',marginBottom:8}}>Import Timetable from CSV</h3>
-          <p style={{color:'#9CA3AF',fontSize:13,marginBottom:16}}>
-            Required columns: <code style={s.code}>day_of_week, period_number, start_time, end_time, classroom_id, subject_name, faculty_name, section, semester</code><br/>
-            Optional: <code style={s.code}>subject_id, faculty_id, department, academic_year, batch</code>
-          </p>
-
-          <a href="/timetable_template.csv" style={s.downloadBtn} download>⬇ Download Template</a>
-
-          <div style={s.dropZone} onClick={() => fileRef.current.click()}>
-            <div style={{fontSize:32}}>📁</div>
-            <div style={{color:'#9CA3AF',marginTop:8}}>{csvFile ? csvFile.name : 'Click to select CSV file'}</div>
-          </div>
-          <input ref={fileRef} type="file" accept=".csv" style={{display:'none'}} onChange={e=>setCsvFile(e.target.files[0])} />
-
-          <div style={{display:'flex',gap:12,marginTop:16}}>
-            <button style={s.btnSecondary} disabled={!csvFile||csvLoading} onClick={()=>handleCsvUpload(true)}>
-              {csvLoading ? 'Validating…' : '🔍 Dry Run (Validate)'}
-            </button>
-            <button style={s.btnPrimary} disabled={!csvFile||csvLoading} onClick={()=>handleCsvUpload(false)}>
-              {csvLoading ? 'Importing…' : '⬆ Import'}
-            </button>
-          </div>
-
-          {csvResult && (
-            <div style={{...s.resultBox, borderColor: csvResult.error ? '#7F1D1D' : (csvResult.skipped>0?'#78350F':'#064E3B')}}>
-              {csvResult.error ? (
-                <p style={{color:'#FCA5A5'}}>Error: {csvResult.error}</p>
-              ) : (
-                <>
-                  <p style={{color:'#6EE7B7',fontWeight:700}}>
-                    {csvResult.dry_run ? `Would insert: ${csvResult.would_insert} rows` : `Inserted: ${csvResult.inserted} rows`}
-                  </p>
-                  {csvResult.skipped > 0 && <p style={{color:'#FCD34D'}}>Skipped: {csvResult.skipped} rows</p>}
-                  {csvResult.errors?.map((err,i) => <p key={i} style={{color:'#FCA5A5',fontSize:12}}>Row {err.row}: {err.error}</p>)}
-                </>
-              )}
-            </div>
+      {!loading && tab === 'conflicts' && (
+        <div style={s.conflictsWrap}>
+          <h2 style={{ fontSize: 18, color: '#fff', marginBottom: 12 }}>Timetable Room & Faculty Conflicts</h2>
+          {conflicts?.total_conflicts === 0 ? (
+            <div style={s.noConflict}>✅ 0 Conflicts Found. All classrooms, teachers, and student sections are 100% clash-free!</div>
+          ) : (
+            <div style={{ color: '#F87171' }}>Found {conflicts?.total_conflicts || 0} potential schedule overlaps.</div>
           )}
         </div>
       )}
 
-      {tab === 'conflicts' && (
-        <div style={{padding:24}}>
-          {!conflicts && <div style={s.center}>Loading conflicts…</div>}
-          {conflicts && (
-            <>
-              <div style={{...s.conflictSummary, background: conflicts.total_conflicts===0?'#064E3B33':'#7F1D1D33', borderColor: conflicts.total_conflicts===0?'#059669':'#EF4444'}}>
-                {conflicts.total_conflicts===0
-                  ? <span style={{color:'#6EE7B7',fontWeight:700}}>✅ No conflicts detected!</span>
-                  : <span style={{color:'#FCA5A5',fontWeight:700}}>⚠️ {conflicts.total_conflicts} conflict{conflicts.total_conflicts>1?'s':''} detected</span>
-                }
-              </div>
-              {conflicts.conflicts.map((c,i) => (
-                <div key={i} style={s.conflictCard}>
-                  <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}>
-                    <span style={{...s.badge,background: c.conflict_type==='classroom'?'#FEF3C722':c.conflict_type==='faculty'?'#EDE9FE22':'#FEE2E222', color: c.conflict_type==='classroom'?'#F59E0B':c.conflict_type==='faculty'?'#8B5CF6':'#EF4444'}}>
-                      {c.conflict_type}
-                    </span>
-                    <span style={{color:'#D1D5DB',fontSize:13}}>{c.description}</span>
-                  </div>
-                  {c.entries.map((e,j) => (
-                    <div key={j} style={{background:'#0F172A',borderRadius:8,padding:'8px 12px',marginBottom:4,fontSize:12,color:'#9CA3AF'}}>
-                      {DAY_NAMES[e.day_of_week]} · P{e.period_number} · {e.classroom_id} · {e.subject_name} · {e.faculty_name}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </>
-          )}
-        </div>
-      )}
-
-      {showAddModal && (
-        <AddEntryModal
-          classrooms={classrooms} subjects={subjects} faculty={faculty}
-          onClose={() => setShowAddModal(false)}
-          onSave={async (data) => { await timetableApi.create(data); setShowAddModal(false); load(); }}
-        />
-      )}
-    </div>
-  );
-}
-
-function AddEntryModal({ classrooms, subjects, faculty, onClose, onSave }) {
-  const [form, setForm] = useState({
-    day_of_week:'0', period_number:'1', classroom_id:'CE-IT-213',
-    subject_id:'', subject_name:'', faculty_id:'', faculty_name:'',
-    section:'IT-4B', semester:'7', department:'IT', academic_year:'2026-2027', batch:''
-  });
-
-  const set = (k,v) => {
-    const next = {...form,[k]:v};
-    if (k==='subject_id') { const sb=subjects.find(x=>x.id===v); if(sb) next.subject_name=sb.name; }
-    if (k==='faculty_id') { const f=faculty.find(x=>x.id===v); if(f) next.faculty_name=f.name; }
-    setForm(next);
-  };
-
-  const submit = async (e) => {
-    e.preventDefault();
-    const p = parseInt(form.period_number);
-    const times = {1:['09:30','10:30'],2:['10:30','11:30'],3:['11:40','12:40'],4:['14:15','15:15'],5:['15:15','16:15']};
-    await onSave({
-      ...form,
-      day_of_week: parseInt(form.day_of_week),
-      period_number: p,
-      start_time: times[p][0],
-      end_time: times[p][1],
-      semester: parseInt(form.semester),
-      batch: form.batch || null,
-      subject_id: form.subject_id || null,
-      faculty_id: form.faculty_id || null,
-    });
-  };
-
-  return (
-    <div style={s.modalOverlay} onClick={onClose}>
-      <div style={s.modal} onClick={e=>e.stopPropagation()}>
-        <h2 style={{color:'#F9FAFB',marginBottom:16,fontSize:18}}>Add Timetable Entry</h2>
-        <form onSubmit={submit} style={{display:'flex',flexDirection:'column',gap:10}}>
-          <div style={s.formRow}>
-            <label style={s.label}>Day</label>
-            <select style={s.input} value={form.day_of_week} onChange={e=>set('day_of_week',e.target.value)}>
-              {['Monday','Tuesday','Wednesday','Thursday','Friday'].map((d,i)=><option key={i} value={i}>{d}</option>)}
-            </select>
-          </div>
-          <div style={s.formRow}>
-            <label style={s.label}>Period</label>
-            <select style={s.input} value={form.period_number} onChange={e=>set('period_number',e.target.value)}>
-              {[1,2,3,4,5].map(p=><option key={p} value={p}>P{p} ({PERIOD_TIMES[p][0]}–{PERIOD_TIMES[p][1]})</option>)}
-            </select>
-          </div>
-          <div style={s.formRow}>
-            <label style={s.label}>Classroom</label>
-            <select style={s.input} value={form.classroom_id} onChange={e=>set('classroom_id',e.target.value)}>
-              {classrooms.map(c=><option key={c.id} value={c.id}>{c.id} — {c.name}</option>)}
-            </select>
-          </div>
-          <div style={s.formRow}>
-            <label style={s.label}>Subject</label>
-            <select style={s.input} value={form.subject_id} onChange={e=>set('subject_id',e.target.value)}>
-              <option value="">— Select —</option>
-              {subjects.map(sb=><option key={sb.id} value={sb.id}>{sb.code} — {sb.name}</option>)}
-            </select>
-          </div>
-          <div style={s.formRow}>
-            <label style={s.label}>Faculty</label>
-            <select style={s.input} value={form.faculty_id} onChange={e=>set('faculty_id',e.target.value)}>
-              <option value="">— Select —</option>
-              {faculty.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-          </div>
-          <div style={s.formRow}>
-            <label style={s.label}>Batch</label>
-            <select style={s.input} value={form.batch} onChange={e=>set('batch',e.target.value)}>
-              <option value="">Whole class</option>
-              <option value="1">Batch 1</option>
-              <option value="2">Batch 2</option>
-            </select>
-          </div>
-          <div style={{display:'flex',gap:10,marginTop:8}}>
-            <button type="button" style={s.btnSecondary} onClick={onClose}>Cancel</button>
-            <button type="submit" style={s.btnPrimary}>Save Entry</button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }
 
 const s = {
-  page:       { background:'#0F172A', minHeight:'100vh', color:'#E5E7EB', fontFamily:"'Inter',sans-serif" },
-  topBar:     { display:'flex',justifyContent:'space-between',alignItems:'flex-start',padding:'28px 32px 0', flexWrap:'wrap', gap:16 },
-  title:      { color:'#F9FAFB', fontSize:26, fontWeight:800, margin:0 },
-  subtitle:   { color:'#6B7280', fontSize:13, marginTop:4 },
-  topActions: { display:'flex', gap:12, alignItems:'center' },
-  select:     { background:'#1F2937', border:'1px solid #374151', borderRadius:8, color:'#E5E7EB', padding:'8px 14px', fontSize:13 },
-  tabRow:     { display:'flex', gap:2, padding:'20px 32px 0', borderBottom:'1px solid #1F2937', marginTop:16 },
-  tabBtn:     { background:'transparent', border:'none', color:'#6B7280', padding:'10px 18px', fontSize:13, cursor:'pointer', borderRadius:'8px 8px 0 0', fontWeight:500 },
-  tabActive:  { background:'#1F2937', color:'#818CF8', borderBottom:'2px solid #6366F1' },
-  gridWrap:   { overflowX:'auto', padding:'24px 32px' },
-  gridTable:  { display:'grid', gridTemplateColumns:'80px repeat(5, 1fr)', gap:4, minWidth:700 },
-  gridCell: (t) => ({
-    ...(t==='header'  ? {background:'transparent'} : {}),
-    ...(t==='dayhead' ? {background:'#1E293B',borderRadius:8,padding:'10px',textAlign:'center',fontWeight:700,color:'#818CF8',fontSize:13} : {}),
-    ...(t==='periodlabel' ? {background:'#1E293B',borderRadius:8,padding:'12px 8px',textAlign:'center',color:'#E5E7EB',fontSize:12} : {}),
-    ...(t==='cell'    ? {background:'#111827',borderRadius:8,padding:8,minHeight:70,border:'1px solid #1F2937'} : {}),
+  page: { padding: '24px', maxWidth: '1400px', margin: '0 auto', color: '#E2E8F0', fontFamily: 'system-ui, sans-serif' },
+  topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' },
+  title: { fontSize: '24px', fontWeight: 800, color: '#FFFFFF', margin: 0 },
+  subtitle: { fontSize: '13px', color: '#94A3B8', marginTop: '4px' },
+  topActions: { display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' },
+  toggleGroup: { display: 'flex', background: '#1E293B', borderRadius: '8px', padding: '3px', border: '1px solid rgba(255,255,255,0.1)' },
+  toggleBtn: { background: 'transparent', border: 'none', color: '#94A3B8', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 },
+  toggleActive: { background: '#00E5FF', color: '#0F172A', fontWeight: 700 },
+  select: { background: '#1E293B', color: '#F1F5F9', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', fontWeight: 600, outline: 'none' },
+  btnPrimary: { background: 'linear-gradient(135deg, #00E5FF, #3B82F6)', border: 'none', color: '#0F172A', padding: '8px 16px', borderRadius: '8px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' },
+  tabRow: { display: 'flex', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px', marginBottom: '20px' },
+  tabBtn: { background: 'transparent', border: 'none', color: '#94A3B8', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 },
+  tabActive: { background: 'rgba(0, 229, 255, 0.15)', color: '#00E5FF', border: '1px solid rgba(0, 229, 255, 0.3)' },
+  gridWrap: { overflowX: 'auto', background: '#0F172A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '16px' },
+  gridTable: { display: 'grid', gridTemplateColumns: '130px repeat(6, minmax(180px, 1fr))', gap: '8px' },
+  gridCell: (type) => ({
+    background: type === 'header' || type === 'dayhead' ? '#1E293B' : type === 'periodlabel' ? '#141E33' : '#111827',
+    padding: type === 'cell' ? '8px' : '12px 8px',
+    borderRadius: '8px',
+    border: '1px solid rgba(255,255,255,0.06)',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    textAlign: type === 'dayhead' || type === 'periodlabel' ? 'center' : 'left',
+    minHeight: type === 'cell' ? '90px' : 'auto',
   }),
-  freeSlot:   { color:'#374151', fontSize:11, textAlign:'center', paddingTop:20 },
-  entryChip:  { borderRadius:8, padding:'6px 8px', marginBottom:4 },
-  tableWrap:  { overflowX:'auto', padding:'24px 32px' },
-  table:      { width:'100%', borderCollapse:'collapse' },
-  th:         { background:'#1F2937', padding:'10px 14px', fontSize:12, color:'#9CA3AF', fontWeight:600, textAlign:'left', borderBottom:'1px solid #374151' },
-  tr:         { borderBottom:'1px solid #1F2937' },
-  td:         { padding:'10px 14px', fontSize:13, color:'#D1D5DB', verticalAlign:'middle' },
-  badge:      { borderRadius:20, padding:'3px 10px', fontSize:11, fontWeight:600 },
-  btnPrimary: { background:'linear-gradient(135deg,#6366F1,#8B5CF6)', border:'none', color:'#fff', borderRadius:8, padding:'9px 18px', cursor:'pointer', fontSize:13, fontWeight:600 },
-  btnSecondary:{ background:'#1F2937', border:'1px solid #374151', color:'#D1D5DB', borderRadius:8, padding:'9px 18px', cursor:'pointer', fontSize:13 },
-  btnDanger:  { background:'#7F1D1D33', border:'1px solid #7F1D1D', color:'#FCA5A5', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontSize:12 },
-  center:     { textAlign:'center', padding:60, color:'#6B7280' },
-  importBox:  { padding:'24px 32px', maxWidth:600 },
-  code:       { background:'#1F2937', borderRadius:4, padding:'1px 6px', fontFamily:'monospace', fontSize:12, color:'#818CF8' },
-  downloadBtn:{ display:'inline-block', background:'#1F2937', border:'1px solid #374151', color:'#818CF8', borderRadius:8, padding:'8px 16px', fontSize:13, textDecoration:'none', marginBottom:16 },
-  dropZone:   { border:'2px dashed #374151', borderRadius:12, padding:'40px 20px', textAlign:'center', cursor:'pointer', background:'#111827', marginTop:8 },
-  resultBox:  { background:'#111827', border:'1px solid', borderRadius:8, padding:14, marginTop:16 },
-  conflictSummary:{ border:'1px solid', borderRadius:8, padding:'12px 18px', marginBottom:16 },
-  conflictCard:   { background:'#1F2937', borderRadius:10, padding:'14px 16px', marginBottom:12 },
-  modalOverlay:{ position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)' },
-  modal:      { background:'#1F2937',borderRadius:16,padding:28,width:480,maxWidth:'95vw',border:'1px solid #374151' },
-  formRow:    { display:'flex',flexDirection:'column',gap:4 },
-  label:      { color:'#9CA3AF',fontSize:12 },
-  input:      { background:'#111827',border:'1px solid #374151',borderRadius:8,color:'#E5E7EB',padding:'9px 12px',fontSize:13 },
+  freeSlot: { color: '#475569', fontSize: '11px', textAlign: 'center', margin: 'auto 0' },
+  entryChip: { borderRadius: '6px', padding: '6px 8px', marginBottom: '6px' },
+  batchBadge: { fontSize: '9px', background: '#3B82F633', color: '#60A5FA', padding: '2px 5px', borderRadius: '4px', border: '1px solid #3B82F655' },
+  tableWrap: { overflowX: 'auto', background: '#0F172A', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: '13px' },
+  th: { textAlign: 'left', padding: '12px 16px', background: '#1E293B', color: '#94A3B8', borderBottom: '1px solid rgba(255,255,255,0.1)' },
+  tr: { borderBottom: '1px solid rgba(255,255,255,0.05)' },
+  td: { padding: '12px 16px' },
+  code: { background: '#1E293B', padding: '3px 6px', borderRadius: '4px', color: '#38BDF8', fontSize: '12px' },
+  btnDanger: { background: '#EF444422', border: '1px solid #EF444455', color: '#F87171', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer' },
+  conflictsWrap: { background: '#0F172A', padding: '24px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' },
+  noConflict: { background: '#10B98118', border: '1px solid #10B98144', color: '#34D399', padding: '16px', borderRadius: '8px', fontWeight: 600 },
+  center: { textAlign: 'center', padding: '48px', color: '#94A3B8' }
 };

@@ -134,7 +134,7 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onOpen3DView({ ...roomDetails, id: classroomId, name: data?.classroom_name || roomDetails?.name || classroomId, location_type: locType, floor: data?.floor ?? roomDetails?.floor });
+                  onOpen3DView({ ...roomDetails, id: classroomId, name: data?.classroom_name || roomDetails?.name || classroomId, location_type: locType, floor: data?.floor ?? roomDetails?.floor }, selectedSlot);
                 }}
               >
                 🚀 3D View
@@ -297,7 +297,7 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onOpen3DView({ ...roomDetails, id: classroomId, name: data?.classroom_name || roomDetails?.name || classroomId, location_type: locType, floor: data?.floor ?? roomDetails?.floor });
+                    onOpen3DView({ ...roomDetails, id: classroomId, name: data?.classroom_name || roomDetails?.name || classroomId, location_type: locType, floor: data?.floor ?? roomDetails?.floor }, selectedSlot);
                   }}
                   style={{
                     marginTop: 14,

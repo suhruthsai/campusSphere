@@ -75,12 +75,26 @@ def delete_entry(entry_id: int, db: Session = Depends(get_db)):
     return {"message": "Deleted"}
 
 @router.get("/classroom/{classroom_id}/current", response_model=CurrentClassResponse)
-def get_current_class(classroom_id: str, db: Session = Depends(get_db)):
+def get_current_class(
+    classroom_id: str,
+    at_datetime: Optional[str] = Query(None, description="Optional ISO or YYYY-MM-DDTHH:MM simulated time"),
+    db: Session = Depends(get_db)
+):
     room = db.query(ClassroomModel).filter(ClassroomModel.id == classroom_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Classroom not found")
 
-    now     = datetime.now()
+    target_dt = None
+    if at_datetime:
+        try:
+            target_dt = datetime.fromisoformat(at_datetime)
+        except Exception:
+            try:
+                target_dt = datetime.strptime(at_datetime.replace(' ', 'T'), "%Y-%m-%dT%H:%M")
+            except Exception:
+                target_dt = None
+
+    now     = target_dt if target_dt else datetime.now()
     dow     = now.weekday()
     cur_min = _time_to_minutes(now.strftime("%H:%M"))
 
@@ -116,7 +130,7 @@ def get_current_class(classroom_id: str, db: Session = Depends(get_db)):
         building       = room.building,
         floor          = room.floor,
         status         = "occupied" if current else room.status,
-        day_name       = DAY_NAMES[dow],
+        day_name       = DAY_NAMES[dow] if dow < len(DAY_NAMES) else None,
         current_entry  = TimetableEntryOut.model_validate(current) if current else None,
         next_entry     = TimetableEntryOut.model_validate(next_e)  if next_e  else None,
     )

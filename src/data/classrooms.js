@@ -1,49 +1,48 @@
-// ── Mock classroom data for Suhruth University ────────────────────────────────
+// ─── CampusSphere — Civil & IT Block Classrooms & Locations ──────────────────
 
 export const classrooms = [
-  // ── CSE Block ─────────────────────────────────────────────────────────────
-  { id: 'cr001', name: 'CSE-101', building: 'CSE Block',   floor: 1, capacity: 60, equipment: ['Projector', 'AC', 'Whiteboard', 'Wi-Fi'], occupancy: 52, status: 'occupied',  type: 'Lecture Hall' },
-  { id: 'cr002', name: 'CSE-102', building: 'CSE Block',   floor: 1, capacity: 40, equipment: ['Projector', 'AC', 'Smart Board'],          occupancy: 0,  status: 'available', type: 'Seminar Room' },
-  { id: 'cr003', name: 'CSE-201', building: 'CSE Block',   floor: 2, capacity: 60, equipment: ['Projector', 'AC', 'Whiteboard'],           occupancy: 55, status: 'occupied',  type: 'Lecture Hall' },
-  { id: 'cr004', name: 'CSE-202', building: 'CSE Block',   floor: 2, capacity: 30, equipment: ['AC', 'Smart Board', 'Video Conf'],         occupancy: 0,  status: 'available', type: 'Conference Room' },
+  // ── First Floor Classrooms & Offices ──────────────────────────────────────
+  { id: 'CE-IT-101', name: 'Classroom CE-IT-101', building: 'Civil & IT Block', floor: 1, capacity: 65, equipment: ['Projector', 'Audio Mic', 'Whiteboard'], occupancy: 60, status: 'occupied', type: 'Lecture Hall', section: 'IT-2A' },
+  { id: 'CE-IT-102', name: 'Classroom CE-IT-102', building: 'Civil & IT Block', floor: 1, capacity: 65, equipment: ['Projector', 'Audio Mic', 'Whiteboard'], occupancy: 58, status: 'occupied', type: 'Lecture Hall', section: 'IT-2B' },
+  { id: 'CE-IT-104', name: 'Computer Lab (CE-IT-104)', building: 'Civil & IT Block', floor: 1, capacity: 40, equipment: ['40 Desktop PCs', 'Gigabit Switch', 'Projector'], occupancy: 38, status: 'occupied', type: 'Lab', section: 'IT Dept' },
+  { id: 'PRINCIPAL-OFFICE', name: 'Principal / Directors Office', building: 'Civil & IT Block', floor: 1, capacity: 15, equipment: ['Executive Table', 'Conference Display', 'AC'], occupancy: 4, status: 'available', type: 'Office' },
+  { id: 'IT-STAFF-ROOM', name: 'IT Staff Room', building: 'Civil & IT Block', floor: 1, capacity: 25, equipment: ['Faculty Desks', 'Workstations'], occupancy: 12, status: 'available', type: 'Staff Room' },
+  { id: 'CIVIL-DEPT-OFFICE', name: 'Civil Department Office', building: 'Civil & IT Block', floor: 1, capacity: 15, equipment: ['HOD Desk', 'Staff Cabins'], occupancy: 6, status: 'available', type: 'Department Office' },
+  { id: 'IQAC-ROOM', name: 'IQAC Room', building: 'Civil & IT Block', floor: 1, capacity: 20, equipment: ['Conference System', 'Projector'], occupancy: 5, status: 'available', type: 'Office' },
 
-  // ── ECE Block ─────────────────────────────────────────────────────────────
-  { id: 'cr005', name: 'ECE-101', building: 'ECE Block',   floor: 1, capacity: 60, equipment: ['Projector', 'AC', 'Whiteboard'],           occupancy: 48, status: 'occupied',  type: 'Lecture Hall' },
-  { id: 'cr006', name: 'ECE-102', building: 'ECE Block',   floor: 1, capacity: 60, equipment: ['Projector', 'AC', 'Wi-Fi'],                occupancy: 0,  status: 'available', type: 'Lecture Hall' },
-  { id: 'cr007', name: 'ECE-201', building: 'ECE Block',   floor: 2, capacity: 40, equipment: ['Projector', 'AC', 'Smart Board'],          occupancy: 32, status: 'occupied',  type: 'Seminar Room' },
+  // ── Second Floor Classrooms & Labs ─────────────────────────────────────────
+  { id: 'CE-IT-201', name: 'Classroom CE-IT-201', building: 'Civil & IT Block', floor: 2, capacity: 65, equipment: ['Projector', 'Audio Setup', 'Whiteboard'], occupancy: 62, status: 'occupied', type: 'Lecture Hall', section: 'IT-2C' },
+  { id: 'CE-IT-202', name: 'Classroom CE-IT-202', building: 'Civil & IT Block', floor: 2, capacity: 65, equipment: ['Projector', 'Smart Board', 'Audio Mic'], occupancy: 64, status: 'occupied', type: 'Lecture Hall', section: 'IT-3A' },
+  { id: 'CE-IT-203', name: 'Classroom CE-IT-203', building: 'Civil & IT Block', floor: 2, capacity: 65, equipment: ['Projector', 'Sound System', 'Whiteboard'], occupancy: 55, status: 'occupied', type: 'Lecture Hall', section: 'IT-4C' },
+  { id: 'CE-IT-211', name: 'CN & NS / DS / AI Lab (CE-IT-211)', building: 'Civil & IT Block', floor: 2, capacity: 35, equipment: ['Cisco Routers', 'High-End PCs', 'Projector'], occupancy: 32, status: 'occupied', type: 'Lab', section: 'IT Labs' },
+  { id: 'CE-IT-212', name: 'Classroom CE-IT-212', building: 'Civil & IT Block', floor: 2, capacity: 65, equipment: ['Projector', 'Sound System', 'Whiteboard'], occupancy: 59, status: 'occupied', type: 'Lecture Hall', section: 'IT-3B' },
+  { id: 'CE-IT-213', name: 'Classroom CE-IT-213', building: 'Civil & IT Block', floor: 2, capacity: 65, equipment: ['Projector', 'Smart Board', 'Whiteboard'], occupancy: 61, status: 'occupied', type: 'Lecture Hall', section: 'IT-3C' },
+  { id: 'CE-IT-214', name: 'Electronics Laboratory (CE-IT-214)', building: 'Civil & IT Block', floor: 2, capacity: 35, equipment: ['DSO', 'Function Generators', 'Power Supplies'], occupancy: 30, status: 'occupied', type: 'Lab', section: 'EDS Lab' },
+  { id: 'CE-204', name: 'Classroom CE-204', building: 'Civil & IT Block', floor: 2, capacity: 65, equipment: ['Projector', 'Whiteboard', 'Audio Mic'], occupancy: 54, status: 'occupied', type: 'Lecture Hall', section: 'Civil-7' },
+  { id: 'CE-205', name: 'Classroom CE-205', building: 'Civil & IT Block', floor: 2, capacity: 65, equipment: ['Projector', 'Smart Board', 'Sound System'], occupancy: 60, status: 'occupied', type: 'Lecture Hall', section: 'Civil-5' },
+  { id: 'CE-206', name: 'Classroom CE-206', building: 'Civil & IT Block', floor: 2, capacity: 65, equipment: ['Projector', 'Whiteboard', 'Drawing Easels'], occupancy: 58, status: 'occupied', type: 'Lecture Hall', section: 'Civil-3' },
 
-  // ── Mech & EEE Block ─────────────────────────────────────────────────────
-  { id: 'cr008', name: 'ME-101',  building: 'Mech & EEE Block', floor: 1, capacity: 60, equipment: ['Projector', 'AC', 'Whiteboard'],      occupancy: 44, status: 'occupied',  type: 'Lecture Hall' },
-  { id: 'cr009', name: 'EEE-101', building: 'Mech & EEE Block', floor: 1, capacity: 60, equipment: ['Projector', 'AC', 'Whiteboard'],      occupancy: 0,  status: 'available', type: 'Lecture Hall' },
-  { id: 'cr010', name: 'ME-201',  building: 'Mech & EEE Block', floor: 2, capacity: 60, equipment: ['Projector', 'AC', 'Whiteboard'],      occupancy: 36, status: 'occupied',  type: 'Lecture Hall' },
-
-  // ── Civil & IT Block ─────────────────────────────────────────────────────
-  { id: 'cr011', name: 'CV-101',  building: 'Civil & IT Block', floor: 1, capacity: 60, equipment: ['Projector', 'AC', 'Smart Board'],     occupancy: 42, status: 'occupied',  type: 'Lecture Hall' },
-  { id: 'cr012', name: 'IT-101',  building: 'Civil & IT Block', floor: 1, capacity: 60, equipment: ['Projector', 'AC', 'Whiteboard'],      occupancy: 0,  status: 'available', type: 'Lecture Hall' },
-  { id: 'cr013', name: 'IT-201',  building: 'Civil & IT Block', floor: 2, capacity: 40, equipment: ['Projector', 'AC', 'Wi-Fi'],           occupancy: 28, status: 'occupied',  type: 'Seminar Room' },
-
-  // ── S&H Block ─────────────────────────────────────────────────────────────
-  { id: 'cr014', name: 'SH-101',  building: 'S&H Block',  floor: 1, capacity: 80, equipment: ['Projector', 'AC', 'Whiteboard', 'Wi-Fi'],  occupancy: 70, status: 'occupied',  type: 'Lecture Hall' },
-  { id: 'cr015', name: 'SH-201',  building: 'S&H Block',  floor: 2, capacity: 60, equipment: ['Projector', 'AC', 'Whiteboard'],           occupancy: 0,  status: 'available', type: 'Lecture Hall' },
-
-  // ── Exam Dept & R&D ──────────────────────────────────────────────────────
-  { id: 'cr016', name: 'Exam Hall A', building: 'Examination Dept', floor: 1, capacity: 120, equipment: ['Projector', 'CCTV', 'AC'],      occupancy: 0,  status: 'maintenance', type: 'Exam Hall' },
-  { id: 'cr017', name: 'Seminar Hall', building: 'R&D Block',       floor: 2, capacity: 50,  equipment: ['Projector', 'Video Conf', 'AC'], occupancy: 18, status: 'occupied',   type: 'Seminar Room' },
+  // ── Ground Floor Laboratories & Admin ──────────────────────────────────────
+  { id: 'ADMINISTRATION', name: 'Administration', building: 'Civil & IT Block', floor: 0, capacity: 20, equipment: ['Admin Desks', 'Computer Terminals'], occupancy: 8, status: 'available', type: 'Administration' },
+  { id: 'CE-IT-18', name: 'IoT Lab (CE-IT-18)', building: 'Civil & IT Block', floor: 0, capacity: 35, equipment: ['Raspberry Pi', 'Arduino', 'Sensors'], occupancy: 28, status: 'occupied', type: 'Lab' },
+  { id: 'SUR-LAB-CE', name: 'Surveying Lab (Civil)', building: 'Civil & IT Block', floor: 0, capacity: 40, equipment: ['Total Station', 'Theodolite'], occupancy: 35, status: 'occupied', type: 'Lab' },
+  { id: 'EG-LAB-CE', name: 'Engineering Geology Lab (Civil)', building: 'Civil & IT Block', floor: 0, capacity: 35, equipment: ['Rock Specimens', 'Microscopes'], occupancy: 30, status: 'occupied', type: 'Lab' },
+  { id: 'FM-LAB-CE', name: 'Fluid Mechanics Lab (Civil)', building: 'Civil & IT Block', floor: 0, capacity: 35, equipment: ['Venturimeter', 'Orifice Meter'], occupancy: 32, status: 'occupied', type: 'Lab' },
+  { id: 'TE-LAB', name: 'Transportation Engineering Lab', building: 'Civil & IT Block', floor: 0, capacity: 35, equipment: ['Ductility Machine', 'Marshall Test'], occupancy: 30, status: 'occupied', type: 'Lab' },
+  { id: 'EE-LAB', name: 'Environmental Engineering Lab', building: 'Civil & IT Block', floor: 0, capacity: 35, equipment: ['BOD Incubator', 'pH Meter'], occupancy: 30, status: 'occupied', type: 'Lab' },
+  { id: 'CT-LAB', name: 'Concrete Technology Lab', building: 'Civil & IT Block', floor: 0, capacity: 35, equipment: ['CTM', 'Slump Cone'], occupancy: 30, status: 'occupied', type: 'Lab' },
+  { id: 'ADA-LAB', name: 'Ada Lab (CRT)', building: 'Civil & IT Block', floor: 0, capacity: 40, equipment: ['Workstations', 'Projector'], occupancy: 40, status: 'occupied', type: 'Lab' },
+  { id: 'CB-01', name: 'Charles Babbage Lab (CB-01)', building: 'Civil & IT Block', floor: 0, capacity: 40, equipment: ['Workstations', 'High-Speed Net'], occupancy: 40, status: 'occupied', type: 'Lab' },
+  { id: 'CSE-LAB-IV', name: 'CSE Lab-IV (CEP Lab)', building: 'Civil & IT Block', floor: 0, capacity: 35, equipment: ['Workstations', 'Compilers'], occupancy: 35, status: 'occupied', type: 'Lab' },
 ];
 
-// 7-day availability schedule (slots per day: 09-11, 11-13, 14-16, 16-18)
-export const timeSlots = ['09:00–11:00', '11:00–13:00', '14:00–16:00', '16:00–18:00'];
-
-export const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-// Bookings — { classroomId, day, slot, bookedBy, course }
-export const bookings = [
-  { id: 'bk001', classroomId: 'cr001', day: 'Mon', slot: '09:00–11:00', bookedBy: 'Prof. Ramesh Kumar',  course: 'Data Structures'       },
-  { id: 'bk002', classroomId: 'cr001', day: 'Mon', slot: '11:00–13:00', bookedBy: 'Dr. Lakshmi Venkat',  course: 'Algorithms'            },
-  { id: 'bk003', classroomId: 'cr001', day: 'Tue', slot: '09:00–11:00', bookedBy: 'Prof. Ramesh Kumar',  course: 'Data Structures'       },
-  { id: 'bk004', classroomId: 'cr003', day: 'Mon', slot: '14:00–16:00', bookedBy: 'Dr. Lakshmi Venkat',  course: 'Machine Learning'      },
-  { id: 'bk005', classroomId: 'cr005', day: 'Mon', slot: '09:00–11:00', bookedBy: 'Dr. Priya Sharma',    course: 'Digital Electronics'   },
-  { id: 'bk006', classroomId: 'cr005', day: 'Wed', slot: '11:00–13:00', bookedBy: 'Prof. Vijay Anand',   course: 'Signals & Systems'     },
-  { id: 'bk007', classroomId: 'cr008', day: 'Tue', slot: '14:00–16:00', bookedBy: 'Mr. Arun Mehta',      course: 'Thermodynamics'        },
-  { id: 'bk008', classroomId: 'cr014', day: 'Mon', slot: '09:00–11:00', bookedBy: 'Dr. Meena Iyer',      course: 'Engineering Physics'   },
+export const timeSlots = [
+  '09:30 - 10:30 (P1)',
+  '10:30 - 11:30 (P2)',
+  '11:40 - 12:40 (P3)',
+  '12:40 - 13:40 (P4)',
+  '14:15 - 15:15 (P5)',
+  '15:15 - 16:15 (P6)',
 ];
+
+export const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
