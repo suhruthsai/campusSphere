@@ -281,7 +281,7 @@ export default function BuildingManagement() {
 function Modal({ title, onClose, children }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                className="fixed inset-0 z-[100] flex items-center justify-center p-4"
                 style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}>
       <motion.div initial={{ scale: 0.9, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9 }}
                   className="w-full max-w-md rounded-3xl border border-white/10 p-6 shadow-2xl"

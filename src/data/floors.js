@@ -31,7 +31,7 @@ export const floors = [
     ]
   },
   {
-    building: 'Civil & IT Block', floor: 2, totalRooms: 10, occupiedRooms: 9,
+    building: 'Civil & IT Block', floor: 2, totalRooms: 11, occupiedRooms: 10,
     rooms: [
       { id: 'CE-IT-201', name: 'Classroom CE-IT-201 (IT-2C)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'IT' },
       { id: 'CE-IT-202', name: 'Classroom CE-IT-202 (IT-3A)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'IT' },
@@ -43,19 +43,21 @@ export const floors = [
       { id: 'CE-204', name: 'Classroom CE-204 (Civil-7)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'Civil' },
       { id: 'CE-205', name: 'Classroom CE-205 (Civil-5)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'Civil' },
       { id: 'CE-206', name: 'Classroom CE-206 (Civil-3)', type: 'Lecture Hall', capacity: 65, occupied: true, department: 'Civil' },
+      { id: 'KVR-CONF-HALL', name: 'KVR Conference Hall', type: 'Conference Hall', capacity: 400, occupied: true, department: 'Admin', description: 'Large seminar & conference hall with 400+ seating, projection screen, LCD monitors and full AV system.' },
     ]
   },
 ];
 
 export const roomTypes = {
-  'Lecture Hall':  { color: '#00E5FF', icon: '🎓' },
-  'Seminar Room':  { color: '#7B61FF', icon: '📊' },
-  'Lab':           { color: '#00FFB3', icon: '🔬' },
+  'Lecture Hall':   { color: '#00E5FF', icon: '🎓' },
+  'Seminar Room':   { color: '#7B61FF', icon: '📊' },
+  'Lab':            { color: '#00FFB3', icon: '🔬' },
   'Conference Room':{ color: '#F472B6', icon: '🤝' },
-  'Staff Room':    { color: '#F59E0B', icon: '👨‍🏫' },
-  'Office':        { color: '#A78BFA', icon: '🏢' },
-  'Administration':{ color: '#38BDF8', icon: '🏛️' },
-  'Storage':       { color: '#64748b', icon: '📦' },
-  'Technical':     { color: '#ef4444', icon: '⚙️' },
-  'Study Area':    { color: '#34D399', icon: '📚' },
+  'Conference Hall':{ color: '#F59E0B', icon: '🏛️' },
+  'Staff Room':     { color: '#F59E0B', icon: '👨‍🏫' },
+  'Office':         { color: '#A78BFA', icon: '🏢' },
+  'Administration': { color: '#38BDF8', icon: '🏛️' },
+  'Storage':        { color: '#64748b', icon: '📦' },
+  'Technical':      { color: '#ef4444', icon: '⚙️' },
+  'Study Area':     { color: '#34D399', icon: '📚' },
 };

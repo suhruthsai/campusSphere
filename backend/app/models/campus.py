@@ -245,3 +245,112 @@ class TimetableEntryModel(Base):
         Index("ix_tt_section_day",   "section",      "day_of_week"),
     )
 
+
+class TimetableOverrideModel(Base):
+    """Temporary manual overrides for a specific schedule block."""
+    __tablename__ = "timetable_overrides"
+
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    start_date       = Column(Date, nullable=False, index=True)
+    end_date         = Column(Date, nullable=False, index=True)
+    classroom_id     = Column(String, ForeignKey("classrooms.id", ondelete="CASCADE"), nullable=False, index=True)
+    period_number    = Column(Integer, nullable=False)
+    
+    new_faculty_id   = Column(String, ForeignKey("faculty_profiles.id", ondelete="SET NULL"), nullable=True)
+    new_faculty_name = Column(String, nullable=False)
+    new_subject_name = Column(String, nullable=True)
+    
+    reason           = Column(String, nullable=True)
+    created_by       = Column(String, nullable=False)
+    created_at       = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_override_lookup", "classroom_id", "period_number", "start_date", "end_date"),
+    )
+
+
+class TimetableAuditLogModel(Base):
+    """Audit trail for all administrative timetable changes."""
+    __tablename__ = "timetable_audit_logs"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    action      = Column(String, nullable=False)        # e.g., "OVERRIDE_CREATED", "ENTRY_DELETED"
+    details     = Column(JSON, nullable=False)          # Stores old/new state details
+    user        = Column(String, nullable=False)        # The admin who did it
+    timestamp   = Column(DateTime, default=datetime.utcnow)
+
+
+# ─── Substitution / Temporary Faculty Management ────────────────────────────
+
+class SubstitutionModel(Base):
+    """
+    Date-specific temporary faculty substitution.
+    NEVER overwrites the official TimetableEntryModel.
+    Acts as highest-priority overlay for a single calendar date + period.
+    """
+    __tablename__ = "substitutions"
+
+    id                       = Column(Integer, primary_key=True, autoincrement=True)
+
+    # ── Time axes ─────────────────────────────────────────────────────────────
+    date                     = Column(Date, nullable=False, index=True)          # specific calendar date
+    day_of_week              = Column(Integer, nullable=False)                   # 0=Mon, derived from date
+    period_number            = Column(Integer, nullable=False)                   # 1–6
+    start_time               = Column(String, nullable=False)                    # "09:30"
+    end_time                 = Column(String, nullable=False)                    # "10:30"
+
+    # ── Location ──────────────────────────────────────────────────────────────
+    classroom_id             = Column(String, ForeignKey("classrooms.id", ondelete="CASCADE"),
+                                      nullable=False, index=True)
+    section                  = Column(String, nullable=False)                    # unchanged from official
+
+    # ── Subject (unchanged from official) ────────────────────────────────────
+    subject_id               = Column(String, ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True)
+    subject_name             = Column(String, nullable=False)                    # denormalised for display
+
+    # ── Original faculty (the absent one) ────────────────────────────────────
+    original_faculty_id      = Column(String, ForeignKey("faculty_profiles.id", ondelete="SET NULL"),
+                                      nullable=True)
+    original_faculty_name    = Column(String, nullable=False, default="")
+
+    # ── Replacement faculty ───────────────────────────────────────────────────
+    replacement_faculty_id   = Column(String, ForeignKey("faculty_profiles.id", ondelete="SET NULL"),
+                                      nullable=True)
+    replacement_faculty_name = Column(String, nullable=False)
+
+    # ── Metadata ─────────────────────────────────────────────────────────────
+    reason                   = Column(String, nullable=False, default="Faculty Absent")
+    # Possible: Faculty Absent | Faculty On Leave | Faculty Unavailable |
+    #           Emergency | Faculty Substitution | Administrative Change | Other
+    notes                    = Column(Text, nullable=True)
+    status                   = Column(String, nullable=False, default="active")  # active | cancelled
+
+    created_by               = Column(String, nullable=False)
+    created_at               = Column(DateTime, default=datetime.utcnow)
+    updated_at               = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    cancelled_by             = Column(String, nullable=True)
+    cancelled_at             = Column(DateTime, nullable=True)
+
+    # ── Relationships ─────────────────────────────────────────────────────────
+    classroom_rel            = relationship("ClassroomModel", foreign_keys=[classroom_id])
+    original_faculty_rel     = relationship("FacultyProfileModel", foreign_keys=[original_faculty_id])
+    replacement_faculty_rel  = relationship("FacultyProfileModel", foreign_keys=[replacement_faculty_id])
+
+    __table_args__ = (
+        Index("ix_sub_room_date_period", "classroom_id", "date", "period_number"),
+        Index("ix_sub_faculty_date",     "replacement_faculty_id", "date"),
+        Index("ix_sub_orig_faculty_date","original_faculty_id",    "date"),
+    )
+
+
+class SubstitutionAuditLogModel(Base):
+    """Immutable audit trail for every create / edit / cancel action on a substitution."""
+    __tablename__ = "substitution_audit_logs"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    substitution_id = Column(Integer, ForeignKey("substitutions.id", ondelete="SET NULL"),
+                             nullable=True, index=True)
+    action          = Column(String, nullable=False)   # CREATED | EDITED | CANCELLED
+    snapshot        = Column(JSON, nullable=False)     # full state at time of action
+    changed_by      = Column(String, nullable=False)
+    timestamp       = Column(DateTime, default=datetime.utcnow)

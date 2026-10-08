@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from backend.app.api.v1.endpoints import auth, buildings, monitoring, routing, media, attendance, events, announcements, classrooms, timetable, subjects, faculty_profiles
+from backend.app.api.v1.endpoints import auth, buildings, monitoring, routing, media, attendance, events, announcements, classrooms, timetable, subjects, faculty_profiles, substitutions
 
 api_router = APIRouter()
 
@@ -15,3 +15,4 @@ api_router.include_router(classrooms.router,       prefix="/classrooms",       t
 api_router.include_router(timetable.router,        prefix="/timetable",        tags=["Timetable"])
 api_router.include_router(subjects.router,         prefix="/subjects",         tags=["Subjects"])
 api_router.include_router(faculty_profiles.router, prefix="/faculty-profiles", tags=["Faculty Profiles"])
+api_router.include_router(substitutions.router,    prefix="/substitutions",    tags=["Faculty Substitutions"])

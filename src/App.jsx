@@ -19,6 +19,7 @@ import UserManagement     from './pages/admin/UserManagement.jsx';
 import BuildingManagement from './pages/admin/BuildingManagement.jsx';
 import FloorManagement    from './pages/admin/FloorManagement.jsx';
 import TimetableManagement from './pages/admin/TimetableManagement.jsx';
+import SubstitutionManagement from './pages/admin/SubstitutionManagement.jsx';
 
 import LibraryAnalytics    from './pages/monitoring/LibraryAnalytics.jsx';
 import CrowdAnalytics      from './pages/monitoring/CrowdAnalytics.jsx';
@@ -52,11 +53,12 @@ function AppRoutes() {
               <Route path="/labs"       element={<LabManagement />} />
 
               {/* Admin */}
-              <Route path="/admin/dashboard" element={<AdminDashboard />} />
-              <Route path="/admin/users"     element={<UserManagement />} />
-              <Route path="/admin/buildings" element={<BuildingManagement />} />
-              <Route path="/admin/floors"    element={<FloorManagement />} />
-              <Route path="/admin/timetable" element={<TimetableManagement />} />
+              <Route path="/admin/dashboard"     element={<AdminDashboard />} />
+              <Route path="/admin/users"         element={<UserManagement />} />
+              <Route path="/admin/buildings"     element={<BuildingManagement />} />
+              <Route path="/admin/floors"        element={<FloorManagement />} />
+              <Route path="/admin/timetable"     element={<TimetableManagement />} />
+              <Route path="/admin/substitutions" element={<SubstitutionManagement />} />
 
               {/* Monitoring */}
               <Route path="/monitoring/library"    element={<LibraryAnalytics />} />

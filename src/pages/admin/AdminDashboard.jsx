@@ -1,13 +1,13 @@
 // AdminDashboard.jsx — KPI + Live stats + Weather + Alerts
 import {
   Activity, AlertTriangle, Bell, BookOpen, Building2, CalendarDays,
-  ChevronRight, Cloud, GraduationCap, TrendingUp, Users, Wifi, Zap,
+  ChevronRight, Cloud, GraduationCap, TrendingUp, Users, Wifi, Zap, UserCheck,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import PageTransition from '../../components/PageTransition.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { authApi, buildingsApi, announcementsApi } from '../../utils/api.js';
+import { authApi, buildingsApi, announcementsApi, substitutionsApi } from '../../utils/api.js';
 
 const fadeUp = (delay = 0) => ({
   initial: { opacity: 0, y: 20 },
@@ -29,11 +29,12 @@ const activityLogs = [
 ];
 
 const quickActions = [
-  { label: 'Add User',       icon: Users,       href: '/admin/users',     color: '#00E5FF' },
-  { label: 'Manage Buildings',icon: Building2,  href: '/admin/buildings', color: '#F59E0B' },
-  { label: 'View Floors',    icon: Activity,    href: '/admin/floors',    color: '#00FFB3' },
-  { label: 'Classrooms',     icon: BookOpen,    href: '/classrooms',      color: '#7B61FF' },
-  { label: 'Labs',           icon: Zap,         href: '/labs',            color: '#F472B6' },
+  { label: 'Add User',           icon: Users,       href: '/admin/users',         color: '#00E5FF' },
+  { label: 'Manage Buildings',   icon: Building2,   href: '/admin/buildings',      color: '#F59E0B' },
+  { label: 'View Floors',        icon: Activity,    href: '/admin/floors',         color: '#00FFB3' },
+  { label: 'Classrooms',         icon: BookOpen,    href: '/classrooms',           color: '#7B61FF' },
+  { label: 'Labs',               icon: Zap,         href: '/labs',                 color: '#F472B6' },
+  { label: 'Schedule Changes',   icon: CalendarDays,href: '/admin/substitutions',  color: '#F59E0B' },
 ];
 
 const weather = { temp: '27°C', condition: 'Partly Cloudy', humidity: '68%', wind: '12 km/h' };
@@ -44,14 +45,16 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [buildingList, setBuildingList] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [todaySubs, setTodaySubs] = useState([]);
 
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        const [statsData, bldgsData, annsData] = await Promise.all([
+        const [statsData, bldgsData, annsData, subsData] = await Promise.all([
           authApi.stats(),
           buildingsApi.list(),
-          announcementsApi.list()
+          announcementsApi.list(),
+          substitutionsApi.today().catch(() => []),
         ]);
         setStats(statsData);
         setBuildingList(bldgsData);
@@ -61,6 +64,7 @@ export default function AdminDashboard() {
           msg: a.title + ' - ' + a.content,
           time: new Date(a.created_at).toLocaleDateString()
         })));
+        setTodaySubs(subsData || []);
       } catch (err) {
         console.error("Error loading dashboard data", err);
       }
@@ -236,6 +240,59 @@ export default function AdminDashboard() {
               </div>
             ))}
           </div>
+        </motion.div>
+
+        {/* Today's Faculty Substitutions widget */}
+        <motion.div {...fadeUp(0.54)} className="mt-4 glass-card rounded-2xl p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 font-bold text-white text-sm">
+              <UserCheck size={15} className="text-[#F59E0B]" /> Today's Faculty Substitutions
+              {todaySubs.length > 0 && (
+                <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+                  {todaySubs.length} active
+                </span>
+              )}
+            </h2>
+            <a href="/admin/substitutions"
+               className="text-xs text-[#00E5FF] hover:underline font-semibold flex items-center gap-1">
+              Manage <ChevronRight size={12} />
+            </a>
+          </div>
+          {todaySubs.length === 0 ? (
+            <div className="rounded-xl border border-white/6 bg-white/4 p-4 text-center">
+              <p className="text-xs text-slate-400">✅ No substitutions today — all faculty available per official timetable.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {todaySubs.slice(0, 3).map((sub) => (
+                <div key={sub.id}
+                     className="flex items-center gap-3 rounded-xl border p-3"
+                     style={{ borderColor: 'rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.05)' }}>
+                  <span className="text-base">🟡</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-white">
+                      P{sub.period_number} · {sub.classroom_id} · {sub.section}
+                    </p>
+                    <p className="text-[10px] text-slate-400 truncate">
+                      <span className="text-red-400">{sub.original_faculty_name || 'N/A'}</span>
+                      {' → '}
+                      <span className="text-green-400">{sub.replacement_faculty_name}</span>
+                      {' · '}{sub.reason}
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-amber-400 font-bold shrink-0">
+                    {sub.start_time}–{sub.end_time}
+                  </span>
+                </div>
+              ))}
+              {todaySubs.length > 3 && (
+                <p className="text-center text-[10px] text-slate-500 pt-1">
+                  +{todaySubs.length - 3} more —{' '}
+                  <a href="/admin/substitutions" className="text-[#00E5FF] hover:underline">view all</a>
+                </p>
+              )}
+            </div>
+          )}
         </motion.div>
       </div>
     </PageTransition>

@@ -142,3 +142,36 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
             await asyncio.sleep(3) # Send real-time updates every 3 seconds
     except WebSocketDisconnect:
         pass
+
+
+# ── WebSockets Timetable Updates ──────────────────────────────────────────────
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                pass
+
+timetable_manager = ConnectionManager()
+
+@app.websocket("/ws/timetable")
+async def websocket_timetable_endpoint(websocket: WebSocket):
+    await timetable_manager.connect(websocket)
+    try:
+        while True:
+            # We don't expect messages from client, but we must receive to keep conn alive
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        timetable_manager.disconnect(websocket)
