@@ -6,6 +6,7 @@ import { X, Eye, Video, Users, Calendar, GraduationCap, BookOpen, Clock, Chevron
 import { classroomsApi } from '../../utils/api';
 
 const TIME_SLOTS = [
+  { label: 'Real-Time (Now)', value: '' },
   { label: 'Monday P1 (09:30 - 10:30)', value: '2026-08-10T09:30' },
   { label: 'Monday P2 (10:30 - 11:30)', value: '2026-08-10T10:30' },
   { label: 'Monday P3 (11:40 - 12:40)', value: '2026-08-10T11:40' },
@@ -32,8 +33,8 @@ function getCleanRoomId(rawId) {
 export default function RoomInterior3DModal({ room, classroomId, simulatedDateTime, onClose, onOpenTimetable }) {
   const mountRef = useRef(null);
   const [activeCamView, setActiveCamView] = useState('orbit'); // 'orbit', 'teacher', 'student', 'cctv'
-  const [showCCTVOverlay, setShowCCTVOverlay] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState(simulatedDateTime !== undefined && simulatedDateTime !== null ? simulatedDateTime : '2026-08-10T09:30'); // Default to Monday P1 (College active hours)
+
+  const [selectedSlot, setSelectedSlot] = useState(simulatedDateTime !== undefined && simulatedDateTime !== null ? simulatedDateTime : '');
   const [scheduleData, setScheduleData] = useState(null);
   const [weekData, setWeekData] = useState(null);
   const [loadingSchedule, setLoadingSchedule] = useState(true);
@@ -71,7 +72,9 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
                       (room?.id && room.id.toUpperCase().includes('CIVIL') && room.id.toUpperCase().includes('DEPT')) ||
                       cleanId === 'CIVIL-DEPT-OFFICE';
 
-  const isBoardRoom = !isIQACRoom && !isPrincipalOffice && !isCivilDept && (['IT-STAFF-ROOM'].includes(cleanId) || 
+  const isITStaffRoom = cleanId.toUpperCase() === 'IT-STAFF-ROOM' || (room?.label && room.label.toUpperCase() === 'IT STAFF ROOM');
+
+  const isBoardRoom = !isITStaffRoom && !isIQACRoom && !isPrincipalOffice && !isCivilDept && (['IT-STAFF-ROOM'].includes(cleanId) || 
                       room?.type === 'office' || room?.location_type === 'OFFICE' || room?.location_type === 'STAFF_ROOM');
   const isLab = room?.type === 'lab' || room?.location_type === 'LABORATORY' || cleanId.includes('LAB');
   const isAdminLobby = cleanId.toUpperCase().includes('ADMIN') || (room?.location_type && room.location_type.toUpperCase().includes('ADMIN')) || (room?.type && room.type.toLowerCase() === 'admin');
@@ -103,7 +106,18 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
                               (room?.label && room.label.toUpperCase().includes('COMPUTER')) || 
                               (room?.id && (room.id.toUpperCase().includes('CE-IT-104') || room.id.toUpperCase().includes('COMP')));
 
-  const isNonTimetableFacility = isAdminLobby || isIQACRoom || isPrincipalOffice || isStaffRoom || isWashroom || isBoardRoom || isCivilDept;
+  const isSecondFloorITLab = cleanId.toUpperCase().includes('CE-IT-211') || 
+                             (room?.label && room.label.toUpperCase().includes('CE-IT-211')) ||
+                             (room?.id && room.id.toUpperCase().includes('CE-IT-211'));
+
+  const isKVRConferenceHall = cleanId.toUpperCase().includes('KVR') ||
+                              cleanId.toUpperCase().includes('KVR-CONF') ||
+                              cleanId.toUpperCase() === 'KVR-CONF-HALL' ||
+                              (room?.label && room.label.toUpperCase().includes('KVR')) ||
+                              (room?.id && room.id.toUpperCase().includes('KVR')) ||
+                              room?.location_type === 'CONFERENCE_HALL';
+
+  const isNonTimetableFacility = isITStaffRoom || isAdminLobby || isIQACRoom || isPrincipalOffice || isStaffRoom || isWashroom || isBoardRoom || isCivilDept || isKVRConferenceHall;
 
   // Fetch Live Academic & Faculty Data from Backend SQL Database
   const loadSchedule = useCallback(async () => {
@@ -133,6 +147,24 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
     }
   }, [simulatedDateTime]);
 
+  useEffect(() => {
+    const ws = new WebSocket(`ws://localhost:8000/ws/timetable`);
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'TIMETABLE_UPDATED') {
+          // If the update affects this room or is a general update, reload
+          if (!data.classroom_id || data.classroom_id === cleanId) {
+            loadSchedule();
+          }
+        }
+      } catch (e) {
+        console.error("Error parsing websocket message", e);
+      }
+    };
+    return () => ws.close();
+  }, [cleanId, loadSchedule]);
+
   // Robust Faculty & Subject Resolution
   const activeEntry = scheduleData?.current_entry || 
                       scheduleData?.next_entry || 
@@ -156,7 +188,7 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(isBoardRoom ? 0x181e26 : 0x0f172a);
 
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 150);
     if (isAdminLobby) {
       camera.position.set(0, 6.5, 12.5);
     } else if (isIQACRoom) {
@@ -165,6 +197,8 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
       camera.position.set(0, 3.8, 8.5);
     } else if (isCivilDept) {
       camera.position.set(0, 4.5, 10.5);
+    } else if (isKVRConferenceHall) {
+      camera.position.set(0, 12, 30);
     } else if (isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab) {
       camera.position.set(0, 4.8, 12.5);
     } else {
@@ -172,9 +206,9 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
     }
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -187,7 +221,8 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
     controls.maxPolarAngle = Math.PI / 2 - 0.05;
     controls.minDistance = 1.5;
     controls.maxDistance = 25;
-    controls.target.set(0, isAdminLobby ? 1.8 : 1.4, 0);
+    controls.target.set(0, isAdminLobby ? 1.8 : isKVRConferenceHall ? 2.5 : 1.4, 0);
+    controls.maxDistance = isKVRConferenceHall ? 55 : 25;
     controlsRef.current = controls;
 
     // ── Lighting Setup ───────────────────────────────────────────────────────
@@ -213,9 +248,9 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
     scene.add(spot2);
 
     // ── Room Shell Dimensions ────────────────────────────────────────────────
-    const roomW = isAdminLobby ? 18 : isIQACRoom ? 11 : isPrincipalOffice ? 11 : isCivilDept ? 16 : isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab ? 18 : 12;
-    const roomD = isAdminLobby ? 20 : isIQACRoom ? 13 : isPrincipalOffice ? 12 : isCivilDept ? 14 : isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab ? 16 : 14;
-    const roomH = isAdminLobby ? 6.5 : isIQACRoom ? 4.0 : isPrincipalOffice ? 3.8 : isCivilDept ? 4.0 : isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab ? 4.2 : 4.2;
+    const roomW = isAdminLobby ? 18 : isIQACRoom ? 11 : isPrincipalOffice ? 11 : isCivilDept ? 16 : isKVRConferenceHall ? 32 : isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab ? 18 : isSecondFloorITLab ? 22 : isITStaffRoom ? 26 : 12;
+    const roomD = isAdminLobby ? 20 : isIQACRoom ? 13 : isPrincipalOffice ? 12 : isCivilDept ? 14 : isKVRConferenceHall ? 40 : isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab ? 16 : isSecondFloorITLab ? 18 : isITStaffRoom ? 20 : 14;
+    const roomH = isAdminLobby ? 6.5 : isIQACRoom ? 4.0 : isPrincipalOffice ? 3.8 : isCivilDept ? 4.0 : isKVRConferenceHall ? 6.0 : isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab ? 4.2 : isSecondFloorITLab ? 4.0 : isITStaffRoom ? 4.5 : 4.2;
 
     const fans = [];
 
@@ -469,18 +504,7 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
     }
 
     function createCCTVCamera() {
-      const grp = new THREE.Group();
-      const mount = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.15), new THREE.MeshStandardMaterial({ color: 0x1E293B }));
-      grp.add(mount);
-      const cam = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.35), new THREE.MeshStandardMaterial({ color: 0xF1F5F9 }));
-      cam.position.set(0, -0.12, 0.1);
-      cam.rotation.x = Math.PI / 6;
-      grp.add(cam);
-      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.05), new THREE.MeshBasicMaterial({ color: 0x00E5FF }));
-      lens.rotation.x = Math.PI / 2;
-      lens.position.set(0, -0.16, 0.28);
-      grp.add(lens);
-      return grp;
+      return new THREE.Group(); // CCTV removed as IoT is not connected
     }
 
     if (isIQACRoom) {
@@ -3596,12 +3620,1048 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
         stepMesh.position.set(-roomW/2 + 0.8, stepH / 2, -roomD/2 + 0.8 + i * stepRun);
         scene.add(stepMesh);
       }
+    } else if (isSecondFloorITLab) {
+      // ══════════════════════════════════════════════════════════════════════════
+      // 💻 2ND FLOOR IT LAB (CE-IT-211) — HYPER-REALISTIC 3D RECONSTRUCTION
+      // ══════════════════════════════════════════════════════════════════════════
+      
+      const studentShirtColors = [0x2563EB, 0xDC2626, 0x16A34A, 0xF59E0B, 0x9333EA, 0x0D9488];
+
+      // 1. Flooring (Light Wood/Cream Tile)
+      const floorCanvas = document.createElement('canvas');
+      floorCanvas.width = 512;
+      floorCanvas.height = 512;
+      const fctx = floorCanvas.getContext('2d');
+      fctx.fillStyle = '#D6CDBA';
+      fctx.fillRect(0, 0, 512, 512);
+      fctx.strokeStyle = '#C4B9A3';
+      fctx.lineWidth = 2;
+      for (let i = 0; i <= 512; i += 128) {
+        fctx.moveTo(i, 0); fctx.lineTo(i, 512);
+        fctx.moveTo(0, i); fctx.lineTo(512, i);
+      }
+      fctx.stroke();
+      const floorTex = new THREE.CanvasTexture(floorCanvas);
+      floorTex.wrapS = THREE.RepeatWrapping;
+      floorTex.wrapT = THREE.RepeatWrapping;
+      floorTex.repeat.set(16, 16);
+      
+      const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.7 });
+      const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), floorMat);
+      floorMesh.rotation.x = -Math.PI / 2;
+      floorMesh.receiveShadow = true;
+      scene.add(floorMesh);
+
+      // 2. Walls (White)
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.9 });
+      
+      const backWall = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomH), wallMat);
+      backWall.position.set(0, roomH / 2, -roomD / 2);
+      backWall.receiveShadow = true;
+      scene.add(backWall);
+
+      const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), wallMat);
+      leftWall.position.set(-roomW / 2, roomH / 2, 0);
+      leftWall.rotation.y = Math.PI / 2;
+      scene.add(leftWall);
+
+      const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), wallMat);
+      rightWall.position.set(roomW / 2, roomH / 2, 0);
+      rightWall.rotation.y = -Math.PI / 2;
+      scene.add(rightWall);
+
+      // 3. Front Area: Projector Screen & Whiteboard
+      const projScreenGrp = new THREE.Group();
+      projScreenGrp.position.set(2.0, 2.0, -roomD / 2 + 0.1);
+      
+      // Projector Screen Housing
+      const screenHousing = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 4.2), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
+      screenHousing.rotation.z = Math.PI / 2;
+      screenHousing.position.set(0, 1.4, 0);
+      projScreenGrp.add(screenHousing);
+      
+      // Projection Surface
+      const screenSurface = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 2.4), new THREE.MeshStandardMaterial({ color: 0xFFFFFF, emissive: 0x222222, roughness: 0.1 }));
+      screenSurface.position.set(0, 0.2, 0.05);
+      projScreenGrp.add(screenSurface);
+      scene.add(projScreenGrp);
+      
+      // Side Whiteboard
+      const boardFrame = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.6, 0.1), new THREE.MeshStandardMaterial({ color: 0xD4A373 }));
+      boardFrame.position.set(-3.0, 2.0, -roomD / 2 + 0.05);
+      scene.add(boardFrame);
+      const boardSurface = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 1.4), new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.2 }));
+      boardSurface.position.set(-3.0, 2.0, -roomD / 2 + 0.11);
+      scene.add(boardSurface);
+
+      // 4. AC Units on Front Wall
+      for (let i = -1; i <= 1; i += 2) {
+        const ac = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.4, 0.3), new THREE.MeshStandardMaterial({ color: 0xF8FAFC }));
+        ac.position.set(i * 3.5, roomH - 0.5, -roomD / 2 + 0.15);
+        scene.add(ac);
+      }
+
+      // 5. Door (Front Left)
+      const doorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.3, 1.3), new THREE.MeshStandardMaterial({ color: 0x64748B }));
+      doorFrame.position.set(-roomW / 2 + 0.05, 1.15, -roomD / 2 + 2.0);
+      scene.add(doorFrame);
+      const doorMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.1), new THREE.MeshStandardMaterial({ color: 0x10B981, roughness: 0.5 })); // Green door
+      doorMesh.position.set(-roomW / 2 + 0.11, 1.15, -roomD / 2 + 2.0);
+      doorMesh.rotation.y = Math.PI / 2;
+      scene.add(doorMesh);
+
+      // 6. Custom Ceiling (Wood Center, White Borders)
+      const ceilBorder = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
+      ceilBorder.position.set(0, roomH - 0.01, 0);
+      ceilBorder.rotation.x = Math.PI / 2;
+      scene.add(ceilBorder);
+      
+      const woodCeil = new THREE.Mesh(new THREE.PlaneGeometry(roomW - 4.0, roomD - 4.0), new THREE.MeshStandardMaterial({ color: 0x3E2723, roughness: 0.9 }));
+      woodCeil.position.set(0, roomH - 0.02, 0);
+      woodCeil.rotation.x = Math.PI / 2;
+      scene.add(woodCeil);
+      
+      // Ceiling Fans
+      for(let x = -roomW/4; x <= roomW/4; x += roomW/2) {
+        for(let z = -roomD/4; z <= roomD/4; z += roomD/2) {
+          const fanGrp = new THREE.Group();
+          fanGrp.position.set(x, roomH - 0.2, z);
+          const fanRod = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4), new THREE.MeshStandardMaterial({ color: 0x94A3B8 }));
+          fanGrp.add(fanRod);
+          const fanCenter = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.05), new THREE.MeshStandardMaterial({ color: 0x94A3B8 }));
+          fanCenter.position.set(0, -0.2, 0);
+          fanGrp.add(fanCenter);
+          for(let r=0; r<3; r++) {
+            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.02, 0.15), new THREE.MeshStandardMaterial({ color: 0x94A3B8 }));
+            blade.position.set(0.5 * Math.cos(r*Math.PI*2/3), -0.2, 0.5 * Math.sin(r*Math.PI*2/3));
+            blade.rotation.y = r*Math.PI*2/3;
+            fanGrp.add(blade);
+          }
+          scene.add(fanGrp);
+          fans.push(fanGrp);
+        }
+      }
+
+      // 7. Teacher Desk (Front Right)
+      const tDesk = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 1.0), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
+      tDesk.position.set(roomW / 2 - 2.5, 0.4, -roomD / 2 + 2.5);
+      scene.add(tDesk);
+      
+      const teacherName = scheduleData?.current_entry?.faculty_name || scheduleData?.faculty_name || scheduleData?.faculty || scheduleData?.teacher || 'Dr. B. Vasavi';
+      const teacherObj = createSeatedOfficial({
+        isTeacher: true,
+        shirtColor: 0x0EA5E9,
+        name: teacherName,
+      });
+      teacherObj.position.set(roomW / 2 - 2.5, 0, -roomD / 2 + 1.6);
+      teacherObj.rotation.y = Math.PI;
+      scene.add(teacherObj);
+
+      // 8. Computer Rows (4 rows)
+      const deskW = 16.0;
+      const rowStartZ = -roomD / 2 + 5.5;
+      const rowSpacing = 2.4;
+      const numRows = 4;
+      
+      const deskTopMat = new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.2 });
+      const dividerMat = new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.8 }); // Black/Dark Blue dividers
+      const legMat = new THREE.MeshStandardMaterial({ color: 0x94A3B8 });
+      const monitorMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
+      
+      let studentCount = 0;
+
+      for (let r = 0; r < numRows; r++) {
+        const rZ = rowStartZ + r * rowSpacing;
+        
+        // Desk Top
+        const deskTop = new THREE.Mesh(new THREE.BoxGeometry(deskW, 0.05, 0.8), deskTopMat);
+        deskTop.position.set(0, 0.8, rZ);
+        scene.add(deskTop);
+        
+        // Legs
+        const leg1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 0.6), legMat);
+        leg1.position.set(-deskW/2 + 0.1, 0.4, rZ);
+        scene.add(leg1);
+        const leg2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 0.6), legMat);
+        leg2.position.set(deskW/2 - 0.1, 0.4, rZ);
+        scene.add(leg2);
+        
+        // Back Privacy Divider (Black)
+        const divider = new THREE.Mesh(new THREE.BoxGeometry(deskW, 0.4, 0.05), dividerMat);
+        divider.position.set(0, 1.0, rZ - 0.4);
+        scene.add(divider);
+
+        // Computers and Students
+        const computersPerRow = 12;
+        const compSpacing = deskW / computersPerRow;
+        
+        for (let c = 0; c < computersPerRow; c++) {
+          const cX = -deskW/2 + compSpacing/2 + c * compSpacing;
+          
+          // Monitor
+          const monitor = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.05), monitorMat);
+          monitor.position.set(cX, 1.0, rZ - 0.1);
+          monitor.rotation.x = -0.05;
+          scene.add(monitor);
+          
+          const stand = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.1), monitorMat);
+          stand.position.set(cX, 0.9, rZ - 0.15);
+          scene.add(stand);
+          
+          const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 0.15), monitorMat);
+          keyboard.position.set(cX, 0.835, rZ + 0.15);
+          scene.add(keyboard);
+          
+          // Seated Student (skip a few for realism)
+          if (Math.random() > 0.2) {
+            const studentColor = studentShirtColors[studentCount % studentShirtColors.length];
+            const student = createSeatedStudent(studentColor);
+            student.position.set(cX, 0, rZ + 0.5);
+            scene.add(student);
+            studentCount++;
+          }
+        }
+      }
+    } else if (isKVRConferenceHall) {
+      // ══════════════════════════════════════════════════════════════════════════
+      // 🏛️ KVR CONFERENCE HALL — CIVIL & IT BLOCK, 2ND FLOOR
+      //    Seating: 400+ | Full AV System | Projection Screen | LCD Side Monitors
+      //    Based on actual MVSR Engineering College photos
+      // ══════════════════════════════════════════════════════════════════════════
+
+      // ── 1. SCENE BACKGROUND ─────────────────────────────────────────────────
+      scene.background = new THREE.Color(0x1a0f06);
+
+      // Extra warm golden point lights to match the amber ceiling strip lights
+      const amberLight1 = new THREE.PointLight(0xF59E0B, 4.0, 25);
+      amberLight1.position.set(0, roomH - 0.5, -roomD / 4);
+      scene.add(amberLight1);
+      const amberLight2 = new THREE.PointLight(0xF59E0B, 3.5, 20);
+      amberLight2.position.set(0, roomH - 0.5, roomD / 4);
+      scene.add(amberLight2);
+      const amberLight3 = new THREE.PointLight(0xFCD34D, 2.5, 18);
+      amberLight3.position.set(-roomW / 3, roomH - 0.5, 0);
+      scene.add(amberLight3);
+      const amberLight4 = new THREE.PointLight(0xFCD34D, 2.5, 18);
+      amberLight4.position.set(roomW / 3, roomH - 0.5, 0);
+      scene.add(amberLight4);
+      // Front stage fill light
+      const stageLight = new THREE.SpotLight(0xFFFFFF, 3.0, 25, Math.PI / 5, 0.3);
+      stageLight.position.set(0, roomH - 0.5, -roomD / 2 + 2);
+      stageLight.target.position.set(0, 0, -roomD / 2 + 6);
+      scene.add(stageLight);
+      scene.add(stageLight.target);
+
+      // ── 2. FLOOR — Dark Blue Carpet with Centre Aisle ───────────────────────
+      const floorCanvas2 = document.createElement('canvas');
+      floorCanvas2.width = 512; floorCanvas2.height = 512;
+      const fctx2 = floorCanvas2.getContext('2d');
+      // Blue carpet
+      fctx2.fillStyle = '#1E3A5F';
+      fctx2.fillRect(0, 0, 512, 512);
+      // Subtle texture lines
+      fctx2.strokeStyle = '#1a3256'; fctx2.lineWidth = 1;
+      for (let i = 0; i < 512; i += 16) {
+        fctx2.moveTo(i, 0); fctx2.lineTo(i, 512);
+        fctx2.moveTo(0, i); fctx2.lineTo(512, i);
+      }
+      fctx2.stroke();
+      const carpetTex = new THREE.CanvasTexture(floorCanvas2);
+      carpetTex.wrapS = THREE.RepeatWrapping; carpetTex.wrapT = THREE.RepeatWrapping;
+      carpetTex.repeat.set(20, 25);
+      const carpetMat = new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.9 });
+      const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), carpetMat);
+      floorMesh.rotation.x = -Math.PI / 2;
+      floorMesh.receiveShadow = true;
+      scene.add(floorMesh);
+
+      // Centre aisle strip (blue-lit, glowing)
+      const aisleGlowMat = new THREE.MeshStandardMaterial({ color: 0x1E3A8A, emissive: 0x1E3A8A, emissiveIntensity: 0.5, roughness: 0.8 });
+      const aisleStrip = new THREE.Mesh(new THREE.PlaneGeometry(2.5, roomD), aisleGlowMat);
+      aisleStrip.rotation.x = -Math.PI / 2; aisleStrip.position.y = 0.01;
+      scene.add(aisleStrip);
+
+      // ── 3. WALLS — Rich Wood Panel with Beige Acoustic Panels ───────────────
+      const woodWallMat = new THREE.MeshStandardMaterial({ color: 0x5C3A1E, roughness: 0.85, metalness: 0.02 });
+      const beigePanelMat = new THREE.MeshStandardMaterial({ color: 0xC8A97A, roughness: 0.7 });
+
+      // Back wall (audience entry side)
+      const backWall = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomH), woodWallMat);
+      backWall.position.set(0, roomH / 2, roomD / 2);
+      backWall.rotation.y = Math.PI;
+      scene.add(backWall);
+
+      // Front wall (stage side)
+      const frontWall = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomH), woodWallMat);
+      frontWall.position.set(0, roomH / 2, -roomD / 2);
+      scene.add(frontWall);
+
+      // Left wall
+      const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), woodWallMat);
+      leftWall.position.set(-roomW / 2, roomH / 2, 0);
+      leftWall.rotation.y = Math.PI / 2;
+      scene.add(leftWall);
+
+      // Right wall
+      const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), woodWallMat);
+      rightWall.position.set(roomW / 2, roomH / 2, 0);
+      rightWall.rotation.y = -Math.PI / 2;
+      scene.add(rightWall);
+
+      // Beige acoustic panels on side walls (matching photos)
+      for (let side = -1; side <= 1; side += 2) {
+        const numPanels = 6;
+        for (let p = 0; p < numPanels; p++) {
+          const panelZ = -roomD / 2 + 3.5 + p * (roomD - 5) / (numPanels - 1);
+          const panel = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.8, 2.2), beigePanelMat);
+          panel.position.set(side * (roomW / 2 - 0.06), 2.4, panelZ);
+          scene.add(panel);
+          // Dark trim between panels
+          const trim = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.8, 0.12), new THREE.MeshStandardMaterial({ color: 0x3E1A07 }));
+          trim.position.set(side * (roomW / 2 - 0.04), 2.4, panelZ + 1.15);
+          scene.add(trim);
+        }
+      }
+
+      // ── 4. CEILING — Wood Coffers with Amber LED Strip Lights ───────────────
+      // Main ceiling (white tile base)
+      const ceilMat = new THREE.MeshStandardMaterial({ color: 0xE8E0D8, roughness: 0.8 });
+      const ceil = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), ceilMat);
+      ceil.position.set(0, roomH, 0);
+      ceil.rotation.x = Math.PI / 2;
+      scene.add(ceil);
+
+      // Wood ceiling border strips (deep wood-tone)
+      const darkWoodMat = new THREE.MeshStandardMaterial({ color: 0x3E1A07, roughness: 0.9 });
+      const amberGlowMat = new THREE.MeshStandardMaterial({ color: 0xF59E0B, emissive: 0xF59E0B, emissiveIntensity: 1.2 });
+
+      // Lengthwise ceiling wood beams (matching photos)
+      const numBeams = 5;
+      for (let b = 0; b < numBeams; b++) {
+        const beamX = -roomW / 2 + (b + 0.5) * (roomW / numBeams);
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(roomW / numBeams - 0.3, 0.3, roomD), darkWoodMat);
+        beam.position.set(beamX - roomW / 2 + (roomW / numBeams / 2), roomH - 0.15, 0);
+        scene.add(beam);
+
+        // Amber LED strip under each beam
+        const ledStrip = new THREE.Mesh(new THREE.BoxGeometry(roomW / numBeams - 0.6, 0.04, roomD - 1.0), amberGlowMat);
+        ledStrip.position.set(beamX - roomW / 2 + (roomW / numBeams / 2), roomH - 0.32, 0);
+        scene.add(ledStrip);
+      }
+
+      // Recessed LED spotlights in ceiling grid
+      const spotGlowMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, emissive: 0xFFFFFF, emissiveIntensity: 0.9 });
+      for (let sx = -3; sx <= 3; sx += 2) {
+        for (let sz = -3; sz <= 3; sz += 2) {
+          const spot = new THREE.Mesh(new THREE.CircleGeometry(0.18, 16), spotGlowMat);
+          spot.position.set(sx * (roomW / 8), roomH - 0.01, sz * (roomD / 8));
+          spot.rotation.x = Math.PI / 2;
+          scene.add(spot);
+        }
+      }
+
+      // ── 5. CEILING FANS (matching photos — 2 large fans) ───────────────────
+      const fanPositions = [{ x: 0, z: -roomD / 5 }, { x: 0, z: roomD / 6 }];
+      fanPositions.forEach(({ x, z }) => {
+        const fanGrp = new THREE.Group();
+        fanGrp.position.set(x, roomH - 0.15, z);
+        const fanRod = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.6), new THREE.MeshStandardMaterial({ color: 0x64748B, metalness: 0.8 }));
+        fanGrp.add(fanRod);
+        const fanHub = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.1), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7 }));
+        fanHub.position.set(0, -0.35, 0);
+        fanGrp.add(fanHub);
+        for (let r = 0; r < 3; r++) {
+          const angle = (r / 3) * Math.PI * 2;
+          const blade = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.04, 0.3), new THREE.MeshStandardMaterial({ color: 0x94A3B8 }));
+          blade.position.set(Math.cos(angle) * 0.85, -0.35, Math.sin(angle) * 0.85);
+          blade.rotation.y = angle;
+          fanGrp.add(blade);
+        }
+        scene.add(fanGrp);
+        fans.push(fanGrp);
+      });
+
+      // ── 6. STAGE / FRONT AREA ────────────────────────────────────────────────
+      // Stage platform (low raised dais)
+      const stageMat = new THREE.MeshStandardMaterial({ color: 0x78350F, roughness: 0.8 });
+      const stageFloor = new THREE.Mesh(new THREE.BoxGeometry(roomW - 4, 0.22, 6.0), stageMat);
+      stageFloor.position.set(0, 0.11, -roomD / 2 + 4.5);
+      scene.add(stageFloor);
+
+      // Stage edge trim
+      const stageTrim = new THREE.Mesh(new THREE.BoxGeometry(roomW - 3.8, 0.08, 0.12), new THREE.MeshStandardMaterial({ color: 0x5C3A1E, roughness: 0.6 }));
+      stageTrim.position.set(0, 0.26, -roomD / 2 + 7.55);
+      scene.add(stageTrim);
+
+      // ── 7. PROJECTION SCREEN (Centre, matching photos) ──────────────────────
+      // Housing cylinder at top
+      const screenHousing = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 6.0), new THREE.MeshStandardMaterial({ color: 0xE2E8F0, metalness: 0.6 }));
+      screenHousing.rotation.z = Math.PI / 2;
+      screenHousing.position.set(0, roomH - 0.5, -roomD / 2 + 0.2);
+      scene.add(screenHousing);
+
+      // Screen surface (glowing blue-white)
+      const screenGlowMat = new THREE.MeshStandardMaterial({ color: 0x9FC9E0, emissive: 0x2563EB, emissiveIntensity: 0.15, roughness: 0.05 });
+      const projScreen = new THREE.Mesh(new THREE.PlaneGeometry(5.8, 3.4), screenGlowMat);
+      projScreen.position.set(0, roomH - 2.5, -roomD / 2 + 0.22);
+      scene.add(projScreen);
+
+      // Screen border frame
+      const screenFrameMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 });
+      const screenFrame = new THREE.Mesh(new THREE.BoxGeometry(6.2, 3.8, 0.1), screenFrameMat);
+      screenFrame.position.set(0, roomH - 2.5, -roomD / 2 + 0.15);
+      scene.add(screenFrame);
+
+      // ── 8. SIDE LCD MONITORS (matching photos — one each side of stage) ─────
+      [-1, 1].forEach(side => {
+        const lcdFrameMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
+        const lcdScreenMat = new THREE.MeshStandardMaterial({ color: 0x1E3A5F, emissive: 0x1d4ed8, emissiveIntensity: 0.35 });
+
+        // Monitor frame
+        const lcdFrame = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.95, 0.14), lcdFrameMat);
+        lcdFrame.position.set(side * (roomW / 2 - 3.5), 3.8, -roomD / 2 + 0.3);
+        scene.add(lcdFrame);
+        // Screen
+        const lcdScreen = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 1.75), lcdScreenMat);
+        lcdScreen.position.set(side * (roomW / 2 - 3.5), 3.8, -roomD / 2 + 0.38);
+        scene.add(lcdScreen);
+        // Mount arm
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 0.1), new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8 }));
+        arm.position.set(side * (roomW / 2 - 3.5), 2.95, -roomD / 2 + 0.3);
+        scene.add(arm);
+      });
+
+      // ── 9. PODIUM / SPEAKER LECTERN (Centre stage) ───────────────────────────
+      const podiumGrp = new THREE.Group();
+      podiumGrp.position.set(0, 0.22, -roomD / 2 + 4.0);
+      // Podium base
+      const podiumBase = new THREE.Mesh(new THREE.BoxGeometry(0.65, 1.2, 0.55), new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.6 }));
+      podiumBase.position.set(0, 0.6, 0);
+      podiumGrp.add(podiumBase);
+      // Slanted top
+      const podiumTop = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.6), new THREE.MeshStandardMaterial({ color: 0x334155 }));
+      podiumTop.position.set(0, 1.24, 0);
+      podiumTop.rotation.x = -Math.PI / 14;
+      podiumGrp.add(podiumTop);
+      // Microphone stand
+      const micStand = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.45), new THREE.MeshStandardMaterial({ color: 0xCBD5E1, metalness: 0.9 }));
+      micStand.position.set(0, 1.55, 0);
+      podiumGrp.add(micStand);
+      const micHead = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), new THREE.MeshStandardMaterial({ color: 0x94A3B8, metalness: 0.7 }));
+      micHead.position.set(0, 1.82, 0);
+      podiumGrp.add(micHead);
+      scene.add(podiumGrp);
+
+      // Flower/drum set near podium (matching photos)
+      const drumGrp = new THREE.Group();
+      drumGrp.position.set(-2.5, 0.22, -roomD / 2 + 3.5);
+      const drumCyl = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.6), new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.6 }));
+      drumCyl.position.y = 0.3;
+      drumGrp.add(drumCyl);
+      scene.add(drumGrp);
+
+      // ── 10. AV / SERVER RACK (Left side near stage, matching photos) ──────────
+      const rackGrp = new THREE.Group();
+      rackGrp.position.set(-roomW / 2 + 1.2, 0, -roomD / 2 + 2.5);
+      const rackBody = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.8, 0.6), new THREE.MeshStandardMaterial({ color: 0x0F172A, roughness: 0.5, metalness: 0.4 }));
+      rackBody.position.set(0, 0.9, 0);
+      rackGrp.add(rackBody);
+      // Rack panels (blue LED strips)
+      for (let rp = 0; rp < 6; rp++) {
+        const panel = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.2, 0.02), new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.6 }));
+        panel.position.set(0, 0.25 + rp * 0.26, 0.31);
+        rackGrp.add(panel);
+        const led = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.01), new THREE.MeshStandardMaterial({ color: 0x1D4ED8, emissive: 0x1D4ED8, emissiveIntensity: 0.8 }));
+        led.position.set(0, 0.25 + rp * 0.26, 0.32);
+        rackGrp.add(led);
+      }
+      // Equipment on top of rack
+      const equipTop = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.12, 0.65), new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.5 }));
+      equipTop.position.set(0, 1.86, 0);
+      rackGrp.add(equipTop);
+      scene.add(rackGrp);
+
+      // Glass-top desk near rack (matching photos — control desk)
+      const ctrlDesk = new THREE.Group();
+      ctrlDesk.position.set(-roomW / 2 + 2.5, 0, -roomD / 2 + 2.5);
+      const ctrlTop = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.06, 0.8), new THREE.MeshStandardMaterial({ color: 0x60A5FA, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.75 }));
+      ctrlTop.position.set(0, 0.78, 0);
+      ctrlDesk.add(ctrlTop);
+      const monitorCtrl = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.05), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+      monitorCtrl.position.set(0.2, 1.06, -0.32);
+      ctrlDesk.add(monitorCtrl);
+      const kbCtrl = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.02, 0.18), new THREE.MeshStandardMaterial({ color: 0x1E293B }));
+      kbCtrl.position.set(0.2, 0.82, -0.1);
+      ctrlDesk.add(kbCtrl);
+      const ctrlChair = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 0.5), new THREE.MeshStandardMaterial({ color: 0x7C3B12, roughness: 0.6 }));
+      ctrlChair.position.set(0.2, 0.48, 0.25);
+      ctrlDesk.add(ctrlChair);
+      scene.add(ctrlDesk);
+
+      // ── 11. SPEAKER STACK (Left and Right stage sides) ────────────────────────
+      [-1, 1].forEach(side => {
+        const spkGrp = new THREE.Group();
+        spkGrp.position.set(side * (roomW / 2 - 1.2), 0, -roomD / 2 + 5.0);
+        const spkBox = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.1, 0.5), new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.7 }));
+        spkBox.position.set(0, 0.55, 0);
+        spkGrp.add(spkBox);
+        // Speaker cone
+        const spkCone = new THREE.Mesh(new THREE.CircleGeometry(0.2, 16), new THREE.MeshStandardMaterial({ color: 0x4B5563 }));
+        spkCone.position.set(0, 0.6, 0.26);
+        spkGrp.add(spkCone);
+        // Tweeter
+        const tweeter = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), new THREE.MeshStandardMaterial({ color: 0x6B7280 }));
+        tweeter.position.set(0, 1.0, 0.26);
+        spkGrp.add(tweeter);
+        scene.add(spkGrp);
+      });
+
+      // ── 12. AUDIENCE SEATING — 400+ White Cushioned Chairs in Rows ────────────
+      // Chair configuration: 20 rows × 20 chairs per row = 400 chairs
+      const numSeatRows = 20;
+      const numSeatsPerRow = 20;
+      const seatRowSpacing = (roomD - 10) / numSeatRows;
+      const seatColSpacing = (roomW - 6) / numSeatsPerRow;
+      const seatStartZ = -roomD / 2 + 8.5;
+      const seatStartX = -(roomW - 6) / 2;
+
+      const chairSeatMat = new THREE.MeshStandardMaterial({ color: 0xF1F5F9, roughness: 0.7 }); // white/cream cushion
+      const chairFrameMat = new THREE.MeshStandardMaterial({ color: 0x1E3A5F, roughness: 0.5, metalness: 0.4 }); // dark blue frame
+
+      for (let row = 0; row < numSeatRows; row++) {
+        const rowZ = seatStartZ + row * seatRowSpacing;
+        for (let col = 0; col < numSeatsPerRow; col++) {
+          // Skip centre aisle columns (col 9 and 10)
+          if (col === 9 || col === 10) continue;
+          const colX = seatStartX + col * seatColSpacing;
+          const chairGrp = new THREE.Group();
+          chairGrp.position.set(colX, 0, rowZ);
+          chairGrp.rotation.y = Math.PI; // Face the stage
+
+          // Seat (cushion)
+          const seat = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.08, 0.46), chairSeatMat);
+          seat.position.set(0, 0.48, 0);
+          chairGrp.add(seat);
+          // Backrest
+          const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.55, 0.07), chairSeatMat);
+          back.position.set(0, 0.8, -0.2);
+          chairGrp.add(back);
+          // Frame legs
+          const frameBar = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.04, 0.46), chairFrameMat);
+          frameBar.position.set(0, 0.15, 0);
+          chairGrp.add(frameBar);
+          const legL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.3, 0.04), chairFrameMat);
+          legL.position.set(-0.24, 0.05, 0);
+          chairGrp.add(legL);
+          const legR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.3, 0.04), chairFrameMat);
+          legR.position.set(0.24, 0.05, 0);
+          chairGrp.add(legR);
+          scene.add(chairGrp);
+        }
+
+        // Aisle floor indicator light (blue LED under edge chairs)
+        const aisleLight = new THREE.Mesh(new THREE.PlaneGeometry(0.06, seatRowSpacing - 0.1), new THREE.MeshStandardMaterial({ color: 0x3B82F6, emissive: 0x3B82F6, emissiveIntensity: 0.7 }));
+        aisleLight.rotation.x = -Math.PI / 2;
+        aisleLight.position.set(seatStartX + 9 * seatColSpacing + seatColSpacing / 2, 0.02, rowZ);
+        scene.add(aisleLight);
+      }
+
+      // ── 13. DOORS — (Rear wall, matching photos) ───────────────────────────────
+      const doorMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5 });
+      const doorFill = new THREE.MeshStandardMaterial({ color: 0x1E3A5F, roughness: 0.6 });
+      [-1, 0, 1].forEach(d => {
+        const dx = d * (roomW / 4);
+        const doorFrame3D = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.5, 0.15), doorMat);
+        doorFrame3D.position.set(dx, 1.25, roomD / 2 - 0.07);
+        scene.add(doorFrame3D);
+        const doorPanel = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 2.3), doorFill);
+        doorPanel.position.set(dx, 1.25, roomD / 2 - 0.05);
+        doorPanel.rotation.y = Math.PI;
+        scene.add(doorPanel);
+      });
+
+      // ── 14. KVR HALL NAMEPLATE (Hovering title label above screen) ────────────
+      const namePlateGrp = new THREE.Group();
+      namePlateGrp.position.set(0, roomH - 0.95, -roomD / 2 + 0.35);
+      const namePlateBg = new THREE.Mesh(new THREE.BoxGeometry(7.5, 0.55, 0.08), new THREE.MeshStandardMaterial({ color: 0x0C1A2E, emissive: 0x0C1A2E, roughness: 0.5 }));
+      namePlateGrp.add(namePlateBg);
+      const namePlateBorder = new THREE.Mesh(new THREE.BoxGeometry(7.65, 0.68, 0.04), new THREE.MeshStandardMaterial({ color: 0xF59E0B, emissive: 0xF59E0B, emissiveIntensity: 0.6 }));
+      namePlateBorder.position.z = -0.03;
+      namePlateGrp.add(namePlateBorder);
+      scene.add(namePlateGrp);
+
+    } else if (isWashroom) {
+
+      // ── WASHROOM FACILITY (BOYS / GIRLS) ──────────────────────────────────
+      const isGirls = cleanId.toUpperCase().includes('GIRLS') || (room?.label && room.label.toUpperCase().includes('GIRLS'));
+      
+      const themeColor = isGirls ? '#FDF2F8' : '#F0F9FF'; // Pink-ish or Blue-ish
+      const tileColor = isGirls ? '#FBCFE8' : '#BAE6FD';
+      const stallColor = isGirls ? '#F472B6' : '#38BDF8';
+      
+      // Tiled Floor
+      const floorCanvas = document.createElement('canvas');
+      floorCanvas.width = 512;
+      floorCanvas.height = 512;
+      const fctx = floorCanvas.getContext('2d');
+      fctx.fillStyle = themeColor;
+      fctx.fillRect(0, 0, 512, 512);
+      fctx.strokeStyle = '#FFFFFF';
+      fctx.lineWidth = 4;
+      for (let i = 0; i <= 512; i += 64) {
+        fctx.moveTo(i, 0); fctx.lineTo(i, 512);
+        fctx.moveTo(0, i); fctx.lineTo(512, i);
+      }
+      fctx.stroke();
+      const floorTex = new THREE.CanvasTexture(floorCanvas);
+      floorTex.wrapS = THREE.RepeatWrapping;
+      floorTex.wrapT = THREE.RepeatWrapping;
+      floorTex.repeat.set(12, 12);
+      
+      const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.2, metalness: 0.1 });
+      const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), floorMat);
+      floorMesh.rotation.x = -Math.PI / 2;
+      floorMesh.receiveShadow = true;
+      scene.add(floorMesh);
+
+      // Tiled Walls (lower half), painted walls upper
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.7 });
+      const backWall = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomH), wallMat);
+      backWall.position.set(0, roomH / 2, -roomD / 2);
+      backWall.receiveShadow = true;
+      scene.add(backWall);
+
+      const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), wallMat);
+      leftWall.position.set(-roomW / 2, roomH / 2, 0);
+      leftWall.rotation.y = Math.PI / 2;
+      scene.add(leftWall);
+
+      const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), wallMat);
+      rightWall.position.set(roomW / 2, roomH / 2, 0);
+      rightWall.rotation.y = -Math.PI / 2;
+      scene.add(rightWall);
+
+      // Wall Tiles (lower portion)
+      const wallTileMat = new THREE.MeshStandardMaterial({ color: tileColor, roughness: 0.1, metalness: 0.1 });
+      const leftWallTile = new THREE.Mesh(new THREE.PlaneGeometry(roomD, 2.0), wallTileMat);
+      leftWallTile.position.set(-roomW / 2 + 0.05, 1.0, 0);
+      leftWallTile.rotation.y = Math.PI / 2;
+      scene.add(leftWallTile);
+      
+      const rightWallTile = new THREE.Mesh(new THREE.PlaneGeometry(roomD, 2.0), wallTileMat);
+      rightWallTile.position.set(roomW / 2 - 0.05, 1.0, 0);
+      rightWallTile.rotation.y = -Math.PI / 2;
+      scene.add(rightWallTile);
+
+      const backWallTile = new THREE.Mesh(new THREE.PlaneGeometry(roomW, 2.0), wallTileMat);
+      backWallTile.position.set(0, 1.0, -roomD / 2 + 0.05);
+      scene.add(backWallTile);
+
+      // Sinks and Mirrors (Left Wall)
+      const counterW = 6.0;
+      const counterGrp = new THREE.Group();
+      counterGrp.position.set(-roomW / 2 + 0.6, 0.9, -1.0);
+      
+      const counterTop = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, counterW), new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.1 }));
+      counterGrp.add(counterTop);
+      const counterBase = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.9, counterW - 0.2), new THREE.MeshStandardMaterial({ color: 0x94A3B8, roughness: 0.8 }));
+      counterBase.position.set(-0.1, -0.45, 0);
+      counterGrp.add(counterBase);
+
+      const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.2, counterW - 0.4), new THREE.MeshStandardMaterial({ color: 0xE2E8F0, metalness: 1.0, roughness: 0.0 }));
+      mirror.position.set(-0.55, 0.8, 0);
+      counterGrp.add(mirror);
+
+      for (let i = -2; i <= 2; i += 1.3) {
+        // Basin
+        const basin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 0.7), new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.1 }));
+        basin.position.set(0, 0.1, i);
+        counterGrp.add(basin);
+        // Tap
+        const tap = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.2), new THREE.MeshStandardMaterial({ color: 0x94A3B8, metalness: 0.9 }));
+        tap.position.set(-0.2, 0.2, i);
+        counterGrp.add(tap);
+      }
+      scene.add(counterGrp);
+
+      // Toilet Stalls (Right Wall)
+      const stallW = 1.6;
+      const stallD = 2.4;
+      const stallH = 2.2;
+      const numStalls = 4;
+      
+      const stallsGrp = new THREE.Group();
+      stallsGrp.position.set(roomW / 2 - stallD / 2, 0, -roomD / 2 + stallW + 1.0);
+
+      const stallMat = new THREE.MeshStandardMaterial({ color: stallColor, roughness: 0.6 });
+      const doorMat = new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.6 });
+
+      for (let i = 0; i < numStalls; i++) {
+        const stallZ = i * stallW;
+        // Divider wall
+        const divider = new THREE.Mesh(new THREE.BoxGeometry(stallD, stallH, 0.05), stallMat);
+        divider.position.set(0, stallH / 2 + 0.1, stallZ + stallW / 2);
+        stallsGrp.add(divider);
+
+        // Door
+        const door = new THREE.Mesh(new THREE.BoxGeometry(0.05, stallH - 0.2, stallW - 0.1), doorMat);
+        door.position.set(-stallD / 2, stallH / 2 + 0.1, stallZ);
+        stallsGrp.add(door);
+
+        // Toilet Bowl
+        const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.4), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
+        bowl.position.set(stallD / 2 - 0.4, 0.2, stallZ);
+        stallsGrp.add(bowl);
+        // Tank
+        const tank = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.5), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
+        tank.position.set(stallD / 2 - 0.15, 0.6, stallZ);
+        stallsGrp.add(tank);
+      }
+      scene.add(stallsGrp);
+
+      // Urinals (Only in Boys Washroom) on Back Wall
+      if (!isGirls) {
+        const numUrinals = 3;
+        for (let i = 0; i < numUrinals; i++) {
+          const uX = -1.5 + i * 1.5;
+          const urinal = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.3), new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.1 }));
+          urinal.position.set(uX, 0.8, -roomD / 2 + 0.2);
+          scene.add(urinal);
+          
+          const uDivider = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.2, 0.6), new THREE.MeshStandardMaterial({ color: stallColor, roughness: 0.6 }));
+          uDivider.position.set(uX + 0.75, 1.0, -roomD / 2 + 0.3);
+          scene.add(uDivider);
+        }
+      }
+
+      // Entrance Door
+      const entryDoorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.3, 1.3), new THREE.MeshStandardMaterial({ color: 0xD4A373 }));
+      entryDoorFrame.position.set(-roomW / 2 + 0.05, 1.15, roomD / 2 - 1.5);
+      scene.add(entryDoorFrame);
+      const entryDoor = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.1), new THREE.MeshStandardMaterial({ color: 0x8B5A2B }));
+      entryDoor.position.set(-roomW / 2 + 0.11, 1.15, roomD / 2 - 1.5);
+      entryDoor.rotation.y = Math.PI / 2;
+      scene.add(entryDoor);
+      
+      // Gender Signage on Wall
+      const signCanvas = document.createElement('canvas');
+      signCanvas.width = 256;
+      signCanvas.height = 256;
+      const sctx = signCanvas.getContext('2d');
+      sctx.fillStyle = stallColor;
+      sctx.fillRect(0, 0, 256, 256);
+      sctx.fillStyle = '#FFFFFF';
+      sctx.font = 'bold 50px sans-serif';
+      sctx.textAlign = 'center';
+      sctx.fillText(isGirls ? 'GIRLS' : 'BOYS', 128, 145);
+      const signTex = new THREE.CanvasTexture(signCanvas);
+      const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.8), new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.5 }));
+      signMesh.position.set(-roomW / 2 + 0.11, 1.8, roomD / 2 - 2.5);
+      signMesh.rotation.y = Math.PI / 2;
+      scene.add(signMesh);
+
+
+    } else if (isITStaffRoom) {
+      // ══════════════════════════════════════════════════════════════════════════
+      // 🏢 IT STAFF ROOM (1 HOD Cabin + 2 AHOD Cabins + Staff Area)
+      // ══════════════════════════════════════════════════════════════════════════
+      
+      const studentShirtColors = [0x2563EB, 0xDC2626, 0x16A34A, 0xF59E0B, 0x9333EA, 0x0D9488];
+
+      // 1. Flooring (Dark Grey Carpet)
+      const floorCanvas = document.createElement('canvas');
+      floorCanvas.width = 512;
+      floorCanvas.height = 512;
+      const fctx = floorCanvas.getContext('2d');
+      fctx.fillStyle = '#1E293B';
+      fctx.fillRect(0, 0, 512, 512);
+      fctx.strokeStyle = '#0F172A';
+      fctx.lineWidth = 1;
+      for (let i = 0; i <= 512; i += 64) {
+        fctx.moveTo(i, 0); fctx.lineTo(i, 512);
+        fctx.moveTo(0, i); fctx.lineTo(512, i);
+      }
+      fctx.stroke();
+      const floorTex = new THREE.CanvasTexture(floorCanvas);
+      floorTex.wrapS = THREE.RepeatWrapping;
+      floorTex.wrapT = THREE.RepeatWrapping;
+      floorTex.repeat.set(16, 16);
+      
+      const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.9, metalness: 0.1 });
+      const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), floorMat);
+      floorMesh.rotation.x = -Math.PI / 2;
+      floorMesh.receiveShadow = true;
+      scene.add(floorMesh);
+
+      // 2. Main Walls (Off-White)
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0xF1F5F9, roughness: 0.8 });
+      
+      const backWall = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomH), wallMat);
+      backWall.position.set(0, roomH / 2, -roomD / 2);
+      backWall.receiveShadow = true;
+      scene.add(backWall);
+
+      const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), wallMat);
+      leftWall.position.set(-roomW / 2, roomH / 2, 0);
+      leftWall.rotation.y = Math.PI / 2;
+      scene.add(leftWall);
+
+      const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), wallMat);
+      rightWall.position.set(roomW / 2, roomH / 2, 0);
+      rightWall.rotation.y = -Math.PI / 2;
+      scene.add(rightWall);
+
+      // Ceiling
+      const ceilMesh = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
+      ceilMesh.position.set(0, roomH - 0.01, 0);
+      ceilMesh.rotation.x = Math.PI / 2;
+      scene.add(ceilMesh);
+
+      // 3. Cabin Partitions (Back half of the room)
+      // Cabin Area Depth = 8
+      const cabinDepth = 8;
+      const glassMat = new THREE.MeshStandardMaterial({ color: 0xBAE6FD, roughness: 0.2, transmission: 0.8, transparent: true, opacity: 0.4 });
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x0F172A, metalness: 0.8, roughness: 0.2 });
+
+      // Main front glass partition for all cabins
+      const frontGlass = new THREE.Mesh(new THREE.BoxGeometry(roomW, roomH, 0.1), glassMat);
+      frontGlass.position.set(0, roomH/2, -roomD/2 + cabinDepth);
+      scene.add(frontGlass);
+
+      // Cabin dividing walls (2 dividers for 3 cabins)
+      // HOD Cabin: Center (Width: 10), AHOD 1: Left (Width: 8), AHOD 2: Right (Width: 8)
+      const div1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, roomH, cabinDepth), glassMat);
+      div1.position.set(-5.0, roomH/2, -roomD/2 + cabinDepth/2);
+      scene.add(div1);
+
+      const div2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, roomH, cabinDepth), glassMat);
+      div2.position.set(5.0, roomH/2, -roomD/2 + cabinDepth/2);
+      scene.add(div2);
+
+      // Doors to cabins (frames)
+      [-9.0, 0, 9.0].forEach(x => {
+        const dFrame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.4, 0.15), frameMat);
+        dFrame.position.set(x, 1.2, -roomD/2 + cabinDepth);
+        scene.add(dFrame);
+        
+        const dGlass = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.3), glassMat);
+        dGlass.position.set(x, 1.15, -roomD/2 + cabinDepth + 0.08);
+        scene.add(dGlass);
+      });
+
+      // 4. HOD Cabin Interior (Center)
+      const hodDesk = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.8, 1.2), new THREE.MeshStandardMaterial({ color: 0x3E2723 }));
+      hodDesk.position.set(0, 0.4, -roomD/2 + 3.0);
+      scene.add(hodDesk);
+      
+      const hodAvatar = createSeatedOfficial({ isTeacher: true, shirtColor: 0x0284C7, name: 'HOD (IT)' });
+      hodAvatar.position.set(0, 0, -roomD/2 + 2.0);
+      hodAvatar.rotation.y = Math.PI;
+      scene.add(hodAvatar);
+
+      // HOD Visitors
+      for (let i = -0.6; i <= 0.6; i+=1.2) {
+        const guestChair = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.8), new THREE.MeshStandardMaterial({ color: 0x1E293B }));
+        guestChair.position.set(i, 0.25, -roomD/2 + 4.2);
+        scene.add(guestChair);
+      }
+
+      // 5. AHOD Cabins (Left and Right)
+      [-9.0, 9.0].forEach((xPos, idx) => {
+        const ahodDesk = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 1.0), new THREE.MeshStandardMaterial({ color: 0x5D4037 }));
+        ahodDesk.position.set(xPos, 0.4, -roomD/2 + 3.0);
+        scene.add(ahodDesk);
+
+        const ahodAvatar = createSeatedOfficial({ isTeacher: true, shirtColor: 0x059669, name: `AHOD ${idx+1}` });
+        ahodAvatar.position.set(xPos, 0, -roomD/2 + 2.0);
+        ahodAvatar.rotation.y = Math.PI;
+        scene.add(ahodAvatar);
+
+        const guestChair = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.6), new THREE.MeshStandardMaterial({ color: 0x1E293B }));
+        guestChair.position.set(xPos, 0.25, -roomD/2 + 4.2);
+        scene.add(guestChair);
+      });
+
+      // 6. Main IT Staff Area
+      // 4 islands of 4 back-to-back desks
+      const islandW = 4.0;
+      const islandD = 3.0;
+      const staffDeskMat = new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.3 });
+      const staffDivMat = new THREE.MeshStandardMaterial({ color: 0x0F172A });
+      
+      const islandPositions = [
+        { x: -6.0, z: 2.0 }, { x: 6.0, z: 2.0 },
+        { x: -6.0, z: 7.0 }, { x: 6.0, z: 7.0 }
+      ];
+
+      islandPositions.forEach(pos => {
+        // Island top
+        const iTop = new THREE.Mesh(new THREE.BoxGeometry(islandW, 0.05, islandD), staffDeskMat);
+        iTop.position.set(pos.x, 0.8, pos.z);
+        scene.add(iTop);
+
+        // Center divider
+        const iDiv = new THREE.Mesh(new THREE.BoxGeometry(islandW, 0.4, 0.05), staffDivMat);
+        iDiv.position.set(pos.x, 1.0, pos.z);
+        scene.add(iDiv);
+
+        // 4 Seats per island
+        const seatOffsets = [
+          { dx: -1.0, dz: -0.8, rot: 0 },
+          { dx: 1.0, dz: -0.8, rot: 0 },
+          { dx: -1.0, dz: 0.8, rot: Math.PI },
+          { dx: 1.0, dz: 0.8, rot: Math.PI }
+        ];
+
+        seatOffsets.forEach(seat => {
+          // Monitor
+          const monitor = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.05), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+          monitor.position.set(pos.x + seat.dx, 1.0, pos.z + (seat.dz > 0 ? 0.1 : -0.1));
+          scene.add(monitor);
+
+          // Seat
+          const chair = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.6), new THREE.MeshStandardMaterial({ color: 0x334155 }));
+          chair.position.set(pos.x + seat.dx, 0.2, pos.z + seat.dz);
+          scene.add(chair);
+
+          // Avatar (50% chance)
+          if (Math.random() > 0.5) {
+            const facultyColor = studentShirtColors[Math.floor(Math.random() * studentShirtColors.length)];
+            const facultyObj = createSeatedOfficial({ isTeacher: true, shirtColor: facultyColor, name: 'Faculty' });
+            facultyObj.position.set(pos.x + seat.dx, 0, pos.z + seat.dz);
+            facultyObj.rotation.y = seat.rot;
+            scene.add(facultyObj);
+          }
+        });
+      });
+
+      // 7. Door (Front Left)
+      const doorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.3, 1.3), new THREE.MeshStandardMaterial({ color: 0x94A3B8 }));
+      doorFrame.position.set(-roomW / 2 + 0.05, 1.15, roomD / 2 - 2.0);
+      scene.add(doorFrame);
+      const doorMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.1), new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.5 }));
+      doorMesh.position.set(-roomW / 2 + 0.11, 1.15, roomD / 2 - 2.0);
+      doorMesh.rotation.y = Math.PI / 2;
+      scene.add(doorMesh);
 
     } else {
       // ── CLASSROOM INTERIOR WITH SEATED STUDENTS ────────────────────────────
+      
+      // Standard Classroom Floor
+      const floorCanvas = document.createElement('canvas');
+      floorCanvas.width = 512;
+      floorCanvas.height = 512;
+      const fctx = floorCanvas.getContext('2d');
+      fctx.fillStyle = '#E2E8F0';
+      fctx.fillRect(0, 0, 512, 512);
+      fctx.strokeStyle = '#CBD5E1';
+      fctx.lineWidth = 2;
+      for (let i = 0; i <= 512; i += 64) {
+        fctx.moveTo(i, 0); fctx.lineTo(i, 512);
+        fctx.moveTo(0, i); fctx.lineTo(512, i);
+      }
+      fctx.stroke();
+      const floorTex = new THREE.CanvasTexture(floorCanvas);
+      floorTex.wrapS = THREE.RepeatWrapping;
+      floorTex.wrapT = THREE.RepeatWrapping;
+      floorTex.repeat.set(10, 10);
+      
+      const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.5, metalness: 0.1 });
+      const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), floorMat);
+      floorMesh.rotation.x = -Math.PI / 2;
+      floorMesh.receiveShadow = true;
+      scene.add(floorMesh);
+      
+      // Standard Classroom Walls
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.9 });
+      const backWall = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomH), wallMat);
+      backWall.position.set(0, roomH / 2, -roomD / 2);
+      backWall.receiveShadow = true;
+      scene.add(backWall);
+
+      const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), wallMat);
+      leftWall.position.set(-roomW / 2, roomH / 2, 0);
+      leftWall.rotation.y = Math.PI / 2;
+      leftWall.receiveShadow = true;
+      scene.add(leftWall);
+
+      const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), wallMat);
+      rightWall.position.set(roomW / 2, roomH / 2, 0);
+      rightWall.rotation.y = -Math.PI / 2;
+      scene.add(rightWall);
+
+      const boardFrame = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.6, 0.1), new THREE.MeshStandardMaterial({ color: 0xD4A373 }));
+      boardFrame.position.set(0, 2.0, -roomD / 2 + 0.05);
+      scene.add(boardFrame);
+
+      const boardCanvas = document.createElement('canvas');
+      boardCanvas.width = 1024;
+      boardCanvas.height = 512;
+      const bctx = boardCanvas.getContext('2d');
+      bctx.fillStyle = '#1B3822';
+      bctx.fillRect(0, 0, 1024, 512);
+      bctx.fillStyle = '#FFFFFF';
+      bctx.font = 'bold 70px sans-serif';
+      bctx.textAlign = 'center';
+      bctx.fillText(subjectName || 'Free Period', 512, 220);
+      bctx.font = '45px sans-serif';
+      bctx.fillStyle = '#FBBF24'; // Yellow chalk
+      bctx.fillText(`Prof: ${teacherName || 'None'}`, 512, 320);
+      bctx.fillStyle = '#E2E8F0'; // White/gray chalk
+      bctx.fillText(`Class: ${sectionName || 'N/A'}`, 512, 400);
+
+      const boardTex = new THREE.CanvasTexture(boardCanvas);
+      const boardMat = new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.9 });
+
+      const boardSurface = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 1.4), boardMat);
+      boardSurface.position.set(0, 2.0, -roomD / 2 + 0.11);
+      scene.add(boardSurface);
+
+      // Realistic details: Clock
+      const clockBody = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.05), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+      clockBody.rotation.x = Math.PI / 2;
+      clockBody.position.set(0, 3.2, -roomD / 2 + 0.05);
+      scene.add(clockBody);
+      const clockFace = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.06), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
+      clockFace.rotation.x = Math.PI / 2;
+      clockFace.position.set(0, 3.2, -roomD / 2 + 0.05);
+      scene.add(clockFace);
+
+      // Realistic details: Door
+      const doorFrame = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.3, 0.1), new THREE.MeshStandardMaterial({ color: 0xD4A373 }));
+      doorFrame.position.set(roomW / 2 - 1.5, 1.15, -roomD / 2 + 0.05);
+      scene.add(doorFrame);
+      const doorMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.1), new THREE.MeshStandardMaterial({ color: 0x8B5A2B, roughness: 0.8 }));
+      doorMesh.position.set(roomW / 2 - 1.5, 1.15, -roomD / 2 + 0.11);
+      scene.add(doorMesh);
+
+      // Realistic details: Windows (Left Wall)
+      for (let w = -2; w <= 2; w += 3) {
+        const winFrame = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 1.8), new THREE.MeshStandardMaterial({ color: 0xE2E8F0 }));
+        winFrame.position.set(-roomW / 2 + 0.05, 1.8, w);
+        scene.add(winFrame);
+        const glassMat = new THREE.MeshStandardMaterial({ color: 0xBAE6FD, transparent: true, opacity: 0.4, roughness: 0.1 });
+        const winGlass = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), glassMat);
+        winGlass.rotation.y = Math.PI / 2;
+        winGlass.position.set(-roomW / 2 + 0.11, 1.8, w);
+        scene.add(winGlass);
+      }
+
       const podium = createTeacherPodium();
       podium.position.set(-2.6, 0, -4.5);
       scene.add(podium);
+
+      // Standing 3D Teacher Avatar at the Blackboard
+      const teacherAvatar = createSeatedOfficial({
+        isTeacher: true,
+        primaryColor: 0x1E293B,
+        secondaryColor: 0xF1F5F9,
+        hairColor: 0x111111,
+        name: teacherName,
+        skinColor: 0xD8A064
+      });
+      teacherAvatar.position.set(-1.0, 0, -4.8);
+      scene.add(teacherAvatar);
 
       const tTable = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.85, 0.8), new THREE.MeshStandardMaterial({ color: 0x94A3B8 }));
       tTable.position.set(2.2, 0.42, -4.8);
@@ -3806,10 +4866,25 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
       } else if (view === 'cctv') {
         cam.position.set(5.2, 3.8, -5.8);
         ctrl.target.set(0, 1.0, 0);
+    } else if (isKVRConferenceHall) {
+      if (view === 'teacher') {
+        // Stage POV — from podium looking at 400+ audience seats
+        cam.position.set(0, 3.2, -14);
+        ctrl.target.set(0, 2.0, 8);
+      } else if (view === 'student') {
+        // Audience POV — mid-hall looking at stage & projection screen
+        cam.position.set(0, 3.5, 5);
+        ctrl.target.set(0, 4.0, -18);
+      } else {
+        // 3D Overview
+        cam.position.set(0, 12, 30);
+        ctrl.target.set(0, 2.5, 0);
+      }
     } else if (isFMLab) {
       if (view === 'teacher') {
         // Teacher POV (Facing Professor & Blackboard)
         cam.position.set(-1.0, 1.4, -2.5);
+
         ctrl.target.set(-1.0, 1.5, -4.8);
       } else if (view === 'student') {
         // Student Seated POV from Wooden Benches
@@ -3917,14 +4992,14 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
               <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 {room?.name || room?.label || cleanId}
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#00E5FF]/20 text-[#00E5FF] border border-[#00E5FF]/30 font-mono">
-                  {isAdminLobby ? '🏛️ Central Administration Lobby' : isIQACRoom ? '🏛️ IQAC Conference Room' : isPrincipalOffice ? '🏛️ Principal Executive Cabin' : isCivilDept ? '🏛️ Civil Department & HOD Cabin' : isFMLab ? '💧 Fluid Mechanics Laboratory' : isEELab ? '🌿 Environmental Engineering Lab' : isCTLab ? '🏗️ Concrete Technology Lab' : isIoTLab ? '📟 IoT & Embedded Systems Lab' : isFirstFloorCompLab ? '💻 First Floor Computer Lab' : isWashroom ? '🚻 Washroom Facility' : isBoardRoom || isStaffRoom ? '🏛️ Faculty Staff Office' : isLab ? '🔬 Laboratory' : '📚 Active Classroom'}
+                  {isKVRConferenceHall ? '🏛️ KVR Conference Hall' : isAdminLobby ? '🏛️ Central Administration Lobby' : isIQACRoom ? '🏛️ IQAC Conference Room' : isPrincipalOffice ? '🏛️ Principal Executive Cabin' : isCivilDept ? '🏛️ Civil Department & HOD Cabin' : isFMLab ? '💧 Fluid Mechanics Laboratory' : isEELab ? '🌿 Environmental Engineering Lab' : isCTLab ? '🏗️ Concrete Technology Lab' : isIoTLab ? '📟 IoT & Embedded Systems Lab' : isFirstFloorCompLab || isSecondFloorITLab ? '💻 Information Technology Lab' : isWashroom ? '🚻 Washroom Facility' : isITStaffRoom ? '🏛️ IT Department Staff Room' : isBoardRoom || isStaffRoom ? '🏛️ Faculty Staff Office' : isLab ? '🔬 Laboratory' : '📚 Active Classroom'}
                 </span>
               </h2>
               <p className="text-xs text-slate-300 font-mono flex items-center gap-2">
                 <span>Civil & IT Block · {room?.floor || 'Ground Floor'}</span>
                 <span>·</span>
                 <span className="text-amber-400 font-bold flex items-center gap-1">
-                  {isAdminLobby ? '🏛️ Executive Administrative Hub' : isIQACRoom ? '🏛️ Internal Quality Assurance Cell' : isPrincipalOffice ? '🏛️ Office of the Executive Principal' : isCivilDept ? '🏛️ Office of the Civil Engineering Department' : isWashroom ? '🚻 Hygiene & Restroom Facility' : isBoardRoom || isStaffRoom ? '🏛️ Faculty & Departmental Hub' : `Faculty: ${teacherName}`}
+                  {isKVRConferenceHall ? '🏛️ KVR Memorial Conference Hall · 400+ Seats · AV System' : isAdminLobby ? '🏛️ Executive Administrative Hub' : isIQACRoom ? '🏛️ Internal Quality Assurance Cell' : isPrincipalOffice ? '🏛️ Office of the Executive Principal' : isCivilDept ? '🏛️ Office of the Civil Engineering Department' : isITStaffRoom ? '👨‍🏫 IT Department Faculty Hub' : isWashroom ? '🚻 Hygiene & Restroom Facility' : isBoardRoom || isStaffRoom ? '🏛️ Faculty & Departmental Hub' : `Faculty: ${teacherName}`}
                 </span>
               </p>
             </div>
@@ -3979,11 +5054,10 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
           {/* Top Camera Controls Overlay */}
           <div className="absolute top-4 left-4 z-10 flex gap-2 rounded-xl border border-white/10 bg-[#0f172a]/90 p-1.5 backdrop-blur-md">
             {[
-              { id: 'orbit', label: isAdminLobby || isIQACRoom || isPrincipalOffice || isCivilDept || isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab ? '👀 3D Overview' : '👀 3D Orbit' },
-              { id: 'teacher', label: isAdminLobby ? '👩‍💼 Receptionist POV' : isIQACRoom ? '👔 Board POV' : isPrincipalOffice ? '👔 Principal Desk POV' : isCivilDept ? '👔 HOD Cabin POV' : isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab ? '👨‍🏫 Teacher POV' : '👨‍🏫 Teacher POV' },
-              { id: 'student', label: isAdminLobby ? '🪑 Visitor POV' : isIQACRoom ? '🎤 Presenter POV' : isPrincipalOffice ? '🪑 Visitor Chair POV' : isCivilDept ? '👩‍🏫 Staff Room POV' : isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab ? '🎒 Student Bench POV' : '🎒 Student POV' },
-              { id: 'cctv', label: isFMLab ? '💧 Rigs POV' : isEELab ? '🔬 Jar Test POV' : isCTLab ? '🏗️ UTM POV' : isIoTLab ? '📟 IoT Kit POV' : isFirstFloorCompLab ? '🖥️ PC Rows POV' : '📹 CCTV Cam' },
-            ].map((cam) => (
+              { id: 'orbit', label: isKVRConferenceHall || isAdminLobby || isIQACRoom || isPrincipalOffice || isCivilDept || isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab || isSecondFloorITLab || isITStaffRoom ? '👀 3D Overview' : '👀 3D Orbit' },
+              { id: 'teacher', label: isKVRConferenceHall ? '🎤 Stage POV' : isAdminLobby ? '👩‍💼 Receptionist POV' : isIQACRoom ? '👔 Board POV' : isPrincipalOffice ? '👔 Principal Desk POV' : isCivilDept ? '👔 HOD Cabin POV' : isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab || isSecondFloorITLab ? '👨‍🏫 Teacher POV' : isITStaffRoom ? '👔 HOD Cabin POV' : '👨‍🏫 Teacher POV' },
+              { id: 'student', label: isKVRConferenceHall ? '🪑 Audience POV' : isAdminLobby ? '🪑 Visitor POV' : isIQACRoom ? '🎤 Presenter POV' : isPrincipalOffice ? '🪑 Visitor Chair POV' : isCivilDept || isITStaffRoom ? '👩‍🏫 Staff Room POV' : isFMLab || isEELab || isCTLab || isIoTLab || isFirstFloorCompLab || isSecondFloorITLab ? '🎒 Student Bench POV' : '🎒 Student POV' },
+            ].filter(cam => cam.id !== 'cctv').map((cam) => (
               <button
                 key={cam.id}
                 onClick={() => setCameraView(cam.id)}
@@ -3997,16 +5071,6 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
               </button>
             ))}
 
-            <div className="w-px bg-white/15 my-0.5 mx-1" />
-
-            <button
-              onClick={() => setShowCCTVOverlay(!showCCTVOverlay)}
-              className={`rounded-lg px-3 py-1 text-xs font-semibold transition flex items-center gap-1.5 ${
-                showCCTVOverlay ? 'bg-amber-500 text-slate-950 shadow-md' : 'bg-slate-800 text-amber-300 hover:bg-slate-700'
-              }`}
-            >
-              <Video className="h-3.5 w-3.5" /> {showCCTVOverlay ? 'Hide CCTV Matrix' : 'Live CCTV Matrix'}
-            </button>
           </div>
 
           {/* Teacher & Active Course Banner (Hidden for Non-Timetable Facilities) */}
@@ -4027,32 +5091,7 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
             </div>
           )}
 
-          {/* CCTV Multi-Screen Video Wall Overlay (Matched to Photo 1) */}
-          {showCCTVOverlay && (
-            <div className="absolute bottom-4 right-4 z-20 w-80 sm:w-96 rounded-xl border border-white/20 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl animate-fadeIn">
-              <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2">
-                <span className="text-[11px] font-mono font-bold text-amber-400 flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
-                  SECURITY CCTV FEEDS · CIVIL & IT BLOCK
-                </span>
-                <span className="text-[10px] font-mono text-slate-400">REC ● LIVE</span>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {['CAM 01 · CE-IT-101', 'CAM 02 · CE-IT-102', 'CAM 03 · CE-IT-202', 'CAM 04 · BOARD ROOM'].map((camName, i) => (
-                  <div key={i} className="relative aspect-video bg-slate-900 rounded border border-slate-700 overflow-hidden flex items-center justify-center">
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-between p-1">
-                      <span className="text-[9px] font-mono text-emerald-400 font-bold">{camName}</span>
-                      <div className="flex justify-between items-center text-[8px] font-mono text-slate-400">
-                        <span>1080P 30FPS</span>
-                        <span className="text-red-400">● LIVE</span>
-                      </div>
-                    </div>
-                    <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] pointer-events-none opacity-40" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+
 
           {/* Bottom Room Specs Overlay */}
           <div className="absolute bottom-4 left-4 z-10 rounded-xl border border-white/10 bg-[#0f172a]/90 px-4 py-2.5 backdrop-blur-md">
@@ -4113,12 +5152,19 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
                   <span>👥 Lab Class: <b className="text-white">6 Students at PC Workstations</b></span>
                   <span>🪑 Seating: <b className="text-white">Wooden Lab Stools & Blue Discussion Chairs</b></span>
                 </>
-              ) : isFirstFloorCompLab ? (
+              ) : isFirstFloorCompLab || isSecondFloorITLab ? (
                 <>
                   <span>💻 Workstations: <b className="text-emerald-400">20 HP Widescreen LCD Monitors & Desks</b></span>
                   <span>🛡️ Privacy: <b className="text-cyan-300">Center Modesty Dividers & Power Channels</b></span>
                   <span>👥 Lab Class: <b className="text-white">6 Students in Blue Swivel Chairs</b></span>
                   <span>📽️ Equipment: <b className="text-white">Ceiling Projector & Split AC Units</b></span>
+                </>
+              ) : isKVRConferenceHall ? (
+                <>
+                  <span>🪑 Seating: <b className="text-emerald-400">400+ Cushioned Chairs in 20 Rows</b></span>
+                  <span>📽️ AV System: <b className="text-cyan-300">Projection Screen + 2 LCD Side Monitors</b></span>
+                  <span>💡 Ceiling: <b className="text-white">Amber LED Coffers + Recessed Spotlights + 2 Ceiling Fans</b></span>
+                  <span>🎤 Stage: <b className="text-amber-400">Podium · Mic · AV Rack · Speaker Stack</b></span>
                 </>
               ) : (
                 <>

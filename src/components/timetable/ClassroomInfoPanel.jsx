@@ -79,7 +79,7 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
   if (!classroomId) return null;
 
   const locType = roomDetails?.location_type || 'CLASSROOM';
-  const isNonTimetableLoc = ['OFFICE', 'ADMINISTRATION', 'STAFF_ROOM', 'DEPARTMENT_OFFICE'].includes(locType);
+  const isNonTimetableLoc = ['OFFICE', 'ADMINISTRATION', 'STAFF_ROOM', 'DEPARTMENT_OFFICE', 'CONFERENCE_HALL'].includes(locType);
 
   const entry = data?.current_entry;
   const next  = data?.next_entry;

@@ -34,30 +34,51 @@ const NAV_ITEMS = [
 
 function getNavItems(role) {
   const common = [
-    { to: '/',           label: 'Twin',     icon: Home },
+    { to: '/', label: 'Twin', icon: Home },
   ];
   if (role === 'admin') return [
     ...common,
     { to: '/admin/dashboard', label: 'Dashboard', icon: ChartNoAxesCombined },
-    { to: '/admin/users',     label: 'Users',      icon: Users               },
-    { to: '/admin/buildings', label: 'Buildings',  icon: Building2           },
-    { to: '/admin/floors',     label: 'Floors',     icon: Layers              },
-    { to: '/admin/timetable', label: 'Timetable',  icon: CalendarClock       },
-    { to: '/classrooms',      label: 'Classrooms', icon: BookOpen            },
-    { to: '/labs',            label: 'Labs',       icon: FlaskConical        },
+    {
+      dropdown: true, label: 'Manage', icon: Building2,
+      items: [
+        { to: '/admin/users',     label: 'Users',      icon: Users,     color: '#7B61FF' },
+        { to: '/admin/buildings', label: 'Buildings',  icon: Building2, color: '#10B981' },
+        { to: '/admin/floors',    label: 'Floors',     icon: Layers,    color: '#00E5FF' },
+      ]
+    },
+    {
+      dropdown: true, label: 'Academics', icon: BookOpen,
+      items: [
+        { to: '/admin/timetable', label: 'Timetable',  icon: CalendarClock, color: '#F59E0B' },
+        { to: '/admin/substitutions', label: 'Substitutions', icon: CalendarDays, color: '#F472B6' },
+        { to: '/classrooms',      label: 'Classrooms', icon: BookOpen,      color: '#00E5FF' },
+        { to: '/labs',            label: 'Labs',       icon: FlaskConical,  color: '#818CF8' },
+      ]
+    }
   ];
   if (role === 'faculty') return [
     ...common,
-    { to: '/faculty',    label: 'Faculty',    icon: Users               },
+    { to: '/faculty',    label: 'Faculty',    icon: Users },
     { to: '/analytics',  label: 'Analytics',  icon: ChartNoAxesCombined },
-    { to: '/classrooms', label: 'Classrooms', icon: BookOpen            },
-    { to: '/labs',       label: 'Labs',       icon: FlaskConical        },
+    {
+      dropdown: true, label: 'Academics', icon: BookOpen,
+      items: [
+        { to: '/classrooms', label: 'Classrooms', icon: BookOpen,     color: '#00E5FF' },
+        { to: '/labs',       label: 'Labs',       icon: FlaskConical, color: '#818CF8' },
+      ]
+    }
   ];
   if (role === 'student') return [
     ...common,
     { to: '/student',    label: 'Dashboard',  icon: GraduationCap },
-    { to: '/classrooms', label: 'Classrooms', icon: BookOpen      },
-    { to: '/labs',       label: 'Labs',       icon: FlaskConical  },
+    {
+      dropdown: true, label: 'Academics', icon: BookOpen,
+      items: [
+        { to: '/classrooms', label: 'Classrooms', icon: BookOpen,     color: '#00E5FF' },
+        { to: '/labs',       label: 'Labs',       icon: FlaskConical, color: '#818CF8' },
+      ]
+    }
   ];
   return common;
 }
@@ -328,7 +349,11 @@ export default function Shell({ children }) {
           {/* Desktop nav links */}
           <div className="hidden lg:flex" style={{ alignItems: 'center', gap: 2, flexWrap: 'nowrap' }}>
             {navItems.map((item) => (
-              <NavItem key={item.to} {...item} />
+              item.dropdown ? (
+                <NavDropdown key={item.label} label={item.label} icon={item.icon} items={item.items} isActive={item.items.some(sub => location.pathname.startsWith(sub.to) && sub.to !== '/')} />
+              ) : (
+                <NavItem key={item.to} {...item} />
+              )
             ))}
             {/* Navigation dropdown */}
             <NavDropdown label="Navigation" icon={Map} items={NAV_ITEMS} isActive={location.pathname.startsWith('/navigation')} />
@@ -419,7 +444,16 @@ export default function Shell({ children }) {
               {/* Core items */}
               <div style={{ display: 'grid', gap: 4, marginBottom: 8 }}>
                 {navItems.map((item) => (
-                  <NavItem key={item.to} {...item} onClick={() => setMobileOpen(false)} />
+                  item.dropdown ? (
+                    <div key={item.label}>
+                      <p style={{ padding: '8px 12px 4px', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#475569', margin: '4px 0 0' }}>{item.label}</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 4 }}>
+                        {item.items.map(sub => <NavItem key={sub.to} {...sub} onClick={() => setMobileOpen(false)} />)}
+                      </div>
+                    </div>
+                  ) : (
+                    <NavItem key={item.to} {...item} onClick={() => setMobileOpen(false)} />
+                  )
                 ))}
               </div>
 

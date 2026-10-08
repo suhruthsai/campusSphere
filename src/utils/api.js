@@ -110,6 +110,11 @@ export const timetableApi = {
   },
   getWeek:     (classroomId) => request(`/timetable/classroom/${classroomId}/week`),
   conflicts:   ()            => request('/timetable/conflicts'),
+  getOverrides:(classroomId = null) => {
+    const q = classroomId ? `?classroom_id=${encodeURIComponent(classroomId)}` : '';
+    return request(`/timetable/overrides${q}`);
+  },
+  createOverride: (data)     => request('/timetable/overrides', { method: 'POST', body: JSON.stringify(data) }),
   importCsv:   (file, dryRun = false) => {
     const fd = new FormData();
     fd.append('file', file);
@@ -138,4 +143,17 @@ export const facultyApi = {
   delete: (id)          => request(`/faculty-profiles/${id}`, { method: 'DELETE' }),
 };
 
-export default { authApi, buildingsApi, eventsApi, announcementsApi, attendanceApi, mediaApi, classroomsApi, timetableApi, subjectsApi, facultyApi };
+// ── Faculty Substitutions ───────────────────────────────────────────────────────
+export const substitutionsApi = {
+  list:         (params = {}) => request('/substitutions/?' + new URLSearchParams(params)),
+  today:        ()            => request('/substitutions/today'),
+  get:          (id)          => request(`/substitutions/${id}`),
+  checkConflict:(data)        => request('/substitutions/check-conflict', { method: 'POST', body: JSON.stringify(data) }),
+  create:       (data)        => request('/substitutions/', { method: 'POST', body: JSON.stringify(data) }),
+  update:       (id, data)    => request(`/substitutions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  cancel:       (id, data)    => request(`/substitutions/${id}/cancel`, { method: 'POST', body: JSON.stringify(data) }),
+  auditHistory: (params = {}) => request('/substitutions/history/audit?' + new URLSearchParams(params)),
+};
+
+export default { authApi, buildingsApi, eventsApi, announcementsApi, attendanceApi, mediaApi, classroomsApi, timetableApi, subjectsApi, facultyApi, substitutionsApi };
+

@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Any
-from datetime import date
+from datetime import date, datetime
 
 # --- Auth & User ---
 class Token(BaseModel):
@@ -94,9 +94,9 @@ class ClassroomOut(BaseModel):
     building: Optional[str] = None
     floor: int
     capacity: int
-    equipment: List[Any] = []
-    occupancy: int
-    status: str
+    equipment: Optional[List[Any]] = Field(default_factory=list)
+    occupancy: Optional[int] = 0
+    status: Optional[str] = "FREE"
     type: str
     location_type: Optional[str] = "CLASSROOM"
 
@@ -215,6 +215,9 @@ class CurrentClassResponse(BaseModel):
     day_name: Optional[str] = None
     current_entry: Optional[TimetableEntryOut] = None
     next_entry: Optional[TimetableEntryOut] = None
+    is_substitution: bool = False
+    substitution_reason: Optional[str] = None
+    substitution_original_faculty: Optional[str] = None
 
 class ConflictItem(BaseModel):
     conflict_type: str
@@ -224,3 +227,123 @@ class ConflictItem(BaseModel):
 class ConflictReport(BaseModel):
     total_conflicts: int
     conflicts: List[ConflictItem]
+
+class TimetableOverrideCreate(BaseModel):
+    start_date: date
+    end_date: date
+    classroom_id: str
+    period_number: int
+    new_faculty_id: Optional[str] = None
+    new_faculty_name: str
+    new_subject_name: Optional[str] = None
+    reason: str
+    created_by: str
+
+class TimetableOverrideOut(TimetableOverrideCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class TimetableAuditLogOut(BaseModel):
+    id: int
+    action: str
+    details: dict
+    user: str
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ─── Substitution / Temporary Faculty Management ─────────────────────────────
+
+SUBSTITUTION_REASONS = [
+    "Faculty Absent",
+    "Faculty On Leave",
+    "Faculty Unavailable",
+    "Emergency",
+    "Faculty Substitution",
+    "Administrative Change",
+    "Other",
+]
+
+class SubstitutionCreate(BaseModel):
+    date: date
+    period_number: int
+    start_time: str
+    end_time: str
+    classroom_id: str
+    section: str
+    subject_id: Optional[str] = None
+    subject_name: str
+    original_faculty_id: Optional[str] = None
+    original_faculty_name: str
+    replacement_faculty_id: Optional[str] = None
+    replacement_faculty_name: str
+    reason: str = "Faculty Absent"
+    notes: Optional[str] = None
+    created_by: str
+
+class SubstitutionUpdate(BaseModel):
+    replacement_faculty_id: Optional[str] = None
+    replacement_faculty_name: Optional[str] = None
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+    updated_by: str
+
+class SubstitutionOut(BaseModel):
+    id: int
+    date: date
+    day_of_week: int
+    period_number: int
+    start_time: str
+    end_time: str
+    classroom_id: str
+    section: str
+    subject_id: Optional[str] = None
+    subject_name: str
+    original_faculty_id: Optional[str] = None
+    original_faculty_name: str
+    replacement_faculty_id: Optional[str] = None
+    replacement_faculty_name: str
+    reason: str
+    notes: Optional[str] = None
+    status: str
+    created_by: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    cancelled_by: Optional[str] = None
+    cancelled_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class SubstitutionCancelRequest(BaseModel):
+    cancelled_by: str
+
+class FacultyConflictCheckRequest(BaseModel):
+    replacement_faculty_id: str
+    date: date
+    period_number: int
+    start_time: str
+    end_time: str
+    exclude_substitution_id: Optional[int] = None  # when editing
+
+class FacultyConflictResult(BaseModel):
+    has_conflict: bool
+    conflict_type: Optional[str] = None   # "timetable" | "substitution"
+    conflict_detail: Optional[str] = None  # human-readable description
+
+class SubstitutionAuditLogOut(BaseModel):
+    id: int
+    substitution_id: Optional[int] = None
+    action: str
+    snapshot: dict
+    changed_by: str
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
