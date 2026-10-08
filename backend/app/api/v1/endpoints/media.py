@@ -2,14 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
-import os, shutil, uuid
+import os, uuid
 
 from backend.app.db.session import get_db
+from backend.app.core.security import require_admin, require_staff, get_current_user
 from backend.app.models.campus import RoomMediaModel
 
 router = APIRouter()
 
 MEDIA_DIR = "media_uploads"
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".webm"}
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
 
@@ -37,14 +40,26 @@ def upload_room_media(
     caption: Optional[str] = Form(None),
     uploaded_by: Optional[str] = Form(None),
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _staff: dict = Depends(require_staff),
 ):
-    # Save file to disk
-    ext = os.path.splitext(file.filename)[-1]
+    ext = os.path.splitext(file.filename or "")[-1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
+    uploaded_by = _staff["name"]
+
+    # Save file to disk (random name, so the client cannot choose the path)
     filename = f"{uuid.uuid4().hex}{ext}"
     filepath = os.path.join(MEDIA_DIR, filename)
+    written = 0
     with open(filepath, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        while chunk := file.file.read(1024 * 1024):
+            written += len(chunk)
+            if written > MAX_UPLOAD_BYTES:
+                f.close()
+                os.remove(filepath)
+                raise HTTPException(status_code=413, detail="File too large (max 25 MB)")
+            f.write(chunk)
 
     media = RoomMediaModel(
         building_id=building_id,
@@ -62,7 +77,7 @@ def upload_room_media(
 
 
 @router.delete("/{media_id}", summary="Delete a media item")
-def delete_media(media_id: int, db: Session = Depends(get_db)):
+def delete_media(media_id: int, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     item = db.query(RoomMediaModel).filter(RoomMediaModel.id == media_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Media not found")

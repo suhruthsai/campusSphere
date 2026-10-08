@@ -9,8 +9,12 @@ from backend.app.api.v1.router import api_router
 from backend.app.db.session import engine, Base, SessionLocal
 from backend.app.models import campus
 from backend.app.core.state import global_state
-from backend.app.core.security import get_password_hash
+from backend.app.core.security import get_password_hash, verify_password
+from backend.app.core.realtime import timetable_manager
+from backend.app.api.v1.endpoints.media import MEDIA_DIR
+from sqlalchemy import text
 import random
+import secrets
 import datetime
 import uuid
 
@@ -25,13 +29,21 @@ except Exception as e:
 def seed_admin():
     db = SessionLocal()
     try:
-        exists = db.query(campus.UserModel).filter(campus.UserModel.email == "admin@suhruth.edu").first()
-        if not exists:
+        admin_email = settings.ADMIN_EMAIL.lower()
+        exists = db.query(campus.UserModel).filter(campus.UserModel.email == admin_email).first()
+        if exists:
+            if verify_password("admin123", exists.hashed_password):
+                print(f"⚠️  SECURITY: {admin_email} still uses the old default password 'admin123'. Change it now via POST /api/v1/auth/change-password.")
+        else:
+            password = settings.ADMIN_PASSWORD
+            if not password:
+                password = secrets.token_urlsafe(12)
+                print(f"🔑 Generated admin password for {admin_email}: {password}  (shown once — set ADMIN_PASSWORD to choose your own)")
             admin = campus.UserModel(
                 id=f"u_{uuid.uuid4().hex[:10]}",
                 name="System Admin",
-                email="admin@suhruth.edu",
-                hashed_password=get_password_hash("admin123"),
+                email=admin_email,
+                hashed_password=get_password_hash(password),
                 role="admin",
                 department="Administration",
                 status="active",
@@ -40,7 +52,7 @@ def seed_admin():
             )
             db.add(admin)
             db.commit()
-            print("✅ Default admin seeded: admin@suhruth.edu / admin123")
+            print(f"✅ Admin account seeded: {admin_email}")
     except Exception as e:
         print(f"⚠️  Admin seed warning: {e}")
     finally:
@@ -51,7 +63,9 @@ seed_admin()
 def seed_civilit_block():
     try:
         from backend.app.db.seed_all_timetables import seed_all
-        seed_all()
+        # Only seed an empty database — never wipe timetable edits on restart/redeploy.
+        # To force a full reseed, run: python backend/app/db/seed_all_timetables.py
+        seed_all(only_if_empty=True)
     except Exception as e:
         print(f"⚠️ Timetable seeding warning: {e}")
 
@@ -70,14 +84,28 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,  # auth uses Authorization headers, not cookies
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Include API v1 router
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# Uploaded room media (note: on hosts with ephemeral disks, e.g. Render free tier, uploads are lost on redeploy)
+app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
+
+@app.get("/health", include_in_schema=False)
+def health():
+    """Health check for the hosting platform — verifies the DB is reachable."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "ok"}
+    except Exception:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"status": "db_unavailable"}, status_code=503)
 
 @app.get("/")
 def root():
@@ -145,26 +173,6 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
 
 
 # ── WebSockets Timetable Updates ──────────────────────────────────────────────
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-
-    async def broadcast(self, message: dict):
-        for connection in self.active_connections:
-            try:
-                await connection.send_json(message)
-            except Exception:
-                pass
-
-timetable_manager = ConnectionManager()
 
 @app.websocket("/ws/timetable")
 async def websocket_timetable_endpoint(websocket: WebSocket):

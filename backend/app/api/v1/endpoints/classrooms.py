@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
 from backend.app.db.session import get_db
+from backend.app.core.security import require_admin
 from backend.app.models.campus import ClassroomModel, TimetableEntryModel
 from backend.app.schemas.campus import ClassroomCreate, ClassroomUpdate, ClassroomOut, CurrentClassResponse, TimetableEntryOut
 
@@ -69,7 +70,7 @@ def list_classrooms(
     return q.all()
 
 @router.post("/", response_model=ClassroomOut)
-def create_classroom(payload: ClassroomCreate, db: Session = Depends(get_db)):
+def create_classroom(payload: ClassroomCreate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     if db.query(ClassroomModel).filter(ClassroomModel.id == payload.id).first():
         raise HTTPException(status_code=409, detail="Classroom ID already exists")
     room = ClassroomModel(**payload.model_dump())
@@ -86,7 +87,7 @@ def get_classroom(classroom_id: str, db: Session = Depends(get_db)):
     return room
 
 @router.put("/{classroom_id}", response_model=ClassroomOut)
-def update_classroom(classroom_id: str, payload: ClassroomUpdate, db: Session = Depends(get_db)):
+def update_classroom(classroom_id: str, payload: ClassroomUpdate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     room = db.query(ClassroomModel).filter(ClassroomModel.id == classroom_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Classroom not found")
@@ -97,7 +98,7 @@ def update_classroom(classroom_id: str, payload: ClassroomUpdate, db: Session = 
     return room
 
 @router.delete("/{classroom_id}")
-def delete_classroom(classroom_id: str, db: Session = Depends(get_db)):
+def delete_classroom(classroom_id: str, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     room = db.query(ClassroomModel).filter(ClassroomModel.id == classroom_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Classroom not found")

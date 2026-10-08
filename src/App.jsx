@@ -1,8 +1,14 @@
-// App.jsx — Routes (AUTH TEMPORARILY BYPASSED — restore ProtectedRoute later)
+// App.jsx — Routes
 import { AnimatePresence } from 'framer-motion';
-import { Route, Routes, useLocation } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext.jsx';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import Shell from './components/layout/Shell.jsx';
+import ProtectedRoute from './components/layout/ProtectedRoute.jsx';
+
+// Auth pages
+import Login          from './pages/auth/Login.jsx';
+import Register       from './pages/auth/Register.jsx';
+import ForgotPassword from './pages/auth/ForgotPassword.jsx';
 
 // Core pages
 import Home                from './pages/Home.jsx';
@@ -34,31 +40,46 @@ import RecommendationEngine from './pages/ai/RecommendationEngine.jsx';
 import SmartNavigation  from './pages/navigation/SmartNavigation.jsx';
 import IndoorNavigation from './pages/navigation/IndoorNavigation.jsx';
 
+const ADMIN = ['admin'];
+
+// Logged-in users don't need to see the login/register pages
+function GuestOnly({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  return user ? <Navigate to="/" replace /> : children;
+}
+
 function AppRoutes() {
   const location = useLocation();
 
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
+        {/* Public */}
+        <Route path="/login"           element={<GuestOnly><Login /></GuestOnly>} />
+        <Route path="/register"        element={<GuestOnly><Register /></GuestOnly>} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+
         <Route path="/*" element={
+          <ProtectedRoute>
           <Shell>
             <Routes>
               {/* Core */}
               <Route path="/"           element={<Home />} />
               <Route path="/navigation" element={<Navigation />} />
-              <Route path="/student"    element={<StudentDashboard />} />
-              <Route path="/faculty"    element={<FacultyDashboard />} />
-              <Route path="/analytics"  element={<Analytics />} />
+              <Route path="/student"    element={<ProtectedRoute allowedRoles={['student', 'admin']}><StudentDashboard /></ProtectedRoute>} />
+              <Route path="/faculty"    element={<ProtectedRoute allowedRoles={['faculty', 'admin']}><FacultyDashboard /></ProtectedRoute>} />
+              <Route path="/analytics"  element={<ProtectedRoute allowedRoles={['faculty', 'admin']}><Analytics /></ProtectedRoute>} />
               <Route path="/classrooms" element={<ClassroomManagement />} />
               <Route path="/labs"       element={<LabManagement />} />
 
               {/* Admin */}
-              <Route path="/admin/dashboard"     element={<AdminDashboard />} />
-              <Route path="/admin/users"         element={<UserManagement />} />
-              <Route path="/admin/buildings"     element={<BuildingManagement />} />
-              <Route path="/admin/floors"        element={<FloorManagement />} />
-              <Route path="/admin/timetable"     element={<TimetableManagement />} />
-              <Route path="/admin/substitutions" element={<SubstitutionManagement />} />
+              <Route path="/admin/dashboard"     element={<ProtectedRoute allowedRoles={ADMIN}><AdminDashboard /></ProtectedRoute>} />
+              <Route path="/admin/users"         element={<ProtectedRoute allowedRoles={ADMIN}><UserManagement /></ProtectedRoute>} />
+              <Route path="/admin/buildings"     element={<ProtectedRoute allowedRoles={ADMIN}><BuildingManagement /></ProtectedRoute>} />
+              <Route path="/admin/floors"        element={<ProtectedRoute allowedRoles={ADMIN}><FloorManagement /></ProtectedRoute>} />
+              <Route path="/admin/timetable"     element={<ProtectedRoute allowedRoles={ADMIN}><TimetableManagement /></ProtectedRoute>} />
+              <Route path="/admin/substitutions" element={<ProtectedRoute allowedRoles={ADMIN}><SubstitutionManagement /></ProtectedRoute>} />
 
               {/* Monitoring */}
               <Route path="/monitoring/library"    element={<LibraryAnalytics />} />
@@ -75,6 +96,7 @@ function AppRoutes() {
               <Route path="/navigation/indoor" element={<IndoorNavigation />} />
             </Routes>
           </Shell>
+          </ProtectedRoute>
         } />
       </Routes>
     </AnimatePresence>

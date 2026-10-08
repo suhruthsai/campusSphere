@@ -25,11 +25,16 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.password !== form.confirm) { setError('Passwords do not match.'); return; }
-    if (form.password.length < 6)       { setError('Password must be at least 6 characters.'); return; }
+    if (form.password.length < 8)       { setError('Password must be at least 8 characters.'); return; }
     setError(''); setLoading(true);
     try {
-      await register(form);
-      navigate('/');
+      const { confirm, ...payload } = form;
+      const user = await register(payload);
+      if (user.status === 'active') {
+        navigate('/');
+      } else {
+        navigate('/login', { state: { notice: 'Account created. An admin must approve faculty accounts before you can sign in.' } });
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -110,7 +115,7 @@ export default function Register() {
             {/* Password */}
             <Field icon={<Lock size={14} />} label="Password">
               <input type={showPwd ? 'text' : 'password'} value={form.password} onChange={set('password')} required
-                     placeholder="Min 6 characters" className="input-base pl-9 pr-11" />
+                     placeholder="Min 8 characters" className="input-base pl-9 pr-11" />
               <button type="button" onClick={() => setShowPwd((v) => !v)}
                       className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
                 {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}

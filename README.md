@@ -78,32 +78,33 @@ CampusSphere/
 - **Node.js** 18+ and **npm**
 - **Python** 3.10+
 
-### 2. Backend Setup (FastAPI + SQLite)
-```bash
-# Navigate to backend directory
-cd backend
+### 2. Configuration (secrets)
+Copy `.env.example` to `.env` in the project root and fill in `SECRET_KEY`, `ADMIN_PASSWORD` and `GROQ_API_KEY`.
+- If `ADMIN_PASSWORD` is empty, a random admin password is generated and printed **once** on first startup.
+- The Groq key is used **only by the backend** (`/api/v1/ai/chat`); never expose it as a `VITE_` variable.
+- Public sign-ups can create **student** accounts (active immediately) or **faculty** accounts (pending until an admin approves them in *Admin → Users*). Admin and staff accounts can only be created by an admin.
 
-# Create and activate virtual environment
+### 3. Backend Setup (FastAPI + SQLite)
+Run these from the **project root** (the code imports `backend.app...`):
+```bash
+# Create and activate a virtual environment
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 
-# Seed the complete 12-section timetable and campus database
-PYTHONPATH=.. python3 app/db/seed_all_timetables.py
-
-# Start the backend server on port 8000
-python3 -m uvicorn app.main:app --reload --port 8000
+# Start the backend on port 8000 (an empty database is seeded automatically on first start)
+python3 -m uvicorn backend.app.main:app --reload --port 8000
 ```
 Backend API will be running at `http://127.0.0.1:8000` (API Docs at `http://127.0.0.1:8000/docs`).
 
-### 3. Frontend Setup (React + Vite)
+### 4. Frontend Setup (React + Vite)
 ```bash
 # In the project root directory
 npm install
 
-# Start the Vite development server
+# Start the Vite development server (proxies /api and /ws to port 8000)
 npm run dev
 ```
 Frontend application will be accessible at `http://localhost:5173`.
@@ -111,10 +112,43 @@ Frontend application will be accessible at `http://localhost:5173`.
 ---
 
 ## 🧪 Database Seeder
-To regenerate or reseed the complete Civil & IT Block timetable database at any time:
+The server seeds the timetable **only when the database is empty**, so restarts and redeploys never overwrite edits.
+To wipe and fully reseed the Civil & IT Block timetable (this **deletes all timetable entries**):
 ```bash
 PYTHONPATH=. python3 backend/app/db/seed_all_timetables.py
 ```
+
+---
+
+## ☁️ Deployment (Render backend + Vercel frontend)
+
+**1. Backend on Render** — create a Blueprint from this repo; `render.yaml` provisions the API and a Postgres database.
+In the Render dashboard set:
+| Variable | Value |
+|---|---|
+| `ADMIN_PASSWORD` | Password for the first admin account (set **before** the first deploy) |
+| `GROQ_API_KEY` | Groq key for the AI assistant |
+| `CORS_ORIGINS` | Your Vercel URL, e.g. `https://campussphere.vercel.app` (comma-separate several) |
+
+`SECRET_KEY` is generated automatically. Render checks `/health` to confirm the API and database are up.
+
+**2. Frontend on Vercel** — import the repo (framework: Vite) and set one environment variable:
+| Variable | Value |
+|---|---|
+| `VITE_API_URL` | The Render service URL, e.g. `https://campussphere-backend.onrender.com` |
+
+The browser then calls the API and WebSockets on Render directly. Redeploy the frontend after changing `VITE_API_URL` (it's baked in at build time).
+
+**Docker (any host):**
+```bash
+docker build -f backend/Dockerfile -t campussphere-backend .
+docker run -p 8000:8000 --env-file .env campussphere-backend
+```
+
+**Free-tier caveats**
+- Render's free web service sleeps after inactivity; the first request after that takes ~1 minute.
+- The filesystem is ephemeral: uploaded room media (`media_uploads/`) is lost on every redeploy. Use object storage (S3, Cloudinary, …) or a paid persistent disk for real uploads.
+- Render's free Postgres database expires after a limited period; check Render's current terms and back up your data.
 
 ---
 

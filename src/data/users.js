@@ -1,11 +1,5 @@
 // ── Mock users for Suhruth University ────────────────────────────────────────
-// Passwords are stored in plaintext for demo only (never do this in production)
-
-export const DEMO_CREDENTIALS = [
-  { email: 'admin@suhruth.edu',   password: 'admin123',   role: 'admin'   },
-  { email: 'faculty@suhruth.edu', password: 'faculty123', role: 'faculty' },
-  { email: 'student@suhruth.edu', password: 'student123', role: 'student' },
-];
+// Display-only sample data. Real accounts live in the backend; never put passwords here.
 
 export const users = [
   // ── Admins ────────────────────────────────────────────────────────────────

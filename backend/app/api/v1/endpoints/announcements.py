@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from backend.app.db.session import get_db
+from backend.app.core.security import require_admin, require_staff, get_current_user
 from backend.app.models.campus import AnnouncementModel
 
 router = APIRouter()
@@ -37,7 +38,8 @@ def list_announcements(
 
 
 @router.post("/", summary="Post a new announcement")
-def create_announcement(ann: AnnouncementCreate, db: Session = Depends(get_db)):
+def create_announcement(ann: AnnouncementCreate, db: Session = Depends(get_db), _staff: dict = Depends(require_staff)):
+    ann.author_id = _staff["sub"]
     db_ann = AnnouncementModel(**ann.dict())
     db.add(db_ann)
     db.commit()
@@ -46,7 +48,7 @@ def create_announcement(ann: AnnouncementCreate, db: Session = Depends(get_db)):
 
 
 @router.patch("/{ann_id}/deactivate", summary="Deactivate an announcement")
-def deactivate_announcement(ann_id: int, db: Session = Depends(get_db)):
+def deactivate_announcement(ann_id: int, db: Session = Depends(get_db), _staff: dict = Depends(require_staff)):
     ann = db.query(AnnouncementModel).filter(AnnouncementModel.id == ann_id).first()
     if not ann:
         raise HTTPException(status_code=404, detail="Announcement not found")
@@ -56,7 +58,7 @@ def deactivate_announcement(ann_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{ann_id}", summary="Delete an announcement")
-def delete_announcement(ann_id: int, db: Session = Depends(get_db)):
+def delete_announcement(ann_id: int, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     ann = db.query(AnnouncementModel).filter(AnnouncementModel.id == ann_id).first()
     if not ann:
         raise HTTPException(status_code=404, detail="Announcement not found")

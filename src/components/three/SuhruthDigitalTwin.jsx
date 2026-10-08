@@ -5,6 +5,7 @@ import { Layers, X } from 'lucide-react';
 import { useCampusStore } from '../../store/useCampusStore.js';
 import ClassroomInfoPanel from '../timetable/ClassroomInfoPanel.jsx';
 import RoomInterior3DModal from './RoomInterior3DModal.jsx';
+import { buildingsApi } from '../../utils/api.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 1. REAL-WORLD GPS ANCHOR
@@ -4171,9 +4172,7 @@ export default function SuhruthDigitalTwin() {
     
     let result;
     try {
-      const res = await fetch(`/api/v1/buildings/route?from_id=${fromBuilding}&to_id=${toBuilding}&mode=${routeMode}`);
-      if (!res.ok) throw new Error('API Error');
-      result = await res.json();
+      result = await buildingsApi.route(fromBuilding, toBuilding, routeMode);
     } catch (err) {
       setRouteInfo({ error: 'Failed to fetch route from API.' });
       return;

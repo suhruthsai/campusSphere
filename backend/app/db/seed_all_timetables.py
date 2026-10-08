@@ -22,9 +22,19 @@ PERIOD_TIMES = {
     4: ("12:40","13:40"), 5: ("14:15","15:15"), 6: ("15:15","16:15"),
 }
 
-def seed_all():
+def seed_all(only_if_empty: bool = False):
+    """Seed buildings, rooms, faculty and the full timetable.
+
+    only_if_empty=True (used at server startup) skips seeding when timetable data
+    already exists, so restarts/redeploys never overwrite admin edits.
+    Running this file directly does a full reseed (clears timetable entries first).
+    """
     db = SessionLocal()
     try:
+        if only_if_empty and db.query(TimetableEntryModel).first() is not None:
+            print("ℹ️  Timetable data already present — skipping seed.")
+            return
+
         print("🌱 Seeding Civil & IT Block — Full Week Timetables...")
 
         # ── 1. Building ──────────────────────────────────────────────────────────

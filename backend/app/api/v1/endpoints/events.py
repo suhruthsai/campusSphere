@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from backend.app.db.session import get_db
+from backend.app.core.security import require_admin, require_staff, get_current_user
 from backend.app.models.campus import CampusEventModel
 
 router = APIRouter()
@@ -42,7 +43,7 @@ def list_events(
 
 
 @router.post("/", summary="Create a new campus event")
-def create_event(event: EventCreate, db: Session = Depends(get_db)):
+def create_event(event: EventCreate, db: Session = Depends(get_db), _staff: dict = Depends(require_staff)):
     if event.end_datetime <= event.start_datetime:
         raise HTTPException(status_code=400, detail="end_datetime must be after start_datetime")
     db_event = CampusEventModel(**event.dict())
@@ -61,7 +62,7 @@ def get_event(event_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{event_id}", summary="Update a campus event")
-def update_event(event_id: int, updates: EventCreate, db: Session = Depends(get_db)):
+def update_event(event_id: int, updates: EventCreate, db: Session = Depends(get_db), _staff: dict = Depends(require_staff)):
     event = db.query(CampusEventModel).filter(CampusEventModel.id == event_id).first()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -73,7 +74,7 @@ def update_event(event_id: int, updates: EventCreate, db: Session = Depends(get_
 
 
 @router.delete("/{event_id}", summary="Delete a campus event")
-def delete_event(event_id: int, db: Session = Depends(get_db)):
+def delete_event(event_id: int, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     event = db.query(CampusEventModel).filter(CampusEventModel.id == event_id).first()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")

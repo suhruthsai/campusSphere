@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import datetime
 
 from backend.app.db.session import get_db
+from backend.app.core.security import require_admin, require_staff, get_current_user
 from backend.app.models.campus import AttendanceLogModel
 
 router = APIRouter()
@@ -17,7 +18,8 @@ def get_attendance(
     subject: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     limit: int = Query(100, le=500),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _staff: dict = Depends(require_staff),
 ):
     q = db.query(AttendanceLogModel)
     if student_id: q = q.filter(AttendanceLogModel.student_id == student_id)
@@ -37,8 +39,12 @@ def mark_attendance(
     status: str = "present",
     period: Optional[int] = None,
     marked_by: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _staff: dict = Depends(require_staff),
 ):
+    if status not in ("present", "absent", "late"):
+        raise HTTPException(status_code=400, detail="status must be present, absent or late")
+    marked_by = _staff["name"]
     log = AttendanceLogModel(
         student_id=student_id,
         building_id=building_id,
@@ -56,7 +62,10 @@ def mark_attendance(
 
 
 @router.get("/summary/{student_id}", summary="Attendance summary for a student")
-def attendance_summary(student_id: str, db: Session = Depends(get_db)):
+def attendance_summary(student_id: str, db: Session = Depends(get_db), current: dict = Depends(get_current_user)):
+    # Students may only view their own summary
+    if current["role"] not in ("admin", "faculty") and student_id != current["sub"]:
+        raise HTTPException(status_code=403, detail="You can only view your own attendance")
     logs = db.query(AttendanceLogModel).filter(AttendanceLogModel.student_id == student_id).all()
     total = len(logs)
     present = sum(1 for l in logs if l.status == "present")
@@ -74,7 +83,7 @@ def attendance_summary(student_id: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/{log_id}", summary="Delete an attendance record")
-def delete_attendance(log_id: int, db: Session = Depends(get_db)):
+def delete_attendance(log_id: int, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     log = db.query(AttendanceLogModel).filter(AttendanceLogModel.id == log_id).first()
     if not log:
         raise HTTPException(status_code=404, detail="Attendance log not found")
