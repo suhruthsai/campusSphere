@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from backend.app.db.session import get_db
+from backend.app.core.security import require_admin
 from backend.app.models.campus import SubjectModel
 from backend.app.schemas.campus import SubjectCreate, SubjectOut
 
@@ -19,7 +20,7 @@ def list_subjects(
     return q.all()
 
 @router.post("/", response_model=SubjectOut)
-def create_subject(payload: SubjectCreate, db: Session = Depends(get_db)):
+def create_subject(payload: SubjectCreate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     if db.query(SubjectModel).filter(SubjectModel.id == payload.id).first():
         raise HTTPException(status_code=409, detail="Subject ID already exists")
     s = SubjectModel(**payload.model_dump())
@@ -29,7 +30,7 @@ def create_subject(payload: SubjectCreate, db: Session = Depends(get_db)):
     return s
 
 @router.put("/{subject_id}", response_model=SubjectOut)
-def update_subject(subject_id: str, payload: SubjectCreate, db: Session = Depends(get_db)):
+def update_subject(subject_id: str, payload: SubjectCreate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     s = db.query(SubjectModel).filter(SubjectModel.id == subject_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Subject not found")
@@ -40,7 +41,7 @@ def update_subject(subject_id: str, payload: SubjectCreate, db: Session = Depend
     return s
 
 @router.delete("/{subject_id}")
-def delete_subject(subject_id: str, db: Session = Depends(get_db)):
+def delete_subject(subject_id: str, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     s = db.query(SubjectModel).filter(SubjectModel.id == subject_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Subject not found")

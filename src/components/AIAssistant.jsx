@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useRef, useEffect } from 'react';
 import Button from './ui/Button.jsx';
 import { useCampusStore } from '../store/useCampusStore.js';
-import { campusGuideAgent, createStudentAgent } from '../ai/agent.js';
-import { HumanMessage, AIMessage } from '@langchain/core/messages';
+import { aiApi } from '../utils/api.js';
 
-// Same profiles as defined in SuhruthDigitalTwin
+// Same profiles as defined in SuhruthDigitalTwin (the backend keeps the matching
+// persona prompts in backend/app/api/v1/endpoints/ai.py, keyed by id)
 export const STUDENT_PROFILES = [
   { id: 'student_0', name: 'Alex', major: 'Computer Science', trait: 'Always talking about hackathons and coding in the dark.' },
   { id: 'student_1', name: 'Sam', major: 'Mechanical Engineering', trait: 'Stressed about thermodynamics, drinks way too much coffee.' },
@@ -18,7 +18,8 @@ export const STUDENT_PROFILES = [
   { id: 'student_7', name: 'Meera Joshi', major: 'Computer Science', trait: 'Loves open source and is always looking for contributors.' },
 ];
 
-const studentAgents = {};
+const MAX_HISTORY = 20;       // backend limit
+const MAX_MESSAGE_CHARS = 2000;
 const suggestions = ['Where is the CAD lab?', 'Show me academic buildings', 'Clear highlights', 'Take me to the library'];
 
 export default function AIAssistant() {
@@ -38,28 +39,23 @@ export default function AIAssistant() {
     setIsLoading(true);
 
     try {
-      const langchainMessages = chatMessages.map(m => 
-        m.role === 'user' ? new HumanMessage(m.content) : new AIMessage(m.content)
-      );
-      langchainMessages.push(new HumanMessage(q));
+      const history = [...chatMessages, { role: 'user', content: q }]
+        .slice(-MAX_HISTORY)
+        .map((m) => ({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: String(m.content).slice(0, MAX_MESSAGE_CHARS),
+        }));
 
-      let responseContent = "";
+      const { reply, actions } = await aiApi.chat(history, isGlobal ? null : chatTarget);
 
-      if (isGlobal) {
-        const result = await campusGuideAgent.invoke({ messages: langchainMessages });
-        const lastMessage = result.messages[result.messages.length - 1];
-        responseContent = lastMessage.content;
-      } else {
-        if (!studentAgents[chatTarget]) {
-          studentAgents[chatTarget] = createStudentAgent(targetStudent.name, targetStudent.major, targetStudent.trait);
-        }
-        const agent = studentAgents[chatTarget];
-        const result = await agent.invoke({ messages: langchainMessages });
-        const lastMessage = result.messages[result.messages.length - 1];
-        responseContent = lastMessage.content;
+      // Apply the 3D-scene actions the model requested (validated server-side)
+      const store = useCampusStore.getState();
+      for (const action of actions || []) {
+        if (action.name === 'fly_to_building') store.setAIFlyTarget(action.args.buildingName);
+        if (action.name === 'highlight_buildings') store.setAIHighlightTypes(action.args.categories);
       }
 
-      addChatMessage({ role: 'ai', content: responseContent });
+      addChatMessage({ role: 'ai', content: reply });
     } catch (error) {
       console.error("AI Error:", error);
       addChatMessage({ role: 'ai', content: `Sorry, I am having trouble connecting to my neural network right now. Details: ${error.message}` });

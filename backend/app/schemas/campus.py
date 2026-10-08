@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Literal
 from datetime import date, datetime
 
 # --- Auth & User ---
@@ -12,11 +12,15 @@ class UserLogin(BaseModel):
     password: str
 
 class UserCreate(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr
-    password: str
-    role: str = "student"
-    department: str = "CSE"
+    password: str = Field(..., min_length=8, max_length=72)  # bcrypt only uses the first 72 bytes
+    role: Literal["student", "faculty", "staff", "admin"] = "student"
+    department: str = Field("CSE", max_length=50)
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8, max_length=72)
 
 class UserOut(BaseModel):
     id: str

@@ -4,6 +4,8 @@ from typing import List, Optional
 from datetime import datetime, date
 import io, csv
 from backend.app.db.session import get_db
+from backend.app.core.security import require_admin
+from backend.app.core.realtime import broadcast_timetable
 from backend.app.models.campus import TimetableEntryModel, ClassroomModel, TimetableOverrideModel, TimetableAuditLogModel, SubstitutionModel
 from backend.app.schemas.campus import (
     TimetableEntryCreate, TimetableEntryUpdate, TimetableEntryOut,
@@ -16,6 +18,7 @@ router = APIRouter()
 DAY_NAMES  = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 DAY_MAP    = {d.lower(): i for i, d in enumerate(DAY_NAMES)}
 DAY_ABBR   = {d[:3].lower(): i for i, d in enumerate(DAY_NAMES)}
+MAX_CSV_BYTES = 2 * 1024 * 1024
 
 def _time_to_minutes(t: str) -> int:
     h, m = t.split(":")
@@ -46,7 +49,7 @@ def list_entries(
     return q.order_by(TimetableEntryModel.day_of_week, TimetableEntryModel.period_number).all()
 
 @router.post("/", response_model=TimetableEntryOut)
-def create_entry(payload: TimetableEntryCreate, db: Session = Depends(get_db)):
+def create_entry(payload: TimetableEntryCreate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     if not db.query(ClassroomModel).filter(ClassroomModel.id == payload.classroom_id).first():
         raise HTTPException(status_code=404, detail="Classroom not found")
 
@@ -73,7 +76,7 @@ def create_entry(payload: TimetableEntryCreate, db: Session = Depends(get_db)):
     return entry
 
 @router.put("/{entry_id}", response_model=TimetableEntryOut)
-def update_entry(entry_id: int, payload: TimetableEntryUpdate, db: Session = Depends(get_db)):
+def update_entry(entry_id: int, payload: TimetableEntryUpdate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     entry = db.query(TimetableEntryModel).filter(TimetableEntryModel.id == entry_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -99,7 +102,7 @@ def update_entry(entry_id: int, payload: TimetableEntryUpdate, db: Session = Dep
         setattr(entry, k, v)
 
     # Audit log — permanent timetable edit
-    changed_by = update_data.pop("changed_by", "Admin") if "changed_by" in update_data else "Admin"
+    changed_by = _admin["name"]
     audit = TimetableAuditLogModel(
         action="TIMETABLE_ENTRY_EDITED",
         details={"entry_id": entry_id, "before": old_state, "after": update_data},
@@ -110,23 +113,18 @@ def update_entry(entry_id: int, payload: TimetableEntryUpdate, db: Session = Dep
     db.refresh(entry)
 
     # Broadcast WebSocket so Digital Twin updates immediately
-    try:
-        from backend.app.main import timetable_manager
-        import asyncio
-        asyncio.create_task(timetable_manager.broadcast({
-            "type": "TIMETABLE_UPDATED",
-            "entry_id": entry_id,
-            "classroom_id": entry.classroom_id,
-            "action": "entry_edited",
-        }))
-    except Exception as e:
-        print(f"WebSocket broadcast error: {e}")
+    broadcast_timetable({
+        "type": "TIMETABLE_UPDATED",
+        "entry_id": entry_id,
+        "classroom_id": entry.classroom_id,
+        "action": "entry_edited",
+    })
 
     return entry
 
 
 @router.delete("/{entry_id}")
-def delete_entry(entry_id: int, db: Session = Depends(get_db)):
+def delete_entry(entry_id: int, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     entry = db.query(TimetableEntryModel).filter(TimetableEntryModel.id == entry_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -325,9 +323,12 @@ def detect_conflicts(db: Session = Depends(get_db)):
 async def import_csv(
     file: UploadFile = File(...),
     dry_run: bool = Query(False, description="If true, validate without inserting"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
-    content = await file.read()
+    content = await file.read(MAX_CSV_BYTES + 1)
+    if len(content) > MAX_CSV_BYTES:
+        raise HTTPException(status_code=413, detail="CSV file too large (max 2 MB)")
     reader  = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
 
     inserted, skipped, errors = 0, 0, []
@@ -385,7 +386,8 @@ async def import_csv(
     }
 
 @router.post("/overrides", response_model=TimetableOverrideOut)
-async def create_override(payload: TimetableOverrideCreate, db: Session = Depends(get_db)):
+async def create_override(payload: TimetableOverrideCreate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
+    payload.created_by = _admin["name"]
     # Create the override
     override = TimetableOverrideModel(**payload.model_dump())
     db.add(override)
@@ -401,16 +403,11 @@ async def create_override(payload: TimetableOverrideCreate, db: Session = Depend
     db.refresh(override)
 
     # Broadcast websocket update
-    try:
-        from backend.app.main import timetable_manager
-        import asyncio
-        asyncio.create_task(timetable_manager.broadcast({
-            "type": "TIMETABLE_UPDATED",
-            "classroom_id": payload.classroom_id,
-            "action": "override_created"
-        }))
-    except Exception as e:
-        print(f"WebSocket broadcast error: {e}")
+    broadcast_timetable({
+        "type": "TIMETABLE_UPDATED",
+        "classroom_id": payload.classroom_id,
+        "action": "override_created"
+    })
 
     return override
 

@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { DEMO_CREDENTIALS } from '../../data/users.js';
 
 const ROLES = [
   { value: 'student', label: 'Student',    color: '#00E5FF' },
@@ -17,6 +16,7 @@ export default function Login() {
   const navigate  = useNavigate();
   const location  = useLocation();
   const from = location.state?.from?.pathname || '/';
+  const notice = location.state?.notice;
 
   const [selectedRole, setSelectedRole] = useState('student');
   const [email,    setEmail]    = useState('');
@@ -25,10 +25,8 @@ export default function Login() {
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
 
-  // Auto-fill demo credentials when role changes
-  const fillDemo = (role) => {
-    const cred = DEMO_CREDENTIALS.find((c) => c.role === role);
-    if (cred) { setEmail(cred.email); setPassword(cred.password); }
+  // Role tabs only change the accent colour; the backend decides the actual role
+  const selectRole = (role) => {
     setSelectedRole(role);
     setError('');
   };
@@ -98,7 +96,7 @@ export default function Login() {
               <button
                 key={r.value}
                 type="button"
-                onClick={() => fillDemo(r.value)}
+                onClick={() => selectRole(r.value)}
                 className="flex-1 rounded-xl py-2 text-xs font-semibold transition-all"
                 style={
                   selectedRole === r.value
@@ -110,6 +108,12 @@ export default function Login() {
               </button>
             ))}
           </div>
+
+          {notice && (
+            <p className="mb-4 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/10 px-4 py-2.5 text-xs text-[#00E5FF]">
+              {notice}
+            </p>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -188,15 +192,6 @@ export default function Login() {
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
-
-          {/* Demo hint */}
-          <div className="mt-5 rounded-xl border border-white/8 bg-white/4 p-3">
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Demo credentials auto-filled</p>
-            <p className="text-xs text-slate-400">
-              <span style={{ color: activeRole.color }}>{activeRole.label}:</span>{' '}
-              {DEMO_CREDENTIALS.find((c) => c.role === selectedRole)?.email}
-            </p>
-          </div>
 
           {/* Register link */}
           <p className="mt-5 text-center text-xs text-slate-500">

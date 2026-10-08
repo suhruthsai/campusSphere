@@ -1,6 +1,19 @@
 // ── Shared API client — auto-attaches JWT, handles 401 ────────────────────────
-const BASE_URL = '/api/v1';
+
+// Backend origin. Empty in local dev (Vite proxies /api and /ws to the backend);
+// in production set VITE_API_URL, e.g. https://campussphere-backend.onrender.com
+export const API_ORIGIN = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+const BASE_URL = `${API_ORIGIN}/api/v1`;
+
+/** Absolute WebSocket URL for a backend path like '/ws/telemetry'. */
+export function wsUrl(path) {
+  if (API_ORIGIN) return API_ORIGIN.replace(/^http/, 'ws') + path;
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}${path}`;
+}
+
 const TOKEN_KEY = 'campussphere_token';
+const AUTH_PAGES = ['/login', '/register', '/forgot-password'];
 
 function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -19,16 +32,21 @@ async function request(path, options = {}) {
     headers,
   });
 
-  if (res.status === 401) {
+  // 401 on any route except login/register means the session is gone
+  if (res.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/register')) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem('campussphere_user');
-    window.location.href = '/login';
-    return;
+    if (!AUTH_PAGES.includes(window.location.pathname)) {
+      window.location.href = '/login';
+    }
+    throw new Error('Session expired. Please sign in again.');
   }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Request failed' }));
-    throw new Error(err.detail || `HTTP ${res.status}`);
+    // FastAPI validation errors return a list of {msg, ...}
+    const detail = Array.isArray(err.detail) ? err.detail.map((d) => d.msg).join('; ') : err.detail;
+    throw new Error(detail || `HTTP ${res.status}`);
   }
 
   const text = await res.text();
@@ -51,6 +69,15 @@ export const authApi = {
 export const buildingsApi = {
   list:   ()   => request('/buildings/'),
   get:    (id) => request(`/buildings/${id}`),
+  route:  (fromId, toId, mode = 'walk') =>
+    request('/buildings/route?' + new URLSearchParams({ from_id: fromId, to_id: toId, mode })),
+};
+
+// ── AI Assistant (Groq is called server-side; the key never reaches the browser) ─
+export const aiApi = {
+  // messages: [{ role: 'user' | 'assistant', content }], target: null | student persona id
+  chat: (messages, target = null) =>
+    request('/ai/chat', { method: 'POST', body: JSON.stringify({ messages, target }) }),
 };
 
 // ── Events ─────────────────────────────────────────────────────────────────────
@@ -119,11 +146,15 @@ export const timetableApi = {
     const fd = new FormData();
     fd.append('file', file);
     const token = localStorage.getItem('campussphere_token');
-    return fetch(`/api/v1/timetable/import/csv?dry_run=${dryRun}`, {
+    return fetch(`${BASE_URL}/timetable/import/csv?dry_run=${dryRun}`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: fd,
-    }).then(r => r.json());
+    }).then(async (r) => {
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`);
+      return body;
+    });
   },
 };
 
@@ -155,5 +186,5 @@ export const substitutionsApi = {
   auditHistory: (params = {}) => request('/substitutions/history/audit?' + new URLSearchParams(params)),
 };
 
-export default { authApi, buildingsApi, eventsApi, announcementsApi, attendanceApi, mediaApi, classroomsApi, timetableApi, subjectsApi, facultyApi, substitutionsApi };
+export default { authApi, buildingsApi, aiApi, eventsApi, announcementsApi, attendanceApi, mediaApi, classroomsApi, timetableApi, subjectsApi, facultyApi, substitutionsApi };
 

@@ -71,8 +71,11 @@ export default function UserManagement() {
         }
         setUserList((prev) => prev.map((u) => u.id === editUser.id ? { ...u, ...form, avatar: form.name.split(' ').map((w) => w[0]).join('').slice(0,2).toUpperCase() } : u));
       } else {
-        const payload = { ...form, password: 'Password123' }; // default password for admin creation
-        await authApi.register(payload);
+        // One-time random password; the admin passes it on to the user
+        const tempPassword = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(36).padStart(2, '0')).join('').slice(0, 16);
+        const { status, ...payload } = form;
+        await authApi.register({ ...payload, password: tempPassword });
+        alert(`User created.\n\nTemporary password for ${form.email}:\n${tempPassword}\n\nCopy it now — it won't be shown again.`);
         loadUsers(); // reload from backend to get generated ID
       }
       setModalOpen(false);
@@ -185,7 +188,7 @@ export default function UserManagement() {
                       <td className="px-4 py-3 text-slate-400">{u.department}</td>
                       <td className="px-4 py-3 text-slate-500 font-mono">{u.rollNo || u.staffId || '—'}</td>
                       <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${u.status === 'active' ? 'bg-green-500/15 text-green-400' : 'bg-slate-700/50 text-slate-400'}`}>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${u.status === 'active' ? 'bg-green-500/15 text-green-400' : u.status === 'pending' ? 'bg-amber-500/15 text-amber-400' : 'bg-slate-700/50 text-slate-400'}`}>
                           {u.status}
                         </span>
                       </td>
@@ -235,7 +238,7 @@ export default function UserManagement() {
                 {[
                   { label: 'Role', key: 'role', options: ['student','faculty','staff','admin'] },
                   { label: 'Department', key: 'department', options: ['CSE','ECE','Mech','EEE','Civil','IT','S&H','Administration','Library','Canteen','Maintenance'] },
-                  { label: 'Status', key: 'status', options: ['active','inactive'] },
+                  { label: 'Status', key: 'status', options: ['active','pending','inactive','suspended'] },
                 ].map(({ label, key, options }) => (
                   <div key={key}>
                     <label className="mb-1 block text-xs text-slate-400">{label}</label>

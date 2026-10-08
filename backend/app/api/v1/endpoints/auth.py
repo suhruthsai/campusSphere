@@ -6,17 +6,29 @@ from typing import Optional
 
 from backend.app.db.session import get_db
 from backend.app.models.campus import UserModel
-from backend.app.schemas.campus import UserLogin, UserCreate, UserOut, Token
+from backend.app.schemas.campus import UserLogin, UserCreate, UserOut, Token, PasswordChange
 from backend.app.core.security import (
     verify_password, get_password_hash, create_access_token,
-    get_current_user, require_admin
+    get_current_user, get_optional_user, require_admin
 )
 
 router = APIRouter()
 
 # ── Register ───────────────────────────────────────────────────────────────────
 @router.post("/register", response_model=UserOut, status_code=201, summary="Register a new user")
-def register(payload: UserCreate, db: Session = Depends(get_db)):
+def register(
+    payload: UserCreate,
+    db: Session = Depends(get_db),
+    current: Optional[dict] = Depends(get_optional_user),
+):
+    is_admin = bool(current and current.get("role") == "admin")
+
+    # Public sign-up can only create students (active) or faculty (pending admin approval).
+    # Admin and staff accounts can only be created by an admin.
+    if payload.role in ("admin", "staff") and not is_admin:
+        raise HTTPException(status_code=403, detail="Only an admin can create admin or staff accounts.")
+    account_status = "pending" if payload.role == "faculty" and not is_admin else "active"
+
     # Check duplicate email
     if db.query(UserModel).filter(UserModel.email == payload.email.lower()).first():
         raise HTTPException(status_code=400, detail="An account with this email already exists.")
@@ -30,7 +42,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
         department=payload.department,
         roll_no=getattr(payload, 'roll_no', None),
         staff_id=getattr(payload, 'staff_id', None),
-        status="active",
+        status=account_status,
         joined_at=datetime.utcnow().strftime("%Y-%m-%d"),
         last_active=datetime.utcnow().strftime("%Y-%m-%d"),
     )
@@ -45,6 +57,8 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
     user = db.query(UserModel).filter(UserModel.email == payload.email.lower()).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
+    if user.status == "pending":
+        raise HTTPException(status_code=403, detail="Account is awaiting admin approval.")
     if user.status != "active":
         raise HTTPException(status_code=403, detail="Account is inactive. Contact admin.")
 
@@ -70,6 +84,16 @@ def get_me(current: dict = Depends(get_current_user), db: Session = Depends(get_
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
     return user
+
+# ── Change own password ────────────────────────────────────────────────────────
+@router.post("/change-password", summary="Change the current user's password")
+def change_password(payload: PasswordChange, current: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(UserModel).filter(UserModel.id == current["sub"]).first()
+    if not user or not verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    user.hashed_password = get_password_hash(payload.new_password)
+    db.commit()
+    return {"message": "Password updated."}
 
 # ── List users (admin only) ────────────────────────────────────────────────────
 @router.get("/users", summary="List all users (admin only)")
@@ -106,10 +130,12 @@ def get_user(user_id: str, db: Session = Depends(get_db), _admin: dict = Depends
 @router.patch("/users/{user_id}/status", summary="Activate or deactivate a user (admin only)")
 def update_user_status(
     user_id: str,
-    new_status: str = Query(..., pattern="^(active|inactive|suspended)$"),
+    new_status: str = Query(..., pattern="^(active|pending|inactive|suspended)$"),
     db: Session = Depends(get_db),
     _admin: dict = Depends(require_admin),
 ):
+    if user_id == _admin["sub"] and new_status != "active":
+        raise HTTPException(status_code=400, detail="You cannot deactivate your own account.")
     user = db.query(UserModel).filter(UserModel.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
@@ -120,6 +146,8 @@ def update_user_status(
 # ── Delete user (admin only) ────────────────────────────────────────────────────
 @router.delete("/users/{user_id}", summary="Delete a user (admin only)")
 def delete_user(user_id: str, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
+    if user_id == _admin["sub"]:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
     user = db.query(UserModel).filter(UserModel.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")

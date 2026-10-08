@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from backend.app.db.session import get_db
+from backend.app.core.security import require_admin
 from backend.app.models.campus import FacultyProfileModel
 from backend.app.schemas.campus import FacultyProfileCreate, FacultyProfileOut
 
@@ -17,7 +18,7 @@ def list_faculty(
     return q.filter(FacultyProfileModel.is_active == True).all()
 
 @router.post("/", response_model=FacultyProfileOut)
-def create_faculty(payload: FacultyProfileCreate, db: Session = Depends(get_db)):
+def create_faculty(payload: FacultyProfileCreate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     if db.query(FacultyProfileModel).filter(FacultyProfileModel.id == payload.id).first():
         raise HTTPException(status_code=409, detail="Faculty ID already exists")
     f = FacultyProfileModel(**payload.model_dump())
@@ -27,7 +28,7 @@ def create_faculty(payload: FacultyProfileCreate, db: Session = Depends(get_db))
     return f
 
 @router.put("/{faculty_id}", response_model=FacultyProfileOut)
-def update_faculty(faculty_id: str, payload: FacultyProfileCreate, db: Session = Depends(get_db)):
+def update_faculty(faculty_id: str, payload: FacultyProfileCreate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     f = db.query(FacultyProfileModel).filter(FacultyProfileModel.id == faculty_id).first()
     if not f:
         raise HTTPException(status_code=404, detail="Faculty not found")
@@ -38,7 +39,7 @@ def update_faculty(faculty_id: str, payload: FacultyProfileCreate, db: Session =
     return f
 
 @router.delete("/{faculty_id}")
-def delete_faculty(faculty_id: str, db: Session = Depends(get_db)):
+def delete_faculty(faculty_id: str, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     f = db.query(FacultyProfileModel).filter(FacultyProfileModel.id == faculty_id).first()
     if not f:
         raise HTTPException(status_code=404, detail="Faculty not found")

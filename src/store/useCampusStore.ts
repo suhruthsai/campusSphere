@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { Building } from '../types/index.ts';
 import { buildings } from '../data/campus.js';
+import { wsUrl } from '../utils/api.js';
 
 interface CampusState {
   buildings: Building[];
@@ -108,8 +109,7 @@ export const useCampusStore = create<CampusState>((set, get) => ({
   }),
 
   initWebSocket: () => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/telemetry`);
+    const ws = new WebSocket(wsUrl('/ws/telemetry'));
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);

@@ -50,6 +50,8 @@ export async function attemptLogin(email, password) {
  */
 export async function registerUser(data) {
   const user = await authApi.register(data);
+  // Accounts awaiting admin approval (e.g. faculty) can't log in yet
+  if (user.status !== 'active') return user;
   // Auto-login after registration
   return attemptLogin(data.email, data.password);
 }
@@ -63,6 +65,7 @@ export async function validateStoredToken() {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return null;
     const user = await authApi.me();
+    if (!user) return null;
     const userWithAvatar = {
       ...user,
       avatar: user.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase(),

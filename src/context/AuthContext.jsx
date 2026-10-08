@@ -1,28 +1,51 @@
-// ── AuthContext — AUTH TEMPORARILY BYPASSED ────────────────────────────────
-// TODO: Remove mock and restore real auth when adding the auth module back.
-import { createContext, useContext, useMemo } from 'react';
+// ── AuthContext — real backend auth (JWT via /api/v1/auth) ────────────────────
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { attemptLogin, clearAuth, getStoredUser, registerUser, validateStoredToken } from '../utils/auth.js';
 
 const AuthContext = createContext(null);
 
-const MOCK_USER = {
-  id: 'guest',
-  name: 'CampusSphere User',
-  email: 'user@campussphere.local',
-  role: 'admin',
-};
-
 export function AuthProvider({ children }) {
+  // Optimistically show the cached user, then confirm the token with the backend.
+  const [user,    setUser]    = useState(getStoredUser);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    validateStoredToken().then((u) => {
+      if (!cancelled) { setUser(u); setLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const login = useCallback(async (email, password) => {
+    const u = await attemptLogin(email, password);
+    setUser(u);
+    return u;
+  }, []);
+
+  // Returns the created user. Accounts that need admin approval are not logged in.
+  const register = useCallback(async (data) => {
+    const u = await registerUser(data);
+    if (u.status === 'active') setUser(u);
+    return u;
+  }, []);
+
+  const logout = useCallback(() => {
+    clearAuth();
+    setUser(null);
+  }, []);
+
   const value = useMemo(() => ({
-    user:      MOCK_USER,
-    loading:   false,
-    login:     async () => MOCK_USER,
-    logout:    () => {},
-    register:  async () => MOCK_USER,
-    isAdmin:   true,
-    isFaculty: false,
-    isStudent: false,
-    isStaff:   false,
-  }), []);
+    user,
+    loading,
+    login,
+    logout,
+    register,
+    isAdmin:   user?.role === 'admin',
+    isFaculty: user?.role === 'faculty',
+    isStudent: user?.role === 'student',
+    isStaff:   user?.role === 'staff',
+  }), [user, loading, login, logout, register]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

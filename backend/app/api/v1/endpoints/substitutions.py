@@ -7,6 +7,8 @@ from typing import List, Optional
 from datetime import date, datetime
 
 from backend.app.db.session import get_db
+from backend.app.core.security import require_admin
+from backend.app.core.realtime import broadcast_timetable
 from backend.app.models.campus import (
     SubstitutionModel,
     SubstitutionAuditLogModel,
@@ -57,12 +59,7 @@ def _sub_to_snapshot(sub: SubstitutionModel) -> dict:
 
 
 def _broadcast(event_type: str, payload: dict):
-    try:
-        from backend.app.main import timetable_manager
-        import asyncio
-        asyncio.create_task(timetable_manager.broadcast({"type": event_type, **payload}))
-    except Exception as e:
-        print(f"[substitutions] WebSocket broadcast error: {e}")
+    broadcast_timetable({"type": event_type, **payload})
 
 
 @router.post("/check-conflict", response_model=FacultyConflictResult)
@@ -165,7 +162,8 @@ def list_substitutions(
 
 
 @router.post("/", response_model=SubstitutionOut)
-def create_substitution(payload: SubstitutionCreate, db: Session = Depends(get_db)):
+def create_substitution(payload: SubstitutionCreate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
+    payload.created_by = _admin["name"]
     if not db.query(ClassroomModel).filter(ClassroomModel.id == payload.classroom_id).first():
         raise HTTPException(status_code=404, detail="Classroom not found")
 
@@ -248,7 +246,8 @@ def create_substitution(payload: SubstitutionCreate, db: Session = Depends(get_d
 
 
 @router.put("/{sub_id}", response_model=SubstitutionOut)
-def update_substitution(sub_id: int, payload: SubstitutionUpdate, db: Session = Depends(get_db)):
+def update_substitution(sub_id: int, payload: SubstitutionUpdate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
+    payload.updated_by = _admin["name"]
     sub = db.query(SubstitutionModel).filter(SubstitutionModel.id == sub_id).first()
     if not sub:
         raise HTTPException(status_code=404, detail="Substitution not found")
@@ -308,7 +307,9 @@ def cancel_substitution(
     sub_id: int,
     payload: SubstitutionCancelRequest,
     db: Session = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
+    payload.cancelled_by = _admin["name"]
     sub = db.query(SubstitutionModel).filter(SubstitutionModel.id == sub_id).first()
     if not sub:
         raise HTTPException(status_code=404, detail="Substitution not found")
