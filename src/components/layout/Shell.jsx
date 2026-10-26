@@ -62,6 +62,7 @@ function getNavItems(role) {
       items: [
         { to: '/services/approvals', label: 'Approvals', icon: FileCheck, color: '#00FFB3' },
         { to: '/services/setup',     label: 'Setup',     icon: Settings,  color: '#F59E0B' },
+        { to: '/services/roll-list', label: 'Roll list', icon: Users, color: '#38BDF8' },
         { to: '/joining/desk',       label: 'Admissions desk', icon: ClipboardCheck, color: '#00E5FF' },
         { to: '/joining/originals',  label: 'Originals register', icon: Archive, color: '#818CF8' },
         { to: '/joining/fees',       label: 'Fee settings', icon: IndianRupee, color: '#F472B6' },
@@ -108,6 +109,7 @@ function getNavItems(role) {
     ...common,
     { to: '/joining/desk',       label: 'Admissions', icon: ClipboardCheck },
     { to: '/joining/originals',  label: 'Originals',  icon: Archive },
+    { to: '/services/roll-list', label: 'Roll list',  icon: Users },
     { to: '/services/approvals', label: 'Approvals', icon: FileCheck },
     { to: '/leaving/desk',       label: 'Clearance', icon: ListChecks },
   ];

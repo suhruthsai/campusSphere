@@ -1,7 +1,7 @@
 // Shared bits for Student Services pages: status styles, time formatting, the approval timeline.
 import { Check, Clock3, X } from 'lucide-react';
 
-export const DEPARTMENTS = ['CSE', 'ECE', 'EEE', 'MECH', 'CIVIL', 'IT', 'S&H'];
+export const DEPARTMENTS = ['CSE', 'CSIT', 'CSD', 'ECE', 'EEE', 'MECH', 'CIVIL', 'IT', 'S&H'];
 
 export const STATUS = {
   awaiting_payment: { label: 'Fee due', cls: 'border-amber-400/40 bg-amber-500/10 text-amber-300' },

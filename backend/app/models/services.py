@@ -72,3 +72,22 @@ class DocumentRequestModel(Base):
     fulfilment   = Column(String, nullable=True)       # generated | upload
     issued_file  = Column(String, nullable=True)       # uploaded final document (Exam Cell)
     dispatch     = Column(JSON, nullable=True)         # {"mode", "tracking", "at", "by"}
+
+
+class RosterEntryModel(Base):
+    """The college's official roll list (one row per student, imported from the branch roll-list PDFs).
+    Used to check what students enter about themselves; not a login account."""
+    __tablename__ = "student_roster"
+
+    roll_no        = Column(String, primary_key=True)             # e.g. "1602-23-737-001"
+    name           = Column(String, nullable=False)
+    father_name    = Column(String, nullable=True)
+    department     = Column(String, nullable=False, index=True)  # CSE, ECE, IT, CSIT, CSD, ...
+    year           = Column(Integer, nullable=False, index=True)  # 1-4 in the current academic year
+    section        = Column(String, nullable=True)
+    email          = Column(String, nullable=True)               # only well-formed addresses are kept
+    admission_year = Column(Integer, nullable=True)              # from the roll number (None if it has no year)
+    academic_year  = Column(String, nullable=False)              # roll list valid for, e.g. "2026-27"
+    source         = Column(String, nullable=True)               # file it came from
+    notes          = Column(Text, nullable=True)                 # anything odd found while importing
+    imported_at    = Column(DateTime, default=datetime.utcnow)

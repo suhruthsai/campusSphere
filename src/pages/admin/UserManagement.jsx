@@ -9,7 +9,7 @@ import { roleColors } from '../../utils/auth.js';
 import { authApi, saveBlob } from '../../utils/api.js';
 
 const TABS = ['All', 'Student', 'Faculty', 'Staff', 'Admin'];
-const DEPARTMENTS = ['All', 'CSE', 'ECE', 'MECH', 'EEE', 'CIVIL', 'IT', 'S&H', 'Administration', 'Examinations', 'Library', 'Canteen', 'Maintenance'];
+const DEPARTMENTS = ['All', 'CSE', 'CSIT', 'CSD', 'ECE', 'MECH', 'EEE', 'CIVIL', 'IT', 'S&H', 'Administration', 'Examinations', 'Library', 'Canteen', 'Maintenance'];
 const ROLES = ['student', 'faculty', 'staff', 'admin'];
 
 /** One-time random password; the admin passes it on to the user. */

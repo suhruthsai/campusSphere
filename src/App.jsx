@@ -47,6 +47,7 @@ const SmartNavigation = lazy(() => import('./pages/navigation/SmartNavigation.js
 const MyRequests = lazy(() => import('./pages/services/MyRequests.jsx'));
 const ApprovalsInbox = lazy(() => import('./pages/services/ApprovalsInbox.jsx'));
 const ServicesSetup = lazy(() => import('./pages/services/ServicesSetup.jsx'));
+const RollList = lazy(() => import('./pages/services/RollList.jsx'));
 const VerifyDocument = lazy(() => import('./pages/services/VerifyDocument.jsx'));
 // Joining after TGEAPCET counselling, college fees, originals register
 const JoiningJourney = lazy(() => import('./pages/joining/JoiningJourney.jsx'));
@@ -146,6 +147,7 @@ function AppRoutes() {
               <Route path="/services"           element={<ProtectedRoute allowedRoles={['student']}><MyRequests /></ProtectedRoute>} />
               <Route path="/services/approvals" element={<ProtectedRoute allowedRoles={['faculty', 'staff', 'admin']}><ApprovalsInbox /></ProtectedRoute>} />
               <Route path="/services/setup"     element={<ProtectedRoute allowedRoles={ADMIN}><ServicesSetup /></ProtectedRoute>} />
+              <Route path="/services/roll-list" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><RollList /></ProtectedRoute>} />
               <Route path="/joining"            element={<ProtectedRoute allowedRoles={['student']}><JoiningJourney /></ProtectedRoute>} />
               <Route path="/joining/desk"       element={<ProtectedRoute allowedRoles={['admin', 'staff']}><AdmissionsDesk /></ProtectedRoute>} />
               <Route path="/joining/originals"  element={<ProtectedRoute allowedRoles={['admin', 'staff']}><OriginalsRegister /></ProtectedRoute>} />

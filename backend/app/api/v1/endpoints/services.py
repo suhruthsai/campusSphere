@@ -15,7 +15,7 @@ from backend.app.models.admissions import AdmissionModel
 from backend.app.models.campus import UserModel
 from backend.app.models.leaving import DocumentFeeModel, ExitModel
 from backend.app.models.services import (
-    ApproverAssignmentModel, DocumentRequestModel, StudentProfileModel,
+    ApproverAssignmentModel, DocumentRequestModel, RosterEntryModel, StudentProfileModel,
 )
 from backend.app.student_services import joining as J
 from backend.app.student_services import payments as P
@@ -31,6 +31,7 @@ public_router = APIRouter()   # mounted under /services, no login (verification)
 APPROVER_ROLES = ("faculty", "admin", "staff")
 ASSIGNABLE_ROLES = ("class_incharge", "ahod", "hod", "coe", "principal")
 COLLEGE_WIDE_ROLES = ("principal", "coe")
+YEAR_WORDS = {1: "I", 2: "II", 3: "III", 4: "IV"}
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
@@ -88,7 +89,39 @@ def _profile_out(db: Session, profile: Optional[StudentProfileModel], user: User
         "mentor_name": mentor.name if mentor else None,
         "complete": bool(profile and profile.year and profile.section and profile.parent_name and profile.gender
                          and ((profile.roll_no or user.roll_no))),
+        # The student's own entry in the college roll list, if their roll number is in it
+        "roll_list": (lambda e: {"name": e.name, "department": e.department, "year": e.year, "section": e.section}
+                      if e else None)(_roster_for(db, (profile.roll_no if profile else None) or user.roll_no)),
     }
+
+
+def _roster_for(db: Session, roll: Optional[str]) -> Optional[RosterEntryModel]:
+    return db.query(RosterEntryModel).filter(RosterEntryModel.roll_no == roll).first() if roll else None
+
+
+def _apply_roster(db: Session, profile: StudentProfileModel, roll: Optional[str], strict: bool) -> Optional[RosterEntryModel]:
+    """Check a roll number against the college roll list and take the branch (and, if missing, the
+    father's name) from it. strict (students): year and section must match the list; admins may override."""
+    roll = (roll or "").strip().upper() or None
+    if roll:
+        taken = db.query(StudentProfileModel).filter(StudentProfileModel.roll_no == roll,
+                                                     StudentProfileModel.user_id != profile.user_id).first()
+        if taken:
+            raise HTTPException(status_code=409, detail="This roll number is already linked to another account. Contact the Admin Office.")
+    entry = _roster_for(db, roll)
+    if not entry:
+        return None
+    if strict:
+        wrong_year = profile.year != entry.year
+        wrong_section = bool(entry.section) and (profile.section or "").upper() != entry.section
+        if wrong_year or wrong_section:
+            where = f"{entry.department} · {YEAR_WORDS.get(entry.year, entry.year)} year" + (f" · section {entry.section}" if entry.section else "")
+            raise HTTPException(status_code=422, detail=f"The college roll list has {roll} as {where}. Enter those details, "
+                                                        "or ask the Admin Office if the roll list is wrong.")
+    profile.department = entry.department
+    if not profile.parent_name and entry.father_name:
+        profile.parent_name = entry.father_name.title()
+    return entry
 
 
 def _get_request(db: Session, req_id: int) -> DocumentRequestModel:
@@ -192,11 +225,12 @@ def update_my_profile(body: ProfileIn, db: Session = Depends(get_db), current: d
     if not profile:
         profile = StudentProfileModel(user_id=user.id, department=(user.department or "CSE").upper())
         db.add(profile)
-    profile.roll_no = (body.roll_no or "").strip() or profile.roll_no or user.roll_no
+    profile.roll_no = (body.roll_no or "").strip().upper() or profile.roll_no or user.roll_no
     profile.year = body.year
     profile.section = body.section.strip().upper()
     profile.parent_name = body.parent_name.strip()
     profile.gender = body.gender
+    _apply_roster(db, profile, profile.roll_no, strict=True)
     db.commit()
     db.refresh(profile)
     return _profile_out(db, profile, user)
@@ -496,15 +530,56 @@ def admin_update_profile(user_id: str, body: AdminProfileIn, db: Session = Depen
         db.add(profile)
     profile.department = ((body.department or "").strip().upper() or profile.department or user.department or "CSE")
     profile.program = (body.program or "").strip() or profile.program or "B.E."
-    profile.roll_no = (body.roll_no or "").strip() or profile.roll_no or user.roll_no
+    profile.roll_no = (body.roll_no or "").strip().upper() or profile.roll_no or user.roll_no
     profile.year = body.year
     profile.section = body.section.strip().upper()
     profile.parent_name = body.parent_name.strip()
     profile.gender = body.gender
     profile.mentor_id = body.mentor_id or None
+    chosen_dept = profile.department
+    if _apply_roster(db, profile, profile.roll_no, strict=False) and body.department:
+        profile.department = chosen_dept   # the admin's explicit choice wins over the roll list
     db.commit()
     db.refresh(profile)
     return _profile_out(db, profile, user)
+
+
+@router.get("/admin/roll-list", summary="The college roll list (admin and Admin Office)")
+def roll_list(department: Optional[str] = Query(None), year: Optional[int] = Query(None), section: Optional[str] = Query(None),
+              q: Optional[str] = Query(None, max_length=60), limit: int = Query(200, ge=1, le=2000),
+              db: Session = Depends(get_db), current: dict = Depends(get_current_user)):
+    if current["role"] not in ("admin", "staff"):
+        raise HTTPException(status_code=403, detail="Admin Office only")
+    base = db.query(RosterEntryModel)
+    counts = {}
+    for e in base.with_entities(RosterEntryModel.department, RosterEntryModel.year, RosterEntryModel.section).all():
+        key = f"{e[0]}|{e[1]}"
+        c = counts.setdefault(key, {"department": e[0], "year": e[1], "students": 0, "sections": {}})
+        c["students"] += 1
+        sec = e[2] or "-"
+        c["sections"][sec] = c["sections"].get(sec, 0) + 1
+    qy = base
+    if department:
+        qy = qy.filter(RosterEntryModel.department == department.upper())
+    if year:
+        qy = qy.filter(RosterEntryModel.year == year)
+    if section:
+        qy = qy.filter(RosterEntryModel.section == section.upper())
+    if q:
+        like = f"%{q.strip()}%"
+        qy = qy.filter(RosterEntryModel.name.ilike(like) | RosterEntryModel.roll_no.ilike(like) | RosterEntryModel.email.ilike(like))
+    total = qy.count()
+    rows = qy.order_by(RosterEntryModel.department, RosterEntryModel.year, RosterEntryModel.roll_no).limit(limit).all()
+    registered = {p.roll_no for p in db.query(StudentProfileModel.roll_no).filter(
+        StudentProfileModel.roll_no.in_([r.roll_no for r in rows])).all()}
+    return {
+        "academic_year": rows[0].academic_year if rows else None,
+        "groups": sorted(counts.values(), key=lambda c: (c["department"], c["year"])),
+        "total": total,
+        "items": [{"roll_no": r.roll_no, "name": r.name, "father_name": r.father_name, "department": r.department,
+                   "year": r.year, "section": r.section, "email": r.email, "notes": r.notes,
+                   "registered": r.roll_no in registered} for r in rows],
+    }
 
 
 @router.get("/admin/requests", summary="All requests (management overview)")

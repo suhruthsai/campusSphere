@@ -203,6 +203,7 @@ export const servicesApi = {
   students:         (params = {}) => request('/services/admin/students?' + new URLSearchParams(params)),
   setStudentProfile:(userId, data) => request(`/services/admin/students/${userId}/profile`, { method: 'PUT', body: JSON.stringify(data) }),
   allRequests:      (params = {}) => request('/services/admin/requests?' + new URLSearchParams(params)),
+  rollList:         (params = {}) => request('/services/admin/roll-list?' + new URLSearchParams(params)),
   // Exam Cell (Controller of Examinations)
   examQueue:        ()         => request('/services/exam-cell/queue'),
   uploadFinal:      (id, file) => uploadFile(`/services/requests/${id}/final-document`, file),

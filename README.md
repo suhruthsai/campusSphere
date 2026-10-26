@@ -48,6 +48,9 @@ and **ReportLab**. The AI assistant runs on **Groq** (server-side key).
 ### 🛠️ Admin
 - Users (add, edit, CSV import/export, password reset), buildings, approver roles, clearance officers,
   joining and document fees, dashboard with live weather and classes in session.
+- **College roll list** (Services → Roll list): the branch roll lists imported from PDF. A student's roll
+  number is checked against it when they fill in their profile (year and section must match, branch is
+  taken from the list), and one roll number can belong to only one account.
 
 **Sample data, clearly labelled in the app:** Library/Crowd/Attendance monitoring, AI Predictions and
 Recommendations have no sensor or attendance source yet. Payments run in **test mode** only.
@@ -144,6 +147,27 @@ To wipe and fully reseed the Civil & IT Block timetable (this **deletes all time
 ```bash
 PYTHONPATH=. python3 backend/app/db/seed_all_timetables.py
 ```
+
+### Roll lists
+Import a branch's roll-list PDF (one branch and year per file; existing roll numbers are updated):
+```bash
+pip install pdfplumber
+python backend/app/db/import_roll_lists.py --branch IT --year 4 "IT Roll List.pdf" --dry-run   # check first
+python backend/app/db/import_roll_lists.py --branch IT --year 4 "IT Roll List.pdf"
+```
+Problems in the source (invalid emails, roll numbers that don't match the year, one email shared by two
+students) are printed and kept as notes on the row. The PDFs are personal data: keep them out of git.
+
+---
+
+## ✅ Tests
+With the backend running and the demo accounts seeded, run every API suite (services, admin, joining,
+leaving, timetable writes, timetable truth, current class, roll list, and a sweep of every GET endpoint):
+```bash
+python tests/run_all.py            # or: python tests/run_all.py roll_list joining
+```
+They create throwaway accounts and records and remove them afterwards. Point them at another server with
+`CAMPUS_API=http://host:port`.
 
 ---
 
