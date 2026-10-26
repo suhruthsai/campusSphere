@@ -64,13 +64,6 @@ class ForecastResponse(BaseModel):
     confidence_score: float
     insights: str
 
-class ChatMessage(BaseModel):
-    message: str
-
-class ChatResponse(BaseModel):
-    reply: str
-    sources: Optional[List[str]] = None
-
 # --- Classroom ---
 class ClassroomCreate(BaseModel):
     id: str

@@ -1,7 +1,6 @@
 from fastapi import APIRouter
-from backend.app.schemas.campus import ForecastRequest, ForecastResponse, ChatMessage, ChatResponse
+from backend.app.schemas.campus import ForecastRequest, ForecastResponse
 from backend.app.ai.forecasting import CampusAIForecaster
-from backend.app.ai.assistant import CampusAIAssistant
 
 router = APIRouter()
 
@@ -23,8 +22,3 @@ def get_ai_forecast(req: ForecastRequest):
             confidence_score=0.90,
             insights=res["alert"]
         )
-
-@router.post("/chat", response_model=ChatResponse)
-def ai_assistant_chat(msg: ChatMessage):
-    res = CampusAIAssistant.answer_query(msg.message)
-    return ChatResponse(reply=res["reply"], sources=res["sources"])

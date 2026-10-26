@@ -2,6 +2,8 @@
 import { MessageCircle, Globe, Send, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import ChatText from '../../components/ChatText.jsx';
 import MonitoringLayout, { MCard } from '../../components/monitoring/MonitoringLayout.jsx';
 import { assistant } from '../../data/ai.js';
 import { aiApi } from '../../utils/api.js';
@@ -14,10 +16,12 @@ export default function AICampusAssistant() {
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const [lang, setLang] = useState('English');
-  const chatEnd = useRef(null);
+  const chatBox = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    chatEnd.current?.scrollIntoView({ behavior: 'smooth' });
+    const box = chatBox.current;
+    if (box) box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
   // Real answers from the campus AI (same service as the floating assistant)
@@ -34,11 +38,9 @@ export default function AICampusAssistant() {
     setTyping(true);
     try {
       const { reply, actions } = await aiApi.chat(history);
-      const store = useCampusStore.getState();
-      for (const action of actions || []) {
-        if (action.name === 'fly_to_building') store.setAIFlyTarget(action.args.buildingName);
-      }
-      setMessages((m) => [...m, { role: 'assistant', text: reply || '(no answer)' }]);
+      const fly = (actions || []).find((a) => a.name === 'fly_to_building')?.args.buildingName;
+      if (fly) useCampusStore.getState().setAIFlyTarget(fly);   // the 3D campus flies there when it's opened
+      setMessages((m) => [...m, { role: 'assistant', text: reply || '(no answer)', fly }]);
     } catch (e) {
       const notSetUp = /not configured|GROQ_API_KEY/i.test(e.message);
       setMessages((m) => [...m, { role: 'assistant', text: notSetUp
@@ -82,7 +84,7 @@ export default function AICampusAssistant() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1" style={{ maxHeight: 380, minHeight: 300 }}>
+            <div ref={chatBox} className="flex-1 overflow-y-auto space-y-3 pr-1" style={{ maxHeight: 380, minHeight: 300 }}>
               <AnimatePresence>
                 {messages.map((msg, i) => (
                   <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
@@ -92,13 +94,13 @@ export default function AICampusAssistant() {
                         ? 'bg-[#7B61FF]/20 border border-[#7B61FF]/25 text-white'
                         : 'bg-white/5 border border-white/8 text-slate-200'
                     }`}>
-                      {msg.text.split('\n').map((line, j) => (
-                        <p key={j} className={j > 0 ? 'mt-1' : ''}>
-                          {line.split('**').map((part, k) => 
-                            k % 2 === 1 ? <strong key={k} className="text-white font-semibold">{part}</strong> : part
-                          )}
-                        </p>
-                      ))}
+                      <ChatText text={msg.text} />
+                      {msg.fly && (
+                        <button type="button" onClick={() => navigate('/')}
+                          className="mt-2 text-[11px] font-semibold text-cyan-300 hover:underline">
+                          Show {msg.fly} on the 3D campus →
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 ))}
@@ -114,7 +116,6 @@ export default function AICampusAssistant() {
                   </div>
                 </motion.div>
               )}
-              <div ref={chatEnd} />
             </div>
 
             {/* Input bar */}

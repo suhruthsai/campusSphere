@@ -30,7 +30,7 @@ export default function RollList() {
     .filter((s) => s !== '-').sort();
 
   return (
-    <PageTransition>
+    <PageTransition className="mx-auto min-h-screen max-w-7xl px-4 pb-20 pt-28 sm:px-6">
       <DashboardHeading eyebrow={`Roll list${data?.academic_year ? ` · ${data.academic_year}` : ''}`} title="Students on the college roll." />
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">

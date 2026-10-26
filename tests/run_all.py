@@ -27,6 +27,7 @@ SUITES = {
     "timetable": ["truth_timetable.py", DB, ENV, CREDS],
     "current_class": ["truth_current.py", DB, ENV],
     "roll_list": ["test_roll_list.py", DB, CREDS, ENV],
+    "ai_tools": ["test_ai_tools.py", DB],
     "get_sweep": ["sweep_get.py", CREDS, ENV],
 }
 

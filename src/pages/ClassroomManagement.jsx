@@ -167,7 +167,7 @@ function StatPill({ color, label, count }) {
 }
 
 const s = {
-  page:       { background:'#0F172A', minHeight:'100vh', color:'#E5E7EB', fontFamily:"'Inter',sans-serif", padding:'0 0 40px' },
+  page:       { background:'#0F172A', minHeight:'100vh', color:'#E5E7EB', fontFamily:"'Inter',sans-serif", padding:'84px 0 40px' },
   header:     { display:'flex', justifyContent:'space-between', alignItems:'flex-start', padding:'28px 32px 0', flexWrap:'wrap', gap:16 },
   title:      { color:'#F9FAFB', fontSize:26, fontWeight:800, margin:0 },
   sub:        { color:'#6B7280', fontSize:13, marginTop:4 },

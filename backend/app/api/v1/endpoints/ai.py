@@ -6,13 +6,19 @@ The Groq API key stays on the server. The model can request 3D-scene actions
 to the frontend as `actions`, which the browser applies to the scene.
 """
 import json
+import re
+import time
 from typing import List, Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from backend.app.ai import campus_tools
+from backend.app.core.campus_time import campus_now
 from backend.app.core.config import settings
+from backend.app.db.session import get_db
 from backend.app.core.security import get_current_user
 from backend.app.core.rate_limit import SlidingWindowLimiter
 
@@ -37,7 +43,20 @@ CRITICAL: You have access to tools that manipulate the user's 3D view:
    IMPORTANT: You must pass one of the exact building names listed above! Do not make up building names. If the user asks for "3d design", you should map that to "CAD Lab".
 2. highlight_buildings(categories): Use this when a user asks to see a TYPE of building (e.g., "Show me all Academic buildings"). Pass an empty array to clear highlights.
 
-Whenever a user asks to find something, you MUST use the appropriate tool to show them, and then reply conversationally explaining what you are showing them. Be concise, friendly, and helpful."""
+Whenever a user asks to find something, you MUST use the appropriate tool to show them, and then reply conversationally explaining what you are showing them. Be concise, friendly, and helpful.
+
+You also have read-only data tools: classes_now, section_timetable, faculty_timetable, my_timetable, find_room,
+building_info and services_info. ALWAYS use them for facts about classes, rooms, teachers, buildings and certificates,
+and answer only from what they return. Never guess where a building or room is, who teaches what, or what is
+running: if a tool has no data, say so (timetables and room lists are loaded for the IT and Civil branches only).
+Do not describe a building's position relative to others unless a tool told you. Use markdown lists for schedules."""
+
+
+def _guide_prompt(current: dict) -> str:
+    now = campus_now()
+    who = {"student": "a student", "faculty": "a faculty member", "staff": "Admin Office staff", "admin": "the administrator"}
+    return (GUIDE_PROMPT + f"\n\nNow: {now.strftime('%A %d %B %Y, %H:%M')} India time. Class periods: {campus_tools.PERIODS} "
+            f"(Monday-Saturday). The user is {who.get(current.get('role'), 'a user')}.")
 
 # Student personas live on the server so clients can't inject arbitrary system prompts.
 STUDENT_PERSONAS = {
@@ -57,7 +76,7 @@ Your defining personality trait is: {trait}.
 You are currently walking around the campus. The user has just stopped to talk to you.
 Respond completely in character as this student. Keep your answers relatively brief (1-2 sentences max), as you are busy walking around. Do not act like an AI assistant."""
 
-TOOLS = [
+TOOLS = campus_tools.TOOLS + [
     {
         "type": "function",
         "function": {
@@ -117,26 +136,37 @@ def _groq(messages: list, use_tools: bool) -> dict:
     body = {"model": settings.GROQ_MODEL, "messages": messages, "temperature": 0.2}
     if use_tools:
         body["tools"] = TOOLS
-    try:
-        r = httpx.post(
-            GROQ_URL,
-            headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
-            json=body,
-            timeout=30,
-        )
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="AI service is unreachable.")
+    for attempt in range(3):
+        try:
+            r = httpx.post(
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+                json=body,
+                timeout=30,
+            )
+        except httpx.HTTPError:
+            raise HTTPException(status_code=502, detail="AI service is unreachable.")
+        if r.status_code != 429:
+            break
+        # Groq's free tier allows a few thousand tokens a minute: wait briefly and retry, else say when to try again
+        m = re.search(r"try again in ([\d.]+)s", r.text)
+        wait = float(r.headers.get("retry-after") or (m.group(1) if m else 10))
+        if attempt == 2 or wait > 15:
+            raise HTTPException(status_code=503, detail=f"The AI assistant is busy (free usage limit). Please try again in {max(1, round(wait))} seconds.")
+        time.sleep(wait + 0.5)
     if r.status_code != 200:
         print(f"[ai] Groq error {r.status_code}: {r.text[:300]}")
         raise HTTPException(status_code=502, detail="AI service returned an error.")
     return r.json()["choices"][0]["message"]
 
 
-def _run_tool(name: str, raw_args: str, actions: list) -> str:
+def _run_tool(name: str, raw_args: str, actions: list, db: Session, current: dict) -> str:
     try:
         args = json.loads(raw_args or "{}")
     except json.JSONDecodeError:
         return "Error: invalid arguments."
+    if name in campus_tools.NAMES:
+        return campus_tools.run(db, current, name, args if isinstance(args, dict) else {})
     if name == "fly_to_building":
         building = args.get("buildingName")
         if building not in VALID_BUILDINGS:
@@ -154,13 +184,13 @@ def _run_tool(name: str, raw_args: str, actions: list) -> str:
 
 
 @router.post("/chat", response_model=AIChatResponse, summary="Chat with the campus guide or a student persona")
-def ai_chat(req: AIChatRequest, current: dict = Depends(get_current_user)):
+def ai_chat(req: AIChatRequest, db: Session = Depends(get_db), current: dict = Depends(get_current_user)):
     if not settings.GROQ_API_KEY:
         raise HTTPException(status_code=503, detail="AI assistant is not configured (GROQ_API_KEY missing on server).")
     ai_limiter.check_and_hit(current["sub"], "Too many AI requests.")
 
     if req.target is None:
-        system, use_tools = GUIDE_PROMPT, True
+        system, use_tools = _guide_prompt(current), True
     else:
         persona = STUDENT_PERSONAS.get(req.target)
         if not persona:
@@ -171,7 +201,7 @@ def ai_chat(req: AIChatRequest, current: dict = Depends(get_current_user)):
     actions: List[AIAction] = []
 
     # Minimal ReAct loop: let the model call tools, feed results back, then get the final reply.
-    for _ in range(3):
+    for _ in range(4):
         msg = _groq(messages, use_tools)
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
@@ -179,7 +209,7 @@ def ai_chat(req: AIChatRequest, current: dict = Depends(get_current_user)):
         messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": tool_calls})
         for call in tool_calls:
             fn = call.get("function", {})
-            result = _run_tool(fn.get("name"), fn.get("arguments"), actions)
+            result = _run_tool(fn.get("name"), fn.get("arguments"), actions, db, current)
             messages.append({"role": "tool", "tool_call_id": call.get("id"), "content": result})
 
     final = _groq(messages, use_tools=False)

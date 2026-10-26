@@ -162,7 +162,8 @@ students) are printed and kept as notes on the row. The PDFs are personal data: 
 
 ## ✅ Tests
 With the backend running and the demo accounts seeded, run every API suite (services, admin, joining,
-leaving, timetable writes, timetable truth, current class, roll list, and a sweep of every GET endpoint):
+leaving, timetable writes, timetable truth, current class, roll list, the AI guide's data tools, and a sweep
+of every GET endpoint):
 ```bash
 python tests/run_all.py            # or: python tests/run_all.py roll_list joining
 ```

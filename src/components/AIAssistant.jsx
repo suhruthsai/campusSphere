@@ -1,6 +1,8 @@
 import { Bot, Mic, Send, Sparkles, X, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useRef, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import ChatText from './ChatText.jsx';
 import Button from './ui/Button.jsx';
 import { useCampusStore } from '../store/useCampusStore.js';
 import { aiApi } from '../utils/api.js';
@@ -20,7 +22,7 @@ export const STUDENT_PROFILES = [
 
 const MAX_HISTORY = 20;       // backend limit
 const MAX_MESSAGE_CHARS = 2000;
-const suggestions = ['Where is the CAD lab?', 'Show me academic buildings', 'Clear highlights', 'Take me to the library'];
+const suggestions = ['Where is the CAD lab?', 'Which classes are on now?', 'How do I get a bonafide?', 'Take me to the library'];
 
 export default function AIAssistant() {
   // Individual selectors: subscribing to the whole store re-rendered this on every telemetry tick
@@ -32,6 +34,8 @@ export default function AIAssistant() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const bottomRef = useRef(null);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const isGlobal = chatTarget === null;
   const targetStudent = isGlobal ? null : STUDENT_PROFILES.find(p => p.id === chatTarget);
@@ -59,6 +63,8 @@ export default function AIAssistant() {
         if (action.name === 'fly_to_building') store.setAIFlyTarget(action.args.buildingName);
         if (action.name === 'highlight_buildings') store.setAIHighlightTypes(action.args.categories);
       }
+      // Map actions only show on the 3D campus: go there (the chat stays open with its history)
+      if ((actions || []).length && location.pathname !== '/') navigate('/');
 
       addChatMessage({ role: 'ai', content: reply });
     } catch (error) {
@@ -130,13 +136,13 @@ export default function AIAssistant() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.2 }}
-                  className={`rounded-xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                  className={`rounded-xl px-3.5 py-2.5 text-sm leading-relaxed ${
                     msg.role === 'ai'
                       ? 'bg-white/6 text-slate-200 border border-white/8'
-                      : 'ml-8 bg-gradient-to-r from-primary/15 to-secondary/10 text-primary border border-primary/15 text-right'
+                      : 'ml-8 whitespace-pre-wrap bg-gradient-to-r from-primary/15 to-secondary/10 text-primary border border-primary/15 text-right'
                   }`}
                 >
-                  {msg.content}
+                  {msg.role === 'ai' ? <ChatText text={msg.content} /> : msg.content}
                 </motion.div>
               ))}
               {isLoading && (
