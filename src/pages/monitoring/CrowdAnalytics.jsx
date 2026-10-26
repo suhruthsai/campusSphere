@@ -14,6 +14,7 @@ const DENSITY_STYLE = {
 export default function CrowdAnalytics() {
   return (
     <MonitoringLayout
+      simulated="No cameras or footfall counters are connected yet."
       title="Crowd Analytics"
       subtitle="Real-time crowd density, heatmaps & AI predictions"
       icon={<Users size={22} />}

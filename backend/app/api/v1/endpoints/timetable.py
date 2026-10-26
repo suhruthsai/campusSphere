@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime, date
+from datetime import date, timedelta
 import io, csv
 from backend.app.db.session import get_db
-from backend.app.core.security import require_admin
+from backend.app.core.security import get_current_user, require_admin
 from backend.app.core.realtime import broadcast_timetable
+from backend.app.core.campus_time import campus_now, campus_today, parse_campus_time
 from backend.app.models.campus import TimetableEntryModel, ClassroomModel, TimetableOverrideModel, TimetableAuditLogModel, SubstitutionModel
 from backend.app.schemas.campus import (
     TimetableEntryCreate, TimetableEntryUpdate, TimetableEntryOut,
@@ -26,6 +27,117 @@ def _time_to_minutes(t: str) -> int:
 
 def _overlaps(a_start, a_end, b_start, b_end) -> bool:
     return _time_to_minutes(a_start) < _time_to_minutes(b_end) and            _time_to_minutes(a_end)   > _time_to_minutes(b_start)
+
+def _section_matches(entry_section: str, dept: str, year: int, letter: str) -> bool:
+    """Timetable sections look like 'IT-2A' (IT, year 2, section A) or 'Civil-5' (Civil, semester 5)."""
+    head, _, tail = (entry_section or "").partition("-")
+    if head.upper() != (dept or "").upper() or not tail:
+        return False
+    digits = "".join(ch for ch in tail if ch.isdigit())
+    letters = "".join(ch for ch in tail if ch.isalpha())
+    if not digits:
+        return False
+    n = int(digits)
+    # A letter after the number means "year + section"; a bare number is the semester
+    entry_year = n if letters else (n + 1) // 2
+    return entry_year == year and (not letters or letters.upper() == (letter or "").upper())
+
+
+@router.get("/stats", summary="Campus statistics computed from the timetable")
+def timetable_stats(db: Session = Depends(get_db), current: dict = Depends(get_current_user)):
+    """Everything here is derived from the official timetable and the room list (no sensors)."""
+    from collections import Counter, defaultdict
+    from backend.app.models.campus import FacultyProfileModel, UserModel
+    entries = db.query(TimetableEntryModel).filter(TimetableEntryModel.is_active == True).all()
+    rooms = {c.id: c for c in db.query(ClassroomModel).all()}
+    days = sorted({e.day_of_week for e in entries})
+    periods = sorted({e.period_number for e in entries})
+    slots_per_week = sum(len({e.period_number for e in entries if e.day_of_week == d}) for d in days) or 1
+
+    # Rooms: periods booked per week out of the teaching slots
+    booked = defaultdict(set)
+    for e in entries:
+        booked[e.classroom_id].add((e.day_of_week, e.period_number))
+    room_rows = sorted(({"id": rid, "name": rooms[rid].name if rid in rooms else rid,
+                         "building": rooms[rid].building if rid in rooms else None,
+                         "type": rooms[rid].type if rid in rooms else None,
+                         "booked": len(slots), "utilization": round(100 * len(slots) / slots_per_week)}
+                        for rid, slots in booked.items()), key=lambda r: -r["booked"])
+    unused = [{"id": c.id, "name": c.name, "type": c.type} for c in rooms.values()
+              if c.id not in booked and c.location_type in ("CLASSROOM", "LABORATORY")]
+
+    # Departments
+    by_dept = defaultdict(lambda: {"classes_per_week": 0, "sections": set(), "faculty": set()})
+    for e in entries:
+        d = by_dept[e.department]
+        d["classes_per_week"] += 1
+        d["sections"].add(e.section)
+        if e.faculty_id:
+            d["faculty"].add(e.faculty_id)
+    students = Counter((u.department or "").upper() for u in db.query(UserModel).filter(UserModel.role == "student").all())
+    faculty_profiles = Counter(f.department for f in db.query(FacultyProfileModel).all())
+    dept_rows = [{"department": k, "classes_per_week": v["classes_per_week"], "sections": len(v["sections"]),
+                  "teaching_faculty": len(v["faculty"]), "registered_students": students.get(k.upper(), 0)}
+                 for k, v in sorted(by_dept.items())]
+
+    # When is the campus busiest (classes running in each day × period)
+    grid = Counter((e.day_of_week, e.period_number) for e in entries)
+    slot_times = {}
+    for e in entries:
+        slot_times.setdefault(e.period_number, f"{e.start_time}–{e.end_time}")
+
+    # Faculty load
+    load = Counter((e.faculty_id, e.faculty_name) for e in entries if e.faculty_id)
+    faculty_rows = [{"id": fid, "name": name, "periods_per_week": n} for (fid, name), n in load.most_common()]
+
+    return {
+        "totals": {"classes_per_week": len(entries), "sections": len({e.section for e in entries}),
+                   "rooms_in_timetable": len(booked), "rooms_total": len(rooms), "teaching_slots_per_week": slots_per_week,
+                   "faculty_teaching": len(load), "faculty_profiles": sum(faculty_profiles.values())},
+        "days": days, "periods": [{"n": p, "time": slot_times.get(p)} for p in periods],
+        "grid": [{"day": d, "period": p, "classes": grid.get((d, p), 0)} for d in days for p in periods],
+        "rooms": room_rows, "unused_rooms": unused, "departments": dept_rows, "faculty": faculty_rows,
+    }
+
+
+@router.get("/mine", summary="My week: a student's section timetable or a faculty member's classes")
+def my_timetable(db: Session = Depends(get_db), current: dict = Depends(get_current_user)):
+    from backend.app.models.campus import FacultyProfileModel, UserModel
+    from backend.app.models.services import StudentProfileModel
+    entries, label, reason = [], None, None
+    if current["role"] == "student":
+        prof = db.query(StudentProfileModel).filter(StudentProfileModel.user_id == current["sub"]).first()
+        if not prof or not prof.year:
+            reason = "Complete your academic details (department, year, section) on the Services page."
+        else:
+            rows = db.query(TimetableEntryModel).filter(TimetableEntryModel.is_active == True).all()
+            entries = [e for e in rows if _section_matches(e.section, prof.department, prof.year, prof.section)]
+            label = f"{prof.department} · Year {prof.year}" + (f" · Section {prof.section}" if prof.section else "")
+            if not entries:
+                reason = f"The timetable for {label} hasn't been uploaded yet (only IT and Civil timetables are loaded)."
+    else:
+        user = db.query(UserModel).filter(UserModel.id == current["sub"]).first()
+        fac = db.query(FacultyProfileModel).filter(FacultyProfileModel.email.ilike(user.email)).first() if user else None
+        if not fac:
+            reason = "Your account isn't linked to a faculty profile in the timetable (the emails must match)."
+        else:
+            entries = db.query(TimetableEntryModel).filter(TimetableEntryModel.faculty_id == fac.id,
+                                                          TimetableEntryModel.is_active == True).all()
+            label = fac.name
+    entries.sort(key=lambda e: (e.day_of_week, e.period_number))
+    sections = {e.section for e in entries}
+    today = campus_today()
+    subs = [s for s in db.query(SubstitutionModel).filter(SubstitutionModel.date == today, SubstitutionModel.status == "active").all()
+            if s.section in sections or any(e.id for e in entries if e.faculty_id and e.faculty_id == s.original_faculty_id)]
+    rooms = {c.id: {"name": c.name, "building": c.building, "floor": c.floor} for c in db.query(ClassroomModel).all()}
+    return {
+        "label": label, "reason": reason,
+        "entries": [TimetableEntryOut.model_validate(e).model_dump() | {"room": rooms.get(e.classroom_id)} for e in entries],
+        "substitutions_today": [{"period_number": s.period_number, "section": s.section, "subject_name": s.subject_name,
+                                 "original_faculty_name": s.original_faculty_name, "replacement_faculty_name": s.replacement_faculty_name,
+                                 "classroom_id": s.classroom_id} for s in subs],
+    }
+
 
 @router.get("/", response_model=List[TimetableEntryOut])
 def list_entries(
@@ -133,131 +245,76 @@ def delete_entry(entry_id: int, db: Session = Depends(get_db), _admin: dict = De
     return {"message": "Deleted"}
 
 
-@router.get("/classroom/{classroom_id}/current", response_model=CurrentClassResponse)
-def get_current_class(
-    classroom_id: str,
-    at_datetime: Optional[str] = Query(None, description="Optional ISO or YYYY-MM-DDTHH:MM simulated time"),
-    db: Session = Depends(get_db)
-):
+def _with_changes(db: Session, entry, on_date: date) -> dict:
+    """The entry as served on a date: an active substitution, else a date-range override, applied to a copy."""
+    out = TimetableEntryOut.model_validate(entry).model_dump()
+    sub = db.query(SubstitutionModel).filter(
+        SubstitutionModel.classroom_id == entry.classroom_id, SubstitutionModel.period_number == entry.period_number,
+        SubstitutionModel.date == on_date, SubstitutionModel.status == "active").first()
+    if sub:
+        out["faculty_id"] = sub.replacement_faculty_id or out["faculty_id"]
+        out["faculty_name"] = sub.replacement_faculty_name
+        return out | {"_sub": sub}
+    ov = db.query(TimetableOverrideModel).filter(
+        TimetableOverrideModel.classroom_id == entry.classroom_id, TimetableOverrideModel.period_number == entry.period_number,
+        TimetableOverrideModel.start_date <= on_date, TimetableOverrideModel.end_date >= on_date).first()
+    if ov:
+        out["faculty_id"] = ov.new_faculty_id or out["faculty_id"]
+        out["faculty_name"] = ov.new_faculty_name
+        if ov.new_subject_name:
+            out["subject_name"] = ov.new_subject_name
+    return out
+
+
+def current_class(db: Session, classroom_id: str, at_datetime: Optional[str] = None) -> CurrentClassResponse:
+    """The class running in a room at a campus time (default: now, India time) and the next one."""
     room = db.query(ClassroomModel).filter(ClassroomModel.id == classroom_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Classroom not found")
+    now = parse_campus_time(at_datetime) or campus_now()
+    dow, cur_min = now.weekday(), now.hour * 60 + now.minute
 
-    target_dt = None
-    if at_datetime:
-        try:
-            target_dt = datetime.fromisoformat(at_datetime)
-        except Exception:
-            try:
-                target_dt = datetime.strptime(at_datetime.replace(' ', 'T'), "%Y-%m-%dT%H:%M")
-            except Exception:
-                target_dt = None
+    def day_entries(d):
+        return db.query(TimetableEntryModel).filter(
+            TimetableEntryModel.classroom_id == classroom_id, TimetableEntryModel.day_of_week == d,
+            TimetableEntryModel.is_active == True).order_by(TimetableEntryModel.period_number).all()
 
-    now     = target_dt if target_dt else datetime.now()
-    dow     = now.weekday()
-    cur_min = _time_to_minutes(now.strftime("%H:%M"))
-
-    today_entries = db.query(TimetableEntryModel).filter(
-        TimetableEntryModel.classroom_id == classroom_id,
-        TimetableEntryModel.day_of_week  == dow,
-        TimetableEntryModel.is_active    == True,
-    ).order_by(TimetableEntryModel.period_number).all()
-
-    current = None
-    for e in today_entries:
-        if _time_to_minutes(e.start_time) <= cur_min < _time_to_minutes(e.end_time):
-            current = e
-            break
-
-    # ── Priority 1: Check active Substitution for this specific date ──────────
-    is_substitution = False
-    substitution_reason = None
-    substitution_original_faculty = None
-
-    if current:
-        today_date = now.date()
-        active_sub = db.query(SubstitutionModel).filter(
-            SubstitutionModel.classroom_id == classroom_id,
-            SubstitutionModel.period_number == current.period_number,
-            SubstitutionModel.date == today_date,
-            SubstitutionModel.status == "active",
-        ).first()
-
-        if active_sub:
-            is_substitution = True
-            substitution_reason = active_sub.reason
-            substitution_original_faculty = active_sub.original_faculty_name
-            current.faculty_id = active_sub.replacement_faculty_id or current.faculty_id
-            current.faculty_name = active_sub.replacement_faculty_name
-        else:
-            # ── Priority 2: Check TimetableOverride (date-range based) ────────
-            override = db.query(TimetableOverrideModel).filter(
-                TimetableOverrideModel.classroom_id == classroom_id,
-                TimetableOverrideModel.period_number == current.period_number,
-                TimetableOverrideModel.start_date <= now.date(),
-                TimetableOverrideModel.end_date >= now.date()
-            ).first()
-
-            if override:
-                current.faculty_id = override.new_faculty_id or current.faculty_id
-                current.faculty_name = override.new_faculty_name
-                if override.new_subject_name:
-                    current.subject_name = override.new_subject_name
-
-    future_today = [e for e in today_entries if _time_to_minutes(e.start_time) > cur_min]
-    next_e = sorted(future_today, key=lambda e: _time_to_minutes(e.start_time))[0] if future_today else None
-
-    # Apply override to next class if it exists
-    if next_e:
-        today_date = now.date()
-        next_sub = db.query(SubstitutionModel).filter(
-            SubstitutionModel.classroom_id == classroom_id,
-            SubstitutionModel.period_number == next_e.period_number,
-            SubstitutionModel.date == today_date,
-            SubstitutionModel.status == "active",
-        ).first()
-
-        if next_sub:
-            next_e.faculty_id = next_sub.replacement_faculty_id or next_e.faculty_id
-            next_e.faculty_name = next_sub.replacement_faculty_name
-        else:
-            next_override = db.query(TimetableOverrideModel).filter(
-                TimetableOverrideModel.classroom_id == classroom_id,
-                TimetableOverrideModel.period_number == next_e.period_number,
-                TimetableOverrideModel.start_date <= now.date(),
-                TimetableOverrideModel.end_date >= now.date()
-            ).first()
-
-            if next_override:
-                next_e.faculty_id = next_override.new_faculty_id or next_e.faculty_id
-                next_e.faculty_name = next_override.new_faculty_name
-                if next_override.new_subject_name:
-                    next_e.subject_name = next_override.new_subject_name
-
-    if not next_e:
-        for d in range(dow + 1, 6):
-            nxt = db.query(TimetableEntryModel).filter(
-                TimetableEntryModel.classroom_id == classroom_id,
-                TimetableEntryModel.day_of_week  == d,
-                TimetableEntryModel.is_active    == True,
-            ).order_by(TimetableEntryModel.period_number).first()
-            if nxt:
-                next_e = nxt
+    today = day_entries(dow)
+    current = next((e for e in today if _time_to_minutes(e.start_time) <= cur_min < _time_to_minutes(e.end_time)), None)
+    later = sorted((e for e in today if _time_to_minutes(e.start_time) > cur_min), key=lambda e: _time_to_minutes(e.start_time))
+    next_e, next_date = (later[0], now.date()) if later else (None, None)
+    if not next_e:   # first class on a following day, wrapping round the week
+        for k in range(1, 8):
+            d = (dow + k) % 7
+            found = day_entries(d)
+            if found:
+                next_e, next_date = found[0], now.date() + timedelta(days=k)
                 break
 
+    cur = _with_changes(db, current, now.date()) if current else None
+    nxt = _with_changes(db, next_e, next_date) if next_e else None
+    sub = cur.pop("_sub", None) if cur else None
+    if nxt:
+        nxt.pop("_sub", None)
     return CurrentClassResponse(
-        classroom_id                  = room.id,
-        classroom_name                = room.name,
-        building                      = room.building,
-        floor                         = room.floor,
-        status                        = "occupied" if current else room.status,
-        day_name                      = DAY_NAMES[dow] if dow < len(DAY_NAMES) else None,
-        current_entry                 = TimetableEntryOut.model_validate(current) if current else None,
-        next_entry                    = TimetableEntryOut.model_validate(next_e)  if next_e  else None,
-        is_substitution               = is_substitution,
-        substitution_reason           = substitution_reason,
-        substitution_original_faculty = substitution_original_faculty,
+        classroom_id=room.id, classroom_name=room.name, building=room.building, floor=room.floor,
+        status="occupied" if cur else "available",
+        day_name=DAY_NAMES[dow],
+        current_entry=TimetableEntryOut(**cur) if cur else None,
+        next_entry=TimetableEntryOut(**nxt) if nxt else None,
+        is_substitution=bool(sub),
+        substitution_reason=sub.reason if sub else None,
+        substitution_original_faculty=sub.original_faculty_name if sub else None,
     )
+
+
+@router.get("/classroom/{classroom_id}/current", response_model=CurrentClassResponse)
+def get_current_class(
+    classroom_id: str,
+    at_datetime: Optional[str] = Query(None, description="Optional campus (India) time, e.g. 2026-10-26T10:30"),
+    db: Session = Depends(get_db)
+):
+    return current_class(db, classroom_id, at_datetime)
 
 @router.get("/classroom/{classroom_id}/week")
 def get_week_schedule(classroom_id: str, db: Session = Depends(get_db)):
@@ -292,6 +349,10 @@ def detect_conflicts(db: Session = Depends(get_db)):
                 a, b = day_entries[i], day_entries[j]
                 if not _overlaps(a.start_time, a.end_time, b.start_time, b.end_time):
                     continue
+                # Combined class: two sections taught together (same room, teacher and subject) is not a clash
+                if (a.classroom_id == b.classroom_id and a.faculty_id and a.faculty_id == b.faculty_id
+                        and a.subject_name.strip().lower() == b.subject_name.strip().lower()):
+                    continue
 
                 if a.classroom_id == b.classroom_id:
                     conflicts.append(ConflictItem(
@@ -303,7 +364,7 @@ def detect_conflicts(db: Session = Depends(get_db)):
                 if a.faculty_id and b.faculty_id and a.faculty_id == b.faculty_id:
                     conflicts.append(ConflictItem(
                         conflict_type="faculty",
-                        description=f"{day_name}: {a.faculty_name} assigned to {a.classroom_id} and {b.classroom_id} simultaneously",
+                        description=f"{day_name} {a.start_time}-{a.end_time}: {a.faculty_name} assigned to {a.classroom_id} and {b.classroom_id} simultaneously",
                         entries=[TimetableEntryOut.model_validate(a), TimetableEntryOut.model_validate(b)]
                     ))
 
@@ -313,7 +374,7 @@ def detect_conflicts(db: Session = Depends(get_db)):
                     if a.classroom_id != b.classroom_id:
                         conflicts.append(ConflictItem(
                             conflict_type="section",
-                            description=f"{day_name}: Section {a.section} assigned to {a.classroom_id} and {b.classroom_id} simultaneously",
+                            description=f"{day_name} {a.start_time}-{a.end_time}: Section {a.section} assigned to {a.classroom_id} and {b.classroom_id} simultaneously",
                             entries=[TimetableEntryOut.model_validate(a), TimetableEntryOut.model_validate(b)]
                         ))
 

@@ -10,8 +10,9 @@ import PageTransition from '../PageTransition.jsx';
  * @param {React.ReactNode} children
  * @param {Array}   kpis — [{ label, value, unit, icon, delta }]
  * @param {string}  liveLabel
+ * @param {string}  simulated  set when the page has no real data source: shown as a 'Sample data' notice
  */
-export default function MonitoringLayout({ title, subtitle, icon, accentColor = '#00E5FF', kpis = [], liveLabel, children }) {
+export default function MonitoringLayout({ title, subtitle, icon, accentColor = '#00E5FF', kpis = [], liveLabel, simulated, children }) {
   return (
     <PageTransition className="min-h-screen px-4 pb-20 pt-28 sm:px-6">
       <div className="mx-auto max-w-7xl">
@@ -26,7 +27,9 @@ export default function MonitoringLayout({ title, subtitle, icon, accentColor = 
             </h1>
             <p className="mt-0.5 text-sm text-slate-400">{subtitle}</p>
           </div>
-          {liveLabel && (
+          {simulated ? (
+            <span className="rounded-xl border border-amber-300/40 bg-amber-400/10 px-3 py-1.5 text-xs font-semibold text-amber-200">Sample data</span>
+          ) : liveLabel && (
             <span className="flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold"
                   style={{ background: accentColor + '12', borderColor: accentColor + '30', color: accentColor }}>
               <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: accentColor }} />
@@ -34,6 +37,12 @@ export default function MonitoringLayout({ title, subtitle, icon, accentColor = 
             </span>
           )}
         </motion.div>
+
+        {simulated && (
+          <p className="mb-5 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+            <b>Sample data, not live.</b> {simulated} The figures on this page are illustrative only.
+          </p>
+        )}
 
         {/* KPI strip */}
         {kpis.length > 0 && (

@@ -1,6 +1,4 @@
 import asyncio
-import json
-import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,6 +6,9 @@ from backend.app.core.config import settings
 from backend.app.api.v1.router import api_router
 from backend.app.db.session import engine, Base, SessionLocal
 from backend.app.models import campus
+from backend.app.models import services as _services_models  # registers the student-services tables
+from backend.app.models import admissions as _admissions_models  # joining, fees, originals register
+from backend.app.models import leaving as _leaving_models  # no-dues clearance, leaving-document fees
 from backend.app.core.state import global_state
 from backend.app.core.security import get_password_hash, verify_password
 from backend.app.core.realtime import timetable_manager
@@ -22,6 +23,9 @@ import uuid
 try:
     Base.metadata.create_all(bind=engine)
     print("✅ Database tables created/verified.")
+    from backend.app.db.migrations import ensure_columns
+    for column in ensure_columns(engine):
+        print(f"✅ Added column {column}")
 except Exception as e:
     print(f"⚠️  DB connection warning (tables not created): {e}")
 
@@ -62,14 +66,36 @@ seed_admin()
 
 def seed_civilit_block():
     try:
-        from backend.app.db.seed_all_timetables import seed_all
+        from backend.app.db.seed_all_timetables import seed_all, sync_subjects
         # Only seed an empty database — never wipe timetable edits on restart/redeploy.
         # To force a full reseed, run: python backend/app/db/seed_all_timetables.py
         seed_all(only_if_empty=True)
+        sync_subjects()   # the subject picker in the timetable editor needs the subjects list
     except Exception as e:
         print(f"⚠️ Timetable seeding warning: {e}")
 
 seed_civilit_block()
+
+
+def warm_utilization_model():
+    """Load (or train, ~20 s the first time) the classroom-utilization model in the
+    background so the first request doesn't wait for it."""
+    import threading
+
+    def run():
+        db = SessionLocal()
+        try:
+            from backend.app.ai.utilization.model import get_bundle
+            info = get_bundle(db)["info"]
+            print(f"✅ Utilization model ready (trained {info['trained_at']}, {info['training_rows']} sessions)")
+        except Exception as e:
+            print(f"⚠️  Utilization model warm-up failed: {e}")
+        finally:
+            db.close()
+
+    threading.Thread(target=run, daemon=True, name="utilization-warmup").start()
+
+warm_utilization_model()
 
 
 
@@ -141,8 +167,6 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
             telemetry_data = {
                 "sequence": count,
                 "active_users": 2840 + (count % 15) - (count % 7),
-                "energy_kwh": round(1842.5 + (count % 10) * 0.8, 2),
-                "water_litres": 28450 + (count % 20) * 5,
                 "parking": {
                     "total": 60,
                     "occupied": occupied_count,

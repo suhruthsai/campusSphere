@@ -1,4 +1,4 @@
-// ── Monitoring & IoT mock data for Suhruth University ────────────────────────
+// ── Monitoring & IoT mock data for MVSR Engineering College ────────────────────────
 // All values are static snapshots that simulate real sensor readings.
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -22,34 +22,6 @@ function months12(label, start, variance = 30) {
     [label]: Math.max(0, Math.round(start + (Math.random() - 0.5) * variance * 2)),
   }));
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// 9. Smart Parking
-// ══════════════════════════════════════════════════════════════════════════════
-export const parking = {
-  totalSlots: 120,
-  occupiedSlots: 84,
-  vehiclesIn: 84,
-  vehiclesOut: 36,
-  zones: [
-    { id: 'A', label: 'Zone A – Faculty',   total: 30, occupied: 28, color: '#ef4444' },
-    { id: 'B', label: 'Zone B – Students',  total: 60, occupied: 43, color: '#F59E0B' },
-    { id: 'C', label: 'Zone C – Staff',     total: 20, occupied: 9,  color: '#00FFB3' },
-    { id: 'D', label: 'Zone D – Visitors',  total: 10, occupied: 4,  color: '#7B61FF' },
-  ],
-  hourlyOccupancy: hours24(60, 30),
-  predictionNext3h: [85, 92, 78],
-  entryExitLogs: [
-    { id: 1,  time: '07:45', vehicle: 'TS09 AB 1234', type: 'Car',   action: 'entry', zone: 'A', driver: 'Prof. Ramesh Kumar' },
-    { id: 2,  time: '07:52', vehicle: 'TS07 CD 5678', type: 'Bike',  action: 'entry', zone: 'B', driver: 'Aarav Singh'        },
-    { id: 3,  time: '08:03', vehicle: 'TS10 EF 9012', type: 'Car',   action: 'entry', zone: 'B', driver: 'Ananya Krishnan'    },
-    { id: 4,  time: '08:11', vehicle: 'TS14 GH 3456', type: 'Bike',  action: 'exit',  zone: 'C', driver: 'Mr. Biju Thomas'   },
-    { id: 5,  time: '08:22', vehicle: 'TS01 IJ 7890', type: 'Car',   action: 'entry', zone: 'A', driver: 'Dr. Priya Sharma'  },
-    { id: 6,  time: '08:35', vehicle: 'TS03 KL 2345', type: 'SUV',   action: 'entry', zone: 'D', driver: 'Guest'             },
-    { id: 7,  time: '08:50', vehicle: 'TS09 MN 6789', type: 'Bike',  action: 'exit',  zone: 'B', driver: 'Karan Joshi'       },
-    { id: 8,  time: '09:05', vehicle: 'TS12 OP 0123', type: 'Car',   action: 'entry', zone: 'A', driver: 'Dr. Sunita Patel'  },
-  ],
-};
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 10. Library Analytics
@@ -76,100 +48,6 @@ export const library = {
     status: i < 62 ? 'occupied' : i < 70 ? 'booked' : i < 115 ? 'available' : 'occupied',
     section: i < 80 ? 'Hall 1' : 'Hall 2',
   })),
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
-// 11. Energy Management
-// ══════════════════════════════════════════════════════════════════════════════
-export const energy = {
-  totalTodayKwh: 1842,
-  peakDemandKw: 312,
-  savings: '8.4%',
-  solarGenKwh: 226,
-  buildingUsage: [
-    { building: 'CSE Block',       kwh: 320, color: '#00E5FF' },
-    { building: 'ECE Block',       kwh: 280, color: '#7B61FF' },
-    { building: 'Mech & EEE',      kwh: 240, color: '#F59E0B' },
-    { building: 'Civil & IT',      kwh: 210, color: '#00FFB3' },
-    { building: 'Library',         kwh: 190, color: '#F472B6' },
-    { building: 'S&H Block',       kwh: 175, color: '#38BDF8' },
-    { building: 'Canteen',         kwh: 145, color: '#fb7185' },
-    { building: 'Admin Block',     kwh: 130, color: '#a78bfa' },
-    { building: 'R&D Block',       kwh: 95,  color: '#34D399' },
-    { building: 'Exam Dept',       kwh: 57,  color: '#fbbf24' },
-  ],
-  hourlyConsumption: hours24(70, 30),
-  monthlyConsumption: months12('kwh', 48000, 8000),
-  alerts: [
-    { id: 1, building: 'CSE Block',   msg: 'Usage 22% above average',       level: 'warning' },
-    { id: 2, building: 'Canteen',     msg: 'Peak load at 14:00 — 48 kW',   level: 'critical' },
-    { id: 3, building: 'Library',     msg: 'AC running after hours',        level: 'info'     },
-  ],
-  aiForecastTomorrow: 1920,
-  aiForecastWeek: [1842, 1920, 1755, 1900, 2010, 1400, 1100],
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
-// 12. Water Management
-// ══════════════════════════════════════════════════════════════════════════════
-export const water = {
-  totalTodayLitres: 28450,
-  tanks: [
-    { id: 'T1', label: 'Main Overhead Tank',   capacity: 50000, current: 38000, color: '#38BDF8' },
-    { id: 'T2', label: 'South Wing Tank',       capacity: 20000, current: 14500, color: '#7B61FF' },
-    { id: 'T3', label: 'Canteen Reserve Tank',  capacity: 10000, current: 4200,  color: '#F59E0B' },
-  ],
-  leaks: [
-    { id: 'L1', location: 'CSE Block Ground Floor Washroom', detected: '06:32', severity: 'medium', status: 'under review'  },
-    { id: 'L2', location: 'Canteen Pipeline Junction',       detected: '05:10', severity: 'low',    status: 'resolved'       },
-  ],
-  hourlyUsage: hours24(900, 500),
-  weeklyUsage: days7('litres', 26000, 4000),
-  monthlyUsage: months12('litres', 820000, 80000),
-  buildingUsage: [
-    { building: 'Hostel / Common Areas', litres: 9800 },
-    { building: 'Canteen',               litres: 6500 },
-    { building: 'Labs',                  litres: 4200 },
-    { building: 'Washrooms',             litres: 5200 },
-    { building: 'Gardens',               litres: 2750 },
-  ],
-  aiPrediction: { tomorrow: 29100, nextWeek: 196000, status: 'Normal consumption expected.' },
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
-// 13. Environmental Monitoring
-// ══════════════════════════════════════════════════════════════════════════════
-export const environment = {
-  current: {
-    temperature: 27.4,   // °C
-    humidity: 68,        // %
-    aqi: 72,             // AQI (Good < 100)
-    co2: 480,            // ppm
-    noise: 54,           // dB
-    rainfall: 0,         // mm today
-    windSpeed: 12,       // km/h
-    windDir: 'SW',
-    uvIndex: 6,
-  },
-  aqiCategory: 'Moderate',
-  sensors: [
-    { id: 's1', location: 'Main Gate',         temp: 28.1, humidity: 65, aqi: 80, noise: 62 },
-    { id: 's2', location: 'CSE Block Roof',    temp: 27.4, humidity: 68, aqi: 72, noise: 50 },
-    { id: 's3', location: 'Canteen Area',      temp: 29.8, humidity: 72, aqi: 88, noise: 70 },
-    { id: 's4', location: 'Ground / Field',    temp: 30.2, humidity: 60, aqi: 65, noise: 58 },
-    { id: 's5', location: 'Library Entrance',  temp: 24.1, humidity: 55, aqi: 48, noise: 38 },
-  ],
-  hourlyTemp:     hours24(27, 4),
-  hourlyHumidity: hours24(65, 12),
-  hourlyAQI:      hours24(70, 15),
-  hourlyNoise:    hours24(52, 18),
-  forecast: [
-    { day: 'Today',    icon: '⛅', high: 31, low: 23, rain: '10%' },
-    { day: 'Tomorrow', icon: '🌧️', high: 28, low: 22, rain: '70%' },
-    { day: 'Wed',      icon: '🌦️', high: 29, low: 21, rain: '40%' },
-    { day: 'Thu',      icon: '☀️',  high: 33, low: 24, rain: '5%'  },
-    { day: 'Fri',      icon: '☀️',  high: 34, low: 25, rain: '5%'  },
-  ],
 };
 
 // ══════════════════════════════════════════════════════════════════════════════

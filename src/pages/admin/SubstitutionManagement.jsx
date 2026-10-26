@@ -11,9 +11,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  AlertTriangle, CalendarDays, CheckCircle2, ChevronRight,
-  ClipboardList, History, Plus, RefreshCw, Search,
-  UserCheck, UserX, X, Clock, BookOpen, Building2, Users,
+  AlertTriangle, CalendarDays, CheckCircle2, ChevronRight, ClipboardList, History, Plus, RefreshCw, X,
 } from 'lucide-react';
 import { substitutionsApi, timetableApi, classroomsApi, facultyApi } from '../../utils/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';

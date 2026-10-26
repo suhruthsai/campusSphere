@@ -83,7 +83,7 @@ export default function Login() {
             </span>
             <div>
               <p className="font-display text-lg font-bold text-white">CampusSphere</p>
-              <p className="text-xs text-slate-400">Suhruth University · Digital Twin</p>
+              <p className="text-xs text-slate-400">MVSR Engineering College · Digital Twin</p>
             </div>
           </div>
 

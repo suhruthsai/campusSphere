@@ -9,6 +9,7 @@ from datetime import date, datetime
 from backend.app.db.session import get_db
 from backend.app.core.security import require_admin
 from backend.app.core.realtime import broadcast_timetable
+from backend.app.core.campus_time import campus_today
 from backend.app.models.campus import (
     SubstitutionModel,
     SubstitutionAuditLogModel,
@@ -115,7 +116,7 @@ def check_faculty_conflict(
 
 @router.get("/today", response_model=List[SubstitutionOut])
 def get_today_substitutions(db: Session = Depends(get_db)):
-    today = date.today()
+    today = campus_today()   # India's date, whatever the server's time zone
     return (
         db.query(SubstitutionModel)
         .filter(SubstitutionModel.date == today, SubstitutionModel.status == "active")

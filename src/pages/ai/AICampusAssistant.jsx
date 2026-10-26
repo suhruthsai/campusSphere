@@ -1,9 +1,11 @@
 // AICampusAssistant.jsx — Module 17
-import { MessageCircle, Mic, Globe, Send, Sparkles } from 'lucide-react';
+import { MessageCircle, Globe, Send, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useRef, useEffect } from 'react';
 import MonitoringLayout, { MCard } from '../../components/monitoring/MonitoringLayout.jsx';
 import { assistant } from '../../data/ai.js';
+import { aiApi } from '../../utils/api.js';
+import { useCampusStore } from '../../store/useCampusStore.js';
 
 export default function AICampusAssistant() {
   const [messages, setMessages] = useState([
@@ -18,37 +20,33 @@ export default function AICampusAssistant() {
     chatEnd.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = () => {
-    if (!input.trim()) return;
+  // Real answers from the campus AI (same service as the floating assistant)
+  const sendMessage = async () => {
+    if (!input.trim() || typing) return;
     const userMsg = input.trim();
+    const history = [...messages.slice(1), { role: 'user', text: userMsg }].slice(-10)
+      .map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text.slice(0, 2000) }));
+    if (lang !== 'English') history[history.length - 1].content += `
+
+(Please reply in ${lang}.)`;
     setMessages((m) => [...m, { role: 'user', text: userMsg }]);
     setInput('');
     setTyping(true);
-
-    setTimeout(() => {
-      // Check FAQ first
-      const faqMatch = assistant.faqs.find((f) => userMsg.toLowerCase().includes(f.q.toLowerCase().split(' ').slice(1, 4).join(' ').toLowerCase()));
-      
-      let reply;
-      if (faqMatch) {
-        reply = faqMatch.a;
-      } else if (userMsg.toLowerCase().includes('study') || userMsg.toLowerCase().includes('quiet')) {
-        reply = '📚 Based on current occupancy data:\n\n1. **Reading Hall 2** — 58% occupied, 25 seats free (Quietest)\n2. **S&H Block Study Room 301** — Empty, AC available\n3. **Library Mezzanine** — 12 seats available\n\n💡 Recommendation: Reading Hall 2 for the quietest environment.';
-      } else if (userMsg.toLowerCase().includes('navigate') || userMsg.toLowerCase().includes('direction') || userMsg.toLowerCase().includes('route') || userMsg.toLowerCase().includes('how to go')) {
-        reply = '🗺️ I can help you navigate! Here are popular routes:\n\n• **Main Gate → CSE Block**: 200m, 3 min walk\n• **Parking → Library**: 150m, 2 min walk\n• **Canteen → ECE Block**: 180m, 3 min walk\n\nTell me your start and destination for a specific route!';
-      } else if (userMsg.toLowerCase().includes('event') || userMsg.toLowerCase().includes('fest')) {
-        reply = '📅 Upcoming Events at Suhruth University:\n\n1. **InnoVerse 2026** — Tech Fest (Aug 15–17)\n2. **AI/ML Workshop** — CSE Block (Aug 5)\n3. **Cultural Night** — Auditorium (Aug 20)\n4. **Sports Day** — Main Ground (Sep 1)';
-      } else if (userMsg.toLowerCase().includes('park')) {
-        reply = '🅿️ Current Parking Status:\n\n• **Zone B (Students)**: 17 slots free — Closest to CSE/ECE\n• **Zone C (Staff)**: 11 slots free — Near Library\n• **Zone D (Visitors)**: 6 slots free\n• **Zone A (Faculty)**: 2 slots free\n\n💡 Recommended: Zone B for best availability.';
-      } else if (userMsg.toLowerCase().includes('energy') || userMsg.toLowerCase().includes('power')) {
-        reply = '⚡ Campus Energy Status:\n\n• Total today: **1,842 kWh**\n• Peak demand: **312 kW** (CSE Block highest)\n• Solar generated: **226 kWh**\n• AI forecast tomorrow: **1,920 kWh**\n\n⚠️ Canteen peak load at 14:00 — 48 kW';
-      } else {
-        reply = `🤖 I understand you\'re asking about "${userMsg}". Here\'s what I found:\n\nAll 15 campus modules (Digital Twin, Parking, Library, Energy, Water, Crowd, Environment, Attendance) are operating normally. The campus currently has **2,840 people** on site.\n\nFeel free to ask about specific buildings, classrooms, labs, events, or navigation!`;
+    try {
+      const { reply, actions } = await aiApi.chat(history);
+      const store = useCampusStore.getState();
+      for (const action of actions || []) {
+        if (action.name === 'fly_to_building') store.setAIFlyTarget(action.args.buildingName);
       }
-      
-      setMessages((m) => [...m, { role: 'assistant', text: reply }]);
+      setMessages((m) => [...m, { role: 'assistant', text: reply || '(no answer)' }]);
+    } catch (e) {
+      const notSetUp = /not configured|GROQ_API_KEY/i.test(e.message);
+      setMessages((m) => [...m, { role: 'assistant', text: notSetUp
+        ? "The AI assistant isn't set up yet: the server needs a **GROQ_API_KEY** in its .env file. Ask the admin to add one and restart the backend."
+        : `Sorry, I couldn't reach the AI service. Details: ${e.message}` }]);
+    } finally {
       setTyping(false);
-    }, 1200 + Math.random() * 800);
+    }
   };
 
   return (
@@ -57,7 +55,7 @@ export default function AICampusAssistant() {
       subtitle="Intelligent Q&A, navigation, and campus information"
       icon={<MessageCircle size={22} />}
       accentColor="#7B61FF"
-      liveLabel="AI Online"
+      liveLabel="Groq AI"
     >
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Chat window */}
@@ -71,7 +69,7 @@ export default function AICampusAssistant() {
                 </span>
                 <div>
                   <p className="text-xs font-bold text-white">CampusSphere AI</p>
-                  <p className="text-[10px] text-green-400">● Online · {lang}</p>
+                  <p className="text-[10px] text-slate-400">Replies in {lang}</p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -121,10 +119,6 @@ export default function AICampusAssistant() {
 
             {/* Input bar */}
             <div className="flex items-center gap-2 mt-3 border-t border-white/8 pt-3">
-              <button className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-400 hover:text-purple-400 transition"
-                      title="Voice input">
-                <Mic size={14} />
-              </button>
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

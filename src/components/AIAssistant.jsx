@@ -23,7 +23,12 @@ const MAX_MESSAGE_CHARS = 2000;
 const suggestions = ['Where is the CAD lab?', 'Show me academic buildings', 'Clear highlights', 'Take me to the library'];
 
 export default function AIAssistant() {
-  const { isChatOpen, toggleChat, chatMessages, addChatMessage, chatTarget } = useCampusStore();
+  // Individual selectors: subscribing to the whole store re-rendered this on every telemetry tick
+  const isChatOpen     = useCampusStore((s) => s.isChatOpen);
+  const toggleChat     = useCampusStore((s) => s.toggleChat);
+  const chatMessages   = useCampusStore((s) => s.chatMessages);
+  const addChatMessage = useCampusStore((s) => s.addChatMessage);
+  const chatTarget     = useCampusStore((s) => s.chatTarget);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const bottomRef = useRef(null);
@@ -58,7 +63,10 @@ export default function AIAssistant() {
       addChatMessage({ role: 'ai', content: reply });
     } catch (error) {
       console.error("AI Error:", error);
-      addChatMessage({ role: 'ai', content: `Sorry, I am having trouble connecting to my neural network right now. Details: ${error.message}` });
+      const notSetUp = /not configured|GROQ_API_KEY/i.test(error.message);
+      addChatMessage({ role: 'ai', content: notSetUp
+        ? "The AI assistant isn't set up yet: the server needs a GROQ_API_KEY in its .env file. Ask the admin to add one and restart the backend."
+        : `Sorry, I couldn't reach the AI service right now. Details: ${error.message}` });
     } finally {
       setIsLoading(false);
     }

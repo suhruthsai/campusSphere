@@ -1,13 +1,16 @@
 // AdminDashboard.jsx — KPI + Live stats + Weather + Alerts
 import {
-  Activity, AlertTriangle, Bell, BookOpen, Building2, CalendarDays,
-  ChevronRight, Cloud, GraduationCap, TrendingUp, Users, Wifi, Zap, UserCheck,
+  Activity, AlertTriangle, Bell, BookOpen, Building2, CalendarDays, ChevronRight, Cloud, GraduationCap, TrendingUp, Users, Zap, UserCheck,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import PageTransition from '../../components/PageTransition.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { authApi, buildingsApi, announcementsApi, substitutionsApi } from '../../utils/api.js';
+import {
+  authApi, buildingsApi, announcementsApi, classroomsApi, servicesApi, substitutionsApi, timetableApi,
+} from '../../utils/api.js';
+import { istNow, liveSessionsByBuilding } from '../../components/three/twinExtras.js';
+import { StatusBadge, fmtIst, whereNow } from '../../components/services/requestUi.jsx';
 
 const fadeUp = (delay = 0) => ({
   initial: { opacity: 0, y: 20 },
@@ -22,11 +25,6 @@ const kpisInitial = [
   { label: 'Active Buildings',value: '...', change: 'Loading', icon: Building2,     color: '#7B61FF' },
 ];
 
-// Activity feed mock (until we build an activity log API)
-const activityLogs = [
-  { id: 1, userId: 'ux1', action: 'added a new event', resource: 'Main Auditorium', timestamp: new Date().toISOString() },
-  { id: 2, userId: 'ux2', action: 'marked attendance', resource: 'CSE Block Room 102', timestamp: new Date(Date.now() - 3600000).toISOString() }
-];
 
 const quickActions = [
   { label: 'Add User',           icon: Users,       href: '/admin/users',         color: '#00E5FF' },
@@ -37,7 +35,32 @@ const quickActions = [
   { label: 'Schedule Changes',   icon: CalendarDays,href: '/admin/substitutions',  color: '#F59E0B' },
 ];
 
-const weather = { temp: '27°C', condition: 'Partly Cloudy', humidity: '68%', wind: '12 km/h' };
+// MVSR Engineering College, Nadergul
+const CAMPUS = { lat: 17.2814, lon: 78.5396 };
+const WEATHER_TEXT = (code) => (
+  code === 0 ? ['☀️', 'Clear sky'] : code <= 2 ? ['🌤️', 'Partly cloudy'] : code === 3 ? ['☁️', 'Overcast']
+    : [45, 48].includes(code) ? ['🌫️', 'Fog'] : code >= 95 ? ['⛈️', 'Thunderstorm']
+    : (code >= 51 && code <= 67) || (code >= 80 && code <= 82) ? ['🌧️', 'Rain'] : ['🌥️', 'Cloudy']
+);
+
+/** Current weather at the campus (Open-Meteo, no key needed). */
+async function fetchCampusWeather() {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${CAMPUS.lat}&longitude=${CAMPUS.lon}`
+    + '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=Asia%2FKolkata';
+  const d = await (await fetch(url)).json();
+  const c = d.current;
+  const [icon, condition] = WEATHER_TEXT(c.weather_code);
+  return {
+    icon, condition, temp: `${Math.round(c.temperature_2m)}°C`, humidity: `${Math.round(c.relative_humidity_2m)}%`,
+    wind: `${Math.round(c.wind_speed_10m)} km/h`, at: c.time.slice(11, 16),
+  };
+}
+
+/** Morning / afternoon / evening by the campus clock (IST). */
+function greeting() {
+  const h = Number(new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }));
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+}
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -46,6 +69,9 @@ export default function AdminDashboard() {
   const [buildingList, setBuildingList] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [todaySubs, setTodaySubs] = useState([]);
+  const [activity, setActivity] = useState(null);   // latest certificate requests
+  const [weather, setWeather] = useState(null);     // null = loading, false = unavailable
+  const [inSession, setInSession] = useState(null); // { live: {buildingId: [sessions]}, rooms: {buildingId: count} }
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -56,6 +82,15 @@ export default function AdminDashboard() {
           announcementsApi.list(),
           substitutionsApi.today().catch(() => []),
         ]);
+        servicesApi.allRequests().then((rows) => setActivity(rows.slice(0, 8))).catch(() => setActivity([]));
+        fetchCampusWeather().then(setWeather).catch(() => setWeather(false));
+        // Classes running right now, from the timetable (rooms are mapped to buildings)
+        Promise.all([timetableApi.list(), classroomsApi.list()]).then(([entries, rooms]) => {
+          const timetabled = new Set(entries.map((e) => e.classroom_id));
+          const roomCount = {};
+          rooms.filter((r) => timetabled.has(r.id)).forEach((r) => { roomCount[r.building] = (roomCount[r.building] || 0) + 1; });
+          setInSession({ live: liveSessionsByBuilding(entries, rooms, istNow()), rooms: roomCount });
+        }).catch(() => setInSession({ live: {}, rooms: {} }));
         setStats(statsData);
         setBuildingList(bldgsData);
         setAlerts(annsData.map((a, i) => ({
@@ -88,10 +123,10 @@ export default function AdminDashboard() {
                style={{ background: 'linear-gradient(135deg,rgba(0,229,255,0.08),rgba(123,97,255,0.06))', backdropFilter: 'blur(16px)' }}>
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div>
-                <p className="text-sm text-slate-400">Good morning,</p>
+                <p className="text-sm text-slate-400">{greeting()},</p>
                 <h1 className="font-display text-2xl font-extrabold text-white">{user?.name} 👋</h1>
                 <p className="mt-1 text-sm text-slate-400">
-                  Suhruth University · Admin Dashboard ·{' '}
+                  MVSR Engineering College · Admin Dashboard ·{' '}
                   <span className="text-[#00E5FF]">
                     {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
                   </span>
@@ -132,16 +167,16 @@ export default function AdminDashboard() {
               <Cloud size={15} className="text-[#38BDF8]" /> Campus Weather
             </h2>
             <div className="flex items-center gap-4 mb-4">
-              <span className="text-5xl">⛅</span>
+              <span className="text-5xl">{weather ? weather.icon : '🌡️'}</span>
               <div>
-                <p className="font-display text-4xl font-extrabold text-white">{weather.temp}</p>
-                <p className="text-xs text-slate-400">{weather.condition}</p>
+                <p className="font-display text-4xl font-extrabold text-white">{weather ? weather.temp : weather === null ? '…' : '—'}</p>
+                <p className="text-xs text-slate-400">{weather ? weather.condition : weather === null ? 'Loading' : 'Weather unavailable (offline?)'}</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: 'Humidity', value: weather.humidity, icon: '💧' },
-                { label: 'Wind',     value: weather.wind,     icon: '🌬️' },
+                { label: 'Humidity', value: weather ? weather.humidity : '—', icon: '💧' },
+                { label: 'Wind',     value: weather ? weather.wind : '—',     icon: '🌬️' },
               ].map((w) => (
                 <div key={w.label} className="rounded-xl border border-white/8 bg-white/4 p-3 text-center">
                   <p className="text-lg">{w.icon}</p>
@@ -150,7 +185,7 @@ export default function AdminDashboard() {
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-[10px] text-slate-600 text-center">Hyderabad, Telangana · Updated just now</p>
+            <p className="mt-3 text-[10px] text-slate-600 text-center">Nadergul, Hyderabad{weather ? ` · reading at ${weather.at} IST (Open-Meteo)` : ''}</p>
           </motion.div>
 
           {/* Alerts */}
@@ -200,23 +235,23 @@ export default function AdminDashboard() {
               <Activity size={15} className="text-[#00FFB3]" /> Recent Activity
             </h2>
             <div className="space-y-2 max-h-56 overflow-y-auto no-scrollbar">
-              {activityLogs.map((log) => {
-                const actor = users.find((u) => u.id === log.userId);
-                return (
-                  <div key={log.id} className="flex items-start gap-3 py-2 border-b border-white/5">
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/8 text-xs font-bold text-slate-300">
-                      {actor?.avatar}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-xs text-slate-300">
-                        <strong className="text-white">{log.userId}</strong>{' '}
-                        <span className="text-slate-400">{log.action}</span>
-                      </p>
-                      <p className="text-[10px] text-slate-600">{log.resource} · {log.timestamp.slice(11, 16)}</p>
-                    </div>
+              {activity === null && <p className="text-xs text-slate-500">Loading…</p>}
+              {activity?.length === 0 && <p className="text-xs text-slate-500">No certificate requests yet.</p>}
+              {activity?.map((r) => (
+                <a key={r.id} href="/services/setup" className="flex items-start gap-3 py-2 border-b border-white/5">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/8 text-[10px] font-bold text-slate-300">
+                    {(r.student?.name || '?').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-slate-300">
+                      <strong className="text-white">{r.student?.name}</strong>{' '}
+                      <span className="text-slate-400">requested {r.doc_name}</span>
+                    </p>
+                    <p className="truncate text-[10px] text-slate-500">{whereNow(r)} · {fmtIst(r.created_at)}</p>
                   </div>
-                );
-              })}
+                  <StatusBadge status={r.status} />
+                </a>
+              ))}
             </div>
           </motion.div>
         </div>
@@ -224,21 +259,27 @@ export default function AdminDashboard() {
         {/* Building occupancy summary */}
         <motion.div {...fadeUp(0.48)} className="mt-4 glass-card rounded-2xl p-5">
           <h2 className="mb-4 flex items-center gap-2 font-bold text-white text-sm">
-            <Building2 size={15} className="text-[#7B61FF]" /> Campus Occupancy Overview
+            <Building2 size={15} className="text-[#7B61FF]" /> Classes in session now
+            <span className="ml-auto text-[10px] font-normal text-slate-500">from the timetable</span>
           </h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {buildingList.slice(0, 10).map((b) => (
-              <div key={b.id} className="rounded-xl border border-white/6 bg-white/4 p-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="h-2 w-2 rounded-full" style={{ background: b.color }} />
-                  <span className="text-[10px]" style={{ color: b.color }}>{b.occupancy}%</span>
+            {buildingList.map((b) => {
+              const live = inSession?.live[b.id]?.length || 0;
+              const rooms = inSession?.rooms[b.id] || 0;
+              return (
+                <div key={b.id} className="rounded-xl border border-white/6 bg-white/4 p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="h-2 w-2 rounded-full" style={{ background: b.color }} />
+                    <span className="text-[10px]" style={{ color: b.color }}>{inSession === null ? '…' : rooms ? `${live}/${rooms} rooms` : '—'}</span>
+                  </div>
+                  <p className="text-xs font-semibold text-white truncate">{b.name}</p>
+                  <p className="mt-1 text-[10px] text-slate-500">{inSession === null ? 'Loading' : rooms ? `${live} class${live === 1 ? '' : 'es'} running` : 'No timetable yet'}</p>
+                  <div className="mt-1.5 h-1 rounded-full bg-white/8 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${rooms ? (live / rooms) * 100 : 0}%`, background: b.color }} />
+                  </div>
                 </div>
-                <p className="text-xs font-semibold text-white truncate">{b.name}</p>
-                <div className="mt-1.5 h-1 rounded-full bg-white/8 overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${b.occupancy}%`, background: b.color }} />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </motion.div>
 

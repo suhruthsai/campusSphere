@@ -1,7 +1,7 @@
 // AttendanceAnalytics.jsx
 import { ClipboardList } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, RadarChart, PolarGrid, PolarAngleAxis, Radar } from 'recharts';
-import MonitoringLayout, { AlertPill, DonutRing, HBar, MCard } from '../../components/monitoring/MonitoringLayout.jsx';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from 'recharts';
+import MonitoringLayout, { AlertPill, DonutRing, MCard } from '../../components/monitoring/MonitoringLayout.jsx';
 import { attendance } from '../../data/monitoring.js';
 
 export default function AttendanceAnalytics() {
@@ -9,6 +9,7 @@ export default function AttendanceAnalytics() {
 
   return (
     <MonitoringLayout
+      simulated="Attendance isn't recorded in CampusSphere yet."
       title="Attendance Analytics"
       subtitle="Student & faculty attendance with AI-powered insights"
       icon={<ClipboardList size={22} />}

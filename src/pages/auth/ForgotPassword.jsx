@@ -1,5 +1,5 @@
 // ForgotPassword.jsx — Password reset flow
-import { Bot, ArrowLeft, Mail, Send, CheckCircle } from 'lucide-react';
+import { Bot, ArrowLeft, Mail, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -7,14 +7,11 @@ import { Link } from 'react-router-dom';
 export default function ForgotPassword() {
   const [email,   setEmail]   = useState('');
   const [sent,    setSent]    = useState(false);
-  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 1400)); // simulate API call
+    // There is no email service: resets are done by the admin, who gives a temporary password
     setSent(true);
-    setLoading(false);
   };
 
   return (
@@ -52,7 +49,7 @@ export default function ForgotPassword() {
               <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <h1 className="mb-1 font-display text-2xl font-extrabold text-white">Reset password</h1>
                 <p className="mb-6 text-sm text-slate-400">
-                  Enter your campus email and we'll send a reset link.
+                  Password resets are done by the college admin. Enter your campus email to see what to do.
                 </p>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -68,13 +65,11 @@ export default function ForgotPassword() {
                     </div>
                   </div>
 
-                  <button type="submit" disabled={loading}
+                  <button type="submit"
                           className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-[#020814] transition-all"
                           style={{ background: 'linear-gradient(135deg,#00E5FF,#00E5FFcc)', boxShadow: '0 0 24px rgba(0,229,255,0.3)' }}>
-                    {loading
-                      ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#020814]/30 border-t-[#020814]" />
-                      : <Send size={16} />}
-                    {loading ? 'Sending…' : 'Send reset link'}
+                    <Send size={16} />
+                    Continue
                   </button>
                 </form>
               </motion.div>
@@ -86,12 +81,13 @@ export default function ForgotPassword() {
                 className="text-center py-4"
               >
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#00FFB3]/12 border border-[#00FFB3]/25">
-                  <CheckCircle size={32} className="text-[#00FFB3]" />
+                  <Mail size={30} className="text-[#00FFB3]" />
                 </div>
-                <h2 className="mb-2 font-display text-xl font-bold text-white">Check your inbox</h2>
+                <h2 className="mb-2 font-display text-xl font-bold text-white">Ask the admin for a new password</h2>
                 <p className="mb-6 text-sm text-slate-400">
-                  If <strong className="text-white">{email}</strong> is registered,
-                  a reset link will arrive within a few minutes.
+                  Contact the college admin (Admin Office) and ask them to reset the password for{' '}
+                  <strong className="text-white">{email}</strong>. They will give you a temporary password;
+                  after signing in, change it under <strong className="text-white">My account</strong> (click your name at the top).
                 </p>
                 <Link to="/login"
                       className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm text-white hover:bg-white/10 transition">

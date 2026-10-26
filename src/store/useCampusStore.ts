@@ -1,14 +1,9 @@
 // Zustand Campus Store — State Management for 3D Digital Twin & Live Status
 import { create } from 'zustand';
-import { Building } from '../types/index.ts';
-import { buildings } from '../data/campus.js';
 import { wsUrl } from '../utils/api.js';
 
 interface CampusState {
-  buildings: Building[];
-  selectedBuilding: Building | null;
   cameraMode: 'orbit' | 'fpv' | 'topdown';
-  liveTelemetryActive: boolean;
 
   // AI Features State
   isChatOpen: boolean;
@@ -16,18 +11,17 @@ interface CampusState {
   chatTarget: string | null; // null for global guide, or student id
   aiFlyTarget: { id: string, ts: number } | null; // name of building to fly to
   aiHighlightTypes: string[]; // types of buildings to highlight
+  routeRequest: { from: string, to: string, ts: number } | null; // asked for by the Navigation page
+  setRouteRequest: (from: string, to: string) => void;
   
   weatherData: { temp: number, isDay: boolean, condition: string, code: number } | null;
   isRaining: boolean;
   
-  selectBuilding: (b: Building | null) => void;
   setCameraMode: (mode: 'orbit' | 'fpv' | 'topdown') => void;
-  toggleTelemetry: () => void;
 
   toggleChat: () => void;
   openChatWithTarget: (target: string | null) => void;
   addChatMessage: (msg: { role: 'user' | 'ai' | 'system', content: string }) => void;
-  setChatMessages: (msgs: { role: 'user' | 'ai' | 'system', content: string }[]) => void;
   setAIFlyTarget: (target: string | null) => void;
   setAIHighlightTypes: (types: string[]) => void;
   
@@ -44,16 +38,14 @@ interface CampusState {
 }
 
 export const useCampusStore = create<CampusState>((set, get) => ({
-  buildings: buildings as Building[],
-  selectedBuilding: null,
   cameraMode: 'orbit',
-  liveTelemetryActive: true,
 
   isChatOpen: false,
   chatMessages: [],
   chatTarget: null,
   aiFlyTarget: null,
   aiHighlightTypes: [],
+  routeRequest: null,
   weatherData: null,
   isRaining: false,
 
@@ -63,21 +55,19 @@ export const useCampusStore = create<CampusState>((set, get) => ({
     spots: []
   },
 
-  selectBuilding: (building) => set({ selectedBuilding: building }),
   setCameraMode: (mode) => set({ cameraMode: mode }),
-  toggleTelemetry: () => set((state) => ({ liveTelemetryActive: !state.liveTelemetryActive })),
 
   toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
   openChatWithTarget: (target) => set({ isChatOpen: true, chatTarget: target, chatMessages: [] }),
   addChatMessage: (msg) => set((state) => ({ chatMessages: [...state.chatMessages, msg] })),
-  setChatMessages: (msgs) => set({ chatMessages: msgs }),
   setAIFlyTarget: (target) => set({ aiFlyTarget: target ? { id: target, ts: Date.now() } : null }),
   setAIHighlightTypes: (types) => set({ aiHighlightTypes: types }),
+  setRouteRequest: (from, to) => set({ routeRequest: { from, to, ts: Date.now() } }),
   
   fetchWeather: async () => {
     try {
       // Coordinates for Hyderabad
-      const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=17.3850&longitude=78.4867&current=temperature_2m,is_day,precipitation,weather_code&timezone=auto");
+      const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=17.2814&longitude=78.5396&current=temperature_2m,is_day,precipitation,weather_code&timezone=auto");
       const data = await res.json();
       const temp = data.current.temperature_2m;
       const isDay = data.current.is_day === 1;
@@ -108,8 +98,15 @@ export const useCampusStore = create<CampusState>((set, get) => ({
     } 
   }),
 
+  // Idempotent: one shared telemetry socket for the whole app. Previously every mount
+  // (and React StrictMode's double mount) opened another socket that was never closed.
   initWebSocket: () => {
+    if (telemetrySocket && telemetrySocket.readyState <= WebSocket.OPEN) return;
+    if (reconnectTimer) return; // a reconnect is already scheduled
+
     const ws = new WebSocket(wsUrl('/ws/telemetry'));
+    telemetrySocket = ws;
+    ws.onopen = () => { reconnectDelay = 3000; };
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -121,8 +118,17 @@ export const useCampusStore = create<CampusState>((set, get) => ({
       }
     };
     ws.onclose = () => {
-      console.log("WebSocket disconnected. Reconnecting in 3s...");
-      setTimeout(() => get().initWebSocket(), 3000);
+      if (telemetrySocket === ws) telemetrySocket = null;
+      // Back off (3s → 30s) so a down backend isn't hammered
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        get().initWebSocket();
+      }, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
     };
   },
 }));
+
+let telemetrySocket: WebSocket | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectDelay = 3000;

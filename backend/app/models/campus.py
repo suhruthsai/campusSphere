@@ -77,7 +77,7 @@ class TelemetryLogModel(Base):
     __tablename__ = "telemetry_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    module = Column(String, nullable=False) # energy, water, environment, crowd, attendance
+    module = Column(String, nullable=False) # e.g. parking_and_users, crowd, attendance
     data = Column(JSON, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
@@ -116,6 +116,26 @@ class AttendanceLogModel(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("UserModel", back_populates="attendance_logs")
+
+
+class ClassSessionLogModel(Base):
+    """Headcount for one held class session — the training data for the
+    classroom-utilization model. `source` is 'simulated' for generated history
+    or 'recorded' for headcounts entered by faculty."""
+    __tablename__ = "class_session_logs"
+
+    id                 = Column(Integer, primary_key=True, autoincrement=True)
+    date               = Column(Date, nullable=False, index=True)
+    timetable_entry_id = Column(Integer, ForeignKey("timetable_entries.id", ondelete="CASCADE"), nullable=False, index=True)
+    classroom_id       = Column(String, nullable=False, index=True)
+    enrolled           = Column(Integer, nullable=False)     # students expected in this session
+    present            = Column(Integer, nullable=False)     # students who attended
+    capacity           = Column(Integer, nullable=False)     # room capacity at the time
+    source             = Column(String, nullable=False, default="recorded")
+    recorded_by        = Column(String, nullable=True)
+    created_at         = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (Index("ix_session_entry_date", "timetable_entry_id", "date", unique=True),)
 
 
 class CampusEventModel(Base):

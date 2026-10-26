@@ -48,6 +48,7 @@ class BuildingOut(BaseModel):
     occupancy: int
     health: str
     capacity: int
+    departments: Optional[list] = None
 
     class Config:
         from_attributes = True

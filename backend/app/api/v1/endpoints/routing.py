@@ -1,100 +1,69 @@
 import math
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from backend.app.core.state import global_state
-from backend.app.api.v1.endpoints.buildings import DEMO_BUILDINGS
 
 router = APIRouter()
 
-# We define nodes along the visual paths on the map.
-# Visual Paths:
-# Horizontal (z): -44 (Exam-SH), -35 (North), 0 (Center), 35 (South)
-# Vertical (x): -76 (Far West), -25.5 (CSE-Mech), 18 (East), 68 (Far East), 87 (Main Road)
-
+# Walking graph for the MVSR campus layout (metres, x = east, z = south, axis-aligned to
+# the campus grid). Mirrors NODES / EDGE_LIST in
+# src/components/three/SuhruthDigitalTwin.jsx - keep the two in sync.
 NODES = {
-  # Path (North) z=-35 Intersections
-  "FW_N": {"x": -76, "z": -35},
-  "EC_N": {"x": -52.5, "z": -35},
-  "CM_N": {"x": -25.5, "z": -35},
-  "E_N": {"x": 6.5, "z": -35},
-  "FE_N": {"x": 68, "z": -35},
-
-  # Path (Center) z=0 Intersections
-  "FW_C": {"x": -76, "z": 0},
-  "EC_C": {"x": -52.5, "z": 0},
-  "CM_C": {"x": -25.5, "z": 0},
-  "E_C": {"x": 6.5, "z": 0},
-  "FE_C": {"x": 68, "z": 0},
-  "RD_C": {"x": 87, "z": 0},
-
-  # Path (South) z=35 Intersections
-  "FW_S": {"x": -76, "z": 35},
-  "E_S": {"x": 18, "z": 35},
-  "FE_S": {"x": 68, "z": 35},
-
-  # Path (Exam-SH) z=-44 (horizontal, between x=-2 and 45)
-  "E_EX": {"x": 6.5, "z": -44},
-  
-  # Custom nodes to reach parking lots
-  "PK_N": {"x": -95, "z": 48},
-  "PK_S": {"x": -60, "z": 55},
-  
-  # Connection points near  # Parking / Misc
+    # Back gate lane (x = 20)
+    "V_GATE": {"x": 20, "z": -70}, "V_N": {"x": 20, "z": -30}, "V_S": {"x": 20, "z": -20},
+    # Boulevard, north lane (z = -30)
+    "N_LIB": {"x": -63, "z": -30}, "N_PLC": {"x": -33, "z": -30}, "N_AUD": {"x": -139, "z": -30}, "N_BOYS": {"x": -176, "z": -30}, "N_W": {"x": -189, "z": -30},
+    "N_SEC": {"x": -215, "z": -30},
+    # Boulevard, south lane (z = -20)
+    "L_ECE": {"x": -7, "z": -20}, "P3_N": {"x": -28.75, "z": -20}, "L_CSE": {"x": -50, "z": -20}, "L_MID": {"x": -63, "z": -20},
+    "P2_N": {"x": -73.5, "z": -20}, "L_MECH": {"x": -102, "z": -20}, "P1_N": {"x": -129.5, "z": -20},
+    "L_CIV": {"x": -158, "z": -20}, "W_N": {"x": -189, "z": -20},
+    # West road (x = -189)
+    "W_S": {"x": -189, "z": 47}, "W_GIRLS": {"x": -189, "z": 77.5},
+    # South road (z = 47)
+    "S_SH": {"x": -162.5, "z": 47}, "P1_S": {"x": -129.5, "z": 47}, "S_CAD": {"x": -106, "z": 47},
+    "P2_S": {"x": -73.5, "z": 47}, "S_CANT": {"x": -40, "z": 47}, "P3_S": {"x": -28.75, "z": 47},
+    "S_RND": {"x": -14, "z": 47}, "E_S": {"x": 20, "z": 47},
+    # S&H-Exam road
+    "I_EXAM": {"x": -129.5, "z": 96.5},
+    # Car park access road and the car park's north aisle (all 60 spots)
+    "D_LANE": {"x": 20, "z": -40}, "D_TURN": {"x": 57, "z": -40}, "PK_N": {"x": 57, "z": -7},
 }
 
 EDGE_LIST = [
-  # Horizontal Path (North) z=-35
-  ["FW_N", "EC_N"], ["EC_N", "CM_N"], ["CM_N", "E_N"], ["E_N", "FE_N"],
-  
-  # Horizontal Path (Center) z=0
-  ["FW_C", "EC_C"], ["EC_C", "CM_C"], ["CM_C", "E_C"], ["E_C", "FE_C"], ["FE_C", "RD_C"],
-  
-  # Horizontal Path (South) z=35
-  ["FW_S", "E_S"], ["E_S", "FE_S"],
-  
-  # Vertical Path (Far West) x=-76
-  ["FW_N", "FW_C"], ["FW_C", "FW_S"],
-
-  # Vertical Path (ECE-CSE) x=-52.5
-  ["EC_N", "EC_C"],
-  
-  # Vertical Path (CSE-Mech) x=-25.5
-  ["CM_N", "CM_C"],
-  
-  # Vertical Path (East) x=18
-  ["E_EX", "E_N"], ["E_N", "E_C"], ["E_C", "E_S"],
-  
-  # Vertical Path (Far East) x=68
-  ["FE_N", "FE_C"], ["FE_C", "FE_S"],
-  
+    ["V_GATE", "D_LANE"], ["D_LANE", "V_N"], ["D_LANE", "D_TURN"], ["D_TURN", "PK_N"], ["V_N", "V_S"],
+    ["V_N", "N_PLC"], ["N_PLC", "N_LIB"], ["N_LIB", "N_AUD"], ["N_AUD", "N_BOYS"], ["N_BOYS", "N_W"], ["N_W", "N_SEC"],
+    ["V_S", "L_ECE"], ["L_ECE", "P3_N"], ["P3_N", "L_CSE"], ["L_CSE", "L_MID"], ["L_MID", "P2_N"], ["P2_N", "L_MECH"],
+    ["L_MECH", "P1_N"], ["P1_N", "L_CIV"], ["L_CIV", "W_N"],
+    ["N_W", "W_N"], ["N_LIB", "L_MID"],
+    ["W_N", "W_S"], ["W_S", "W_GIRLS"],
+    ["W_S", "S_SH"], ["S_SH", "P1_S"], ["P1_S", "S_CAD"], ["S_CAD", "P2_S"], ["P2_S", "S_CANT"],
+     ["S_CANT", "P3_S"], ["P3_S", "S_RND"], ["S_RND", "E_S"],
+    ["P1_N", "P1_S"], ["P2_N", "P2_S"], ["P3_N", "P3_S"], ["P1_S", "I_EXAM"],
+    ["V_S", "E_S"],
 ]
 
-# Add buildings as nodes
-# Using the same hardcoded gates from the JS version for consistency:
+# Building entrances (the `gate` of each BUILDINGS entry in the frontend) and the road
+# node each one connects to.
 GATES = {
-  'rnd': {'x': -78, 'z': -44}, 'cant': {'x': -55, 'z': -44}, 'cad': {'x': -28, 'z': -44}, 
-  'exam': {'x': -2, 'z': -44}, 'sh': {'x': 45, 'z': -44}, 'ece': {'x': -65, 'z': -9}, 
-  'cse': {'x': -40, 'z': -9}, 'mecheee': {'x': -10, 'z': -9}, 'civilit': {'x': 23, 'z': -9},
-  'lib': {'x': -30, 'z': 48}, 'aud': {'x': 12, 'z': 43}, 'frontgate': {'x': 87, 'z': 0}, 
-  'backgate': {'x': -77, 'z': 48}, 'security': {'x': 74, 'z': -5},
-  'boyshostel': {'x': 74, 'z': -35}, 'girlshostel': {'x': 74, 'z': 45}
+    "rnd": {"x": -14, "z": 55}, "cant": {"x": -40, "z": 65}, "cad": {"x": -106, "z": 70.5},
+    "exam": {"x": -105, "z": 96.5}, "sh": {"x": -162.5, "z": 63}, "ece": {"x": -7, "z": -9.5},
+    "cse": {"x": -50, "z": -6}, "mecheee": {"x": -102, "z": -9}, "civilit": {"x": -158, "z": -6},
+    "lib": {"x": -63, "z": -41}, "aud": {"x": -139, "z": -45}, "frontgate": {"x": -225, "z": -20},
+    "backgate": {"x": 20, "z": -76}, "security": {"x": -215, "z": -36.5},
+    "boyshostel": {"x": -176, "z": -58}, "girlshostel": {"x": -191, "z": 77.5},
+    "placement": {"x": -33, "z": -39},
+}
+
+LINKS = {
+    "rnd": "S_RND", "cant": "S_CANT", "cad": "S_CAD", "exam": "I_EXAM", "sh": "S_SH",
+    "ece": "L_ECE", "cse": "L_CSE", "mecheee": "L_MECH", "civilit": "L_CIV", "lib": "N_LIB",
+    "aud": "N_AUD", "frontgate": "W_N", "backgate": "V_GATE", "security": "N_SEC",
+    "boyshostel": "N_BOYS", "girlshostel": "W_GIRLS", "placement": "N_PLC",
 }
 
 for b_id, gate in GATES.items():
     NODES[b_id] = gate
-    
-    # Connect each building to the closest path node
-    closest_node = None
-    min_dist = float('inf')
-    for n_id, n_pos in NODES.items():
-        if n_id == b_id or n_id in GATES or n_id in ["PK_N", "PK_S"]: 
-            continue # Don't connect buildings to buildings or parking lots
-        d = math.hypot(gate['x'] - n_pos['x'], gate['z'] - n_pos['z'])
-        if d < min_dist:
-            min_dist = d
-            closest_node = n_id
-            
-    if closest_node:
-        EDGE_LIST.append([b_id, closest_node])
+    EDGE_LIST.append([b_id, LINKS[b_id]])
 
 def dist(a, b):
     return math.hypot(a['x'] - b['x'], a['z'] - b['z'])
@@ -143,19 +112,8 @@ def dijkstra(start_id, end_id):
 
 def get_available_parking_spots():
     spots = global_state.parking_spots
-    # Mapping spot IDs to the nearest graph node
-    # Spot 0-13 -> North Parking -> Node 'wD'
-    # Spot 14-29 -> South Parking -> Node 'fA'
-    available = []
-    for spot in spots:
-        if not spot.get("occupied", True):
-            try:
-                num = int(spot["id"].split("_")[1])
-                node = "PK_N" if num <= 13 else "PK_S"
-                available.append({"id": spot["id"], "node": node})
-            except:
-                pass
-    return available
+    # All spots are in the car park on the ground, reached at node 'PK_N'
+    return [{"id": spot["id"], "node": "PK_N"} for spot in spots if not spot.get("occupied", True)]
 
 @router.get("/route")
 def calculate_route(from_id: str, to_id: str, mode: str = "walk"):

@@ -1,15 +1,18 @@
 from fastapi import APIRouter, Depends
 from backend.app.core.security import get_current_user
-from backend.app.api.v1.endpoints import auth, ai, buildings, monitoring, routing, media, attendance, events, announcements, classrooms, timetable, subjects, faculty_profiles, substitutions
+from backend.app.api.v1.endpoints import auth, ai, utilization, buildings, monitoring, routing, media, attendance, events, announcements, classrooms, timetable, subjects, faculty_profiles, substitutions, services, joining, leaving
 
 api_router = APIRouter()
 
 # /auth handles its own per-route auth (login/register are public).
 api_router.include_router(auth.router,             prefix="/auth",             tags=["Authentication"])
+# Certificate verification is public: banks/employers scan the QR without an account.
+api_router.include_router(services.public_router,  prefix="/services",         tags=["Student Services"])
 
 # Everything else requires a logged-in user; write routes add role checks on top.
 authed = [Depends(get_current_user)]
 api_router.include_router(ai.router,               prefix="/ai",               tags=["AI Assistant"],          dependencies=authed)
+api_router.include_router(utilization.router,      prefix="/ai/utilization",   tags=["Classroom Utilization"], dependencies=authed)
 api_router.include_router(buildings.router,        prefix="/buildings",        tags=["Campus Buildings"],      dependencies=authed)
 api_router.include_router(routing.router,          prefix="/buildings",        tags=["Navigation & Routing"],  dependencies=authed)
 api_router.include_router(monitoring.router,       prefix="/monitoring",       tags=["IoT & Analytics"],       dependencies=authed)
@@ -22,3 +25,6 @@ api_router.include_router(timetable.router,        prefix="/timetable",        t
 api_router.include_router(subjects.router,         prefix="/subjects",         tags=["Subjects"],              dependencies=authed)
 api_router.include_router(faculty_profiles.router, prefix="/faculty-profiles", tags=["Faculty Profiles"],      dependencies=authed)
 api_router.include_router(substitutions.router,    prefix="/substitutions",    tags=["Faculty Substitutions"], dependencies=authed)
+api_router.include_router(services.router,         prefix="/services",         tags=["Student Services"],      dependencies=authed)
+api_router.include_router(joining.router,          prefix="/joining",          tags=["Joining & Fees"],        dependencies=authed)
+api_router.include_router(leaving.router,          prefix="/leaving",          tags=["Leaving & No-dues"],     dependencies=authed)

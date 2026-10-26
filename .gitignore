@@ -23,6 +23,7 @@ backend/app/__pycache__/
 backend/app/**/__pycache__/
 
 # Environment Variables & Secrets
+*.local.txt
 .env
 .env.local
 .env.*.local
@@ -37,8 +38,13 @@ backend/campussphere.db
 seed.log
 *.log
 
+# Trained ML models (regenerated from the database on startup)
+backend/app/ai/utilization/artifacts/
+
 # Media uploads (runtime user uploads)
 media_uploads/
+# Joining documents (private: Aadhaar, certificates) — never commit
+private_uploads/
 backend/media_uploads/
 
 # IDE & Editor files

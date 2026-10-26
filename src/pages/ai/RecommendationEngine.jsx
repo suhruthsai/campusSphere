@@ -1,5 +1,5 @@
 // RecommendationEngine.jsx — Module 18
-import { Lightbulb, BookOpen, Car, Navigation, School, Star } from 'lucide-react';
+import { Lightbulb } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import MonitoringLayout, { MCard, HBar } from '../../components/monitoring/MonitoringLayout.jsx';
@@ -17,6 +17,7 @@ export default function RecommendationEngine() {
 
   return (
     <MonitoringLayout
+      simulated="Study-space, parking and noise data aren't collected yet."
       title="Recommendation Engine"
       subtitle="AI-powered personalized recommendations for campus resources"
       icon={<Lightbulb size={22} />}

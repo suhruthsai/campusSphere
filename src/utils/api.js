@@ -62,15 +62,29 @@ export const authApi = {
   users:    (params = {})      => request('/auth/users?' + new URLSearchParams(params)),
   getUser:  (id)               => request(`/auth/users/${id}`),
   setStatus:(id, status)       => request(`/auth/users/${id}/status?new_status=${status}`, { method: 'PATCH' }),
+  updateUser:(id, data)        => request(`/auth/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  resetPassword:(id)           => request(`/auth/users/${id}/reset-password`, { method: 'POST' }),
+  changePassword:(current, next) => request('/auth/change-password', { method: 'POST', body: JSON.stringify({ current_password: current, new_password: next }) }),
   deleteUser:(id)              => request(`/auth/users/${id}`, { method: 'DELETE' }),
 };
 
 // ── Buildings ──────────────────────────────────────────────────────────────────
 export const buildingsApi = {
   list:   ()   => request('/buildings/'),
+  create: (data)     => request('/buildings/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => request(`/buildings/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  remove: (id)       => request(`/buildings/${id}`, { method: 'DELETE' }),
   get:    (id) => request(`/buildings/${id}`),
   route:  (fromId, toId, mode = 'walk') =>
     request('/buildings/route?' + new URLSearchParams({ from_id: fromId, to_id: toId, mode })),
+};
+
+// ── Classroom utilization (ML forecast + recommendations) ──────────────────────
+export const utilizationApi = {
+  model:         ()            => request('/ai/utilization/model'),
+  report:        (week = null) => request('/ai/utilization/report' + (week ? `?week=${week}` : '')),
+  train:         ()            => request('/ai/utilization/train', { method: 'POST' }),
+  recordSession: (data)        => request('/ai/utilization/sessions', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 // ── AI Assistant (Groq is called server-side; the key never reaches the browser) ─
@@ -80,35 +94,12 @@ export const aiApi = {
     request('/ai/chat', { method: 'POST', body: JSON.stringify({ messages, target }) }),
 };
 
-// ── Events ─────────────────────────────────────────────────────────────────────
-export const eventsApi = {
-  list:   (params = {}) => request('/events/?' + new URLSearchParams(params)),
-  create: (data)        => request('/events/', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id, data)    => request(`/events/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete: (id)          => request(`/events/${id}`, { method: 'DELETE' }),
-};
-
 // ── Announcements ──────────────────────────────────────────────────────────────
 export const announcementsApi = {
   list:       (params = {}) => request('/announcements/?' + new URLSearchParams(params)),
   create:     (data)        => request('/announcements/', { method: 'POST', body: JSON.stringify(data) }),
   deactivate: (id)          => request(`/announcements/${id}/deactivate`, { method: 'PATCH' }),
   delete:     (id)          => request(`/announcements/${id}`, { method: 'DELETE' }),
-};
-
-// ── Attendance ─────────────────────────────────────────────────────────────────
-export const attendanceApi = {
-  list:    (params = {}) => request('/attendance/?' + new URLSearchParams(params)),
-  mark:    (params = {}) => request('/attendance/?' + new URLSearchParams(params), { method: 'POST' }),
-  summary: (studentId)   => request(`/attendance/summary/${studentId}`),
-};
-
-// ── Media ──────────────────────────────────────────────────────────────────────
-export const mediaApi = {
-  getBuilding: (buildingId) => request(`/media/${buildingId}`),
-  getRoom:     (buildingId, roomLabel) =>
-    request(`/media/${buildingId}/${encodeURIComponent(roomLabel)}`),
-  delete: (mediaId) => request(`/media/${mediaId}`, { method: 'DELETE' }),
 };
 
 // ── Classrooms ─────────────────────────────────────────────────────────────────
@@ -128,6 +119,8 @@ export const classroomsApi = {
 // ── Timetable ──────────────────────────────────────────────────────────────────
 export const timetableApi = {
   list:        (params = {}) => request('/timetable/?' + new URLSearchParams(params)),
+  mine:        ()            => request('/timetable/mine'),
+  stats:       ()            => request('/timetable/stats'),
   create:      (data)        => request('/timetable/', { method: 'POST', body: JSON.stringify(data) }),
   update:      (id, data)    => request(`/timetable/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete:      (id)          => request(`/timetable/${id}`, { method: 'DELETE' }),
@@ -186,5 +179,134 @@ export const substitutionsApi = {
   auditHistory: (params = {}) => request('/substitutions/history/audit?' + new URLSearchParams(params)),
 };
 
-export default { authApi, buildingsApi, aiApi, eventsApi, announcementsApi, attendanceApi, mediaApi, classroomsApi, timetableApi, subjectsApi, facultyApi, substitutionsApi };
+// ── Student Services (bonafide / NOC requests) ────────────────────────────────
+const post = (path, data) => request(path, { method: 'POST', body: JSON.stringify(data || {}) });
+
+export const servicesApi = {
+  catalog:       ()            => request('/services/catalog'),
+  myProfile:     ()            => request('/services/me/profile'),
+  saveProfile:   (data)        => request('/services/me/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  createRequest: (data)        => post('/services/requests', data),
+  myRequests:    ()            => request('/services/requests/mine'),
+  getRequest:    (id)          => request(`/services/requests/${id}`),
+  cancel:        (id)          => post(`/services/requests/${id}/cancel`),
+  approve:       (id, remarks) => post(`/services/requests/${id}/approve`, { remarks }),
+  reject:        (id, remarks) => post(`/services/requests/${id}/reject`, { remarks }),
+  inbox:         ()            => request('/services/approvals/inbox'),
+  history:       ()            => request('/services/approvals/history'),
+  verify:        (code)        => request(`/services/verify/${encodeURIComponent(code)}`),
+  // Admin setup
+  approverUsers:    ()         => request('/services/admin/approvers'),
+  assignments:      ()         => request('/services/admin/assignments'),
+  assign:           (data)     => post('/services/admin/assignments', data),
+  unassign:         (id)       => request(`/services/admin/assignments/${id}`, { method: 'DELETE' }),
+  students:         (params = {}) => request('/services/admin/students?' + new URLSearchParams(params)),
+  setStudentProfile:(userId, data) => request(`/services/admin/students/${userId}/profile`, { method: 'PUT', body: JSON.stringify(data) }),
+  allRequests:      (params = {}) => request('/services/admin/requests?' + new URLSearchParams(params)),
+  // Exam Cell (Controller of Examinations)
+  examQueue:        ()         => request('/services/exam-cell/queue'),
+  uploadFinal:      (id, file) => uploadFile(`/services/requests/${id}/final-document`, file),
+  dispatch:         (id, tracking) => post(`/services/requests/${id}/dispatch`, { tracking }),
+
+  /** Save the approved PDF (the endpoint needs the login token, so it's fetched as a blob, not linked). */
+  downloadPdf: (id, refNo) => requestBlob(`/services/requests/${id}/pdf`)
+    .then((blob) => saveBlob(blob, `${(refNo || `document-${id}`).replace(/\//g, '-')}.pdf`)),
+};
+
+/** Upload one file (multipart; the browser sets the boundary header). */
+async function uploadFile(path, file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+    body: fd,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((Array.isArray(err.detail) ? err.detail.map((d) => d.msg).join('; ') : err.detail) || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/** Fetch an authenticated file as a blob (PDFs, uploaded documents). */
+async function requestBlob(path) {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+  return res.blob();
+}
+
+/** Save a blob as a file. */
+export function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+// ── Joining after TGEAPCET counselling, college fees, originals register ──────
+const put = (path, data) => request(path, { method: 'PUT', body: JSON.stringify(data || {}) });
+
+export const joiningApi = {
+  config:        ()            => request('/joining/config'),
+  mine:          ()            => request('/joining/me'),
+  start:         ()            => post('/joining/me/start'),
+  saveDetails:   (data)        => put('/joining/me', data),
+  submit:        ()            => post('/joining/me/submit'),
+  removeDoc:     (key)         => request(`/joining/me/documents/${key}`, { method: 'DELETE' }),
+  uploadDoc:     (key, file)   => uploadFile(`/joining/me/documents/${key}`, file),
+  docBlob:       (docId)       => requestBlob(`/joining/documents/${docId}/file`),
+  createPayment: (data)        => post('/joining/me/payments', data),
+  completeTest:  (id, outcome) => post(`/joining/me/payments/${id}/test-complete`, { outcome }),
+  receipt:       (id, receiptNo) => requestBlob(`/joining/payments/${id}/receipt`).then((b) => saveBlob(b, `${receiptNo.replace(/\//g, '-')}.pdf`)),
+  acknowledgement: (ackNo)     => requestBlob(`/joining/acknowledgement?ack_no=${encodeURIComponent(ackNo)}`).then((b) => saveBlob(b, `${ackNo.replace(/\//g, '-')}.pdf`)),
+  // Admin Office
+  applications:  (params = {}) => request('/joining/office/applications?' + new URLSearchParams(params)),
+  application:   (id)          => request(`/joining/office/applications/${id}`),
+  review:        (docId, status, remarks) => post(`/joining/office/documents/${docId}/review`, { status, remarks }),
+  verify:        (id)          => post(`/joining/office/applications/${id}/verify`),
+  sendBack:      (id, remarks) => post(`/joining/office/applications/${id}/return`, { remarks }),
+  receiveOriginals: (id, docKeys) => post(`/joining/office/applications/${id}/originals`, { doc_keys: docKeys }),
+  enroll:        (id, data)    => post(`/joining/office/applications/${id}/enroll`, data),
+  mentors:       ()            => request('/joining/office/mentors'),
+  originals:     (params = {}) => request('/joining/office/originals?' + new URLSearchParams(params)),
+  lend:          (id, dueBack, note) => post(`/joining/office/originals/${id}/lend`, { due_back: dueBack, note }),
+  redeposit:     (id, note)    => post(`/joining/office/originals/${id}/redeposit`, { note }),
+  returnOriginal:(id, note)    => post(`/joining/office/originals/${id}/return`, { note }),
+  // Admin fee settings
+  feeHeads:      ()            => request('/joining/admin/fee-heads'),
+  addFeeHead:    (data)        => post('/joining/admin/fee-heads', data),
+  saveFeeHead:   (id, data)    => put(`/joining/admin/fee-heads/${id}`, data),
+};
+
+// ── Leaving the college: no-dues clearance, dues and document-fee payments ────
+export const leavingApi = {
+  config:        ()            => request('/leaving/config'),
+  mine:          ()            => request('/leaving/me'),
+  start:         (data)        => post('/leaving/me/start', data),
+  payDues:       (itemId)      => post(`/leaving/me/items/${itemId}/pay`),
+  /** TEST MODE: finish a dues or document-fee payment. */
+  completeTest:  (id, outcome) => post(`/leaving/payments/${id}/test-complete`, { outcome }),
+  receipt:       (id, receiptNo) => requestBlob(`/leaving/payments/${id}/receipt`).then((b) => saveBlob(b, `${receiptNo.replace(/\//g, '-')}.pdf`)),
+  noDuesCertificate: ()        => requestBlob('/leaving/me/no-dues-certificate').then((b) => saveBlob(b, 'No-Dues-Certificate.pdf')),
+  // Clearance officers
+  queue:         (status = 'pending') => request(`/leaving/clearance/queue?status=${encodeURIComponent(status)}`),
+  clear:         (itemId, remarks) => post(`/leaving/clearance/items/${itemId}/clear`, { remarks }),
+  recordDues:    (itemId, amount, remarks) => post(`/leaving/clearance/items/${itemId}/dues`, { amount, remarks }),
+  // Admin
+  officers:      ()            => request('/leaving/admin/officers'),
+  addOfficer:    (data)        => post('/leaving/admin/officers', data),
+  removeOfficer: (id)          => request(`/leaving/admin/officers/${id}`, { method: 'DELETE' }),
+  documentFees:  ()            => request('/leaving/admin/document-fees'),
+  setDocumentFee:(docType, amount) => put(`/leaving/admin/document-fees/${docType}`, { amount }),
+};
 

@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
 from backend.app.db.session import get_db
 from backend.app.core.security import require_admin
 from backend.app.models.campus import ClassroomModel, TimetableEntryModel
@@ -14,44 +13,6 @@ DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 def _time_to_minutes(t: str) -> int:
     h, m = t.split(":")
     return int(h) * 60 + int(m)
-
-def _get_current_entry(classroom_id: str, db: Session, target_dt: Optional[datetime] = None):
-    now = target_dt if target_dt else datetime.now()
-    dow = now.weekday()  # 0=Mon, 6=Sun
-    current_time = now.strftime("%H:%M")
-    cur_min = _time_to_minutes(current_time)
-
-    entries = db.query(TimetableEntryModel).filter(
-        TimetableEntryModel.classroom_id == classroom_id,
-        TimetableEntryModel.day_of_week == dow,
-        TimetableEntryModel.is_active == True,
-    ).all()
-
-    current = None
-    for e in entries:
-        s = _time_to_minutes(e.start_time)
-        en = _time_to_minutes(e.end_time)
-        if s <= cur_min < en:
-            current = e
-            break
-    return current, entries, dow, cur_min
-
-def _get_next_entry(entries, cur_min, classroom_id: str, db: Session, dow: int):
-    future_today = sorted(
-        [e for e in entries if _time_to_minutes(e.start_time) > cur_min],
-        key=lambda e: _time_to_minutes(e.start_time)
-    )
-    if future_today:
-        return future_today[0]
-    for d in range(dow + 1, 6):
-        next_day = db.query(TimetableEntryModel).filter(
-            TimetableEntryModel.classroom_id == classroom_id,
-            TimetableEntryModel.day_of_week == d,
-            TimetableEntryModel.is_active == True,
-        ).order_by(TimetableEntryModel.period_number).first()
-        if next_day:
-            return next_day
-    return None
 
 @router.get("/", response_model=List[ClassroomOut])
 def list_classrooms(
@@ -109,38 +70,11 @@ def delete_classroom(classroom_id: str, db: Session = Depends(get_db), _admin: d
 @router.get("/{classroom_id}/current", response_model=CurrentClassResponse)
 def get_current_class(
     classroom_id: str,
-    at_datetime: Optional[str] = Query(None, description="Optional ISO or HH:MM target date/time simulation"),
+    at_datetime: Optional[str] = Query(None, description="Optional campus (India) time, e.g. 2026-10-26T10:30"),
     db: Session = Depends(get_db)
 ):
-    room = db.query(ClassroomModel).filter(ClassroomModel.id == classroom_id).first()
-    if not room:
-        raise HTTPException(status_code=404, detail="Classroom not found")
-
-    target_dt = None
-    if at_datetime:
-        try:
-            target_dt = datetime.fromisoformat(at_datetime)
-        except Exception:
-            try:
-                # Try format YYYY-MM-DDTHH:MM or YYYY-MM-DD HH:MM
-                clean_str = at_datetime.replace(' ', 'T')
-                target_dt = datetime.strptime(clean_str, "%Y-%m-%dT%H:%M")
-            except Exception:
-                target_dt = None
-
-    current, entries, dow, cur_min = _get_current_entry(classroom_id, db, target_dt)
-    next_e = _get_next_entry(entries, cur_min, classroom_id, db, dow)
-
-    return CurrentClassResponse(
-        classroom_id=room.id,
-        classroom_name=room.name,
-        building=room.building,
-        floor=room.floor,
-        status="occupied" if current else "available",
-        day_name=DAY_NAMES[dow] if dow < len(DAY_NAMES) else None,
-        current_entry=TimetableEntryOut.model_validate(current) if current else None,
-        next_entry=TimetableEntryOut.model_validate(next_e) if next_e else None,
-    )
+    from backend.app.api.v1.endpoints.timetable import current_class
+    return current_class(db, classroom_id, at_datetime)
 
 @router.get("/{classroom_id}/week")
 def get_week_schedule(classroom_id: str, db: Session = Depends(get_db)):

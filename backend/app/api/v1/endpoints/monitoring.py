@@ -7,15 +7,7 @@ router = APIRouter()
 
 @router.post("/forecast", response_model=ForecastResponse)
 def get_ai_forecast(req: ForecastRequest):
-    if req.module == "energy":
-        res = CampusAIForecaster.predict_energy_consumption([1500, 1842, 1920, 1755, 1900])
-        return ForecastResponse(
-            module="energy",
-            forecast_values=res["forecast_kwh"][:5],
-            confidence_score=res["confidence_score"],
-            insights=res["insights"]
-        )
-    elif req.module == "parking":
+    if req.module == "parking":
         res = CampusAIForecaster.predict_parking_occupancy(84)
         return ForecastResponse(
             module="parking",

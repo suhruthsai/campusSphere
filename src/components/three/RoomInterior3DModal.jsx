@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { X, Eye, Video, Users, Calendar, GraduationCap, BookOpen, Clock, ChevronDown } from 'lucide-react';
+import { X, Video, Users, Calendar, GraduationCap, BookOpen, Clock } from 'lucide-react';
 import { classroomsApi, wsUrl } from '../../utils/api';
 
 const TIME_SLOTS = [
@@ -3484,7 +3484,7 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
       tvCtx.fillStyle = '#00E5FF';
       tvCtx.font = 'bold 34px sans-serif';
       tvCtx.textAlign = 'center';
-      tvCtx.fillText('SUHRUTH UNIVERSITY', 256, 100);
+      tvCtx.fillText('MVSR ENGINEERING COLLEGE', 256, 100);
       tvCtx.fillStyle = '#FFFFFF';
       tvCtx.font = '22px sans-serif';
       tvCtx.fillText('ADMINISTRATIVE CORE HIERARCHY', 256, 150);

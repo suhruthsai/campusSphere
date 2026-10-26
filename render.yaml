@@ -8,6 +8,8 @@ services:
     region: singapore
     plan: free
     buildCommand: pip install -r backend/requirements.txt
+    # --proxy-headers keeps https:// in redirects; client IPs for rate limiting come
+    # from TRUSTED_PROXY_HOPS instead (see backend/app/core/rate_limit.py)
     startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
     healthCheckPath: /health
     envVars:
@@ -17,6 +19,8 @@ services:
         value: "1"
       - key: ENVIRONMENT
         value: production
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"   # Render's proxy appends the real client IP to X-Forwarded-For
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL

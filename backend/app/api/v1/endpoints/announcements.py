@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from backend.app.db.session import get_db
-from backend.app.core.security import require_admin, require_staff, get_current_user
+from backend.app.core.security import require_admin, require_staff
 from backend.app.models.campus import AnnouncementModel
 
 router = APIRouter()

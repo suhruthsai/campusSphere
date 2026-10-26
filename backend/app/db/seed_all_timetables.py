@@ -736,6 +736,7 @@ def seed_all(only_if_empty: bool = False):
         db.commit()
         total_e = db.query(TimetableEntryModel).count()
         print(f"✅ Successfully seeded {total_e} timetable entries across 12 sections and 28 campus locations!")
+        sync_subjects(db)
 
     except Exception as exc:
         db.rollback()
@@ -743,6 +744,43 @@ def seed_all(only_if_empty: bool = False):
         raise
     finally:
         db.close()
+
+ACTIVITY_CODES = {"COUNSELLING", "CRT", "LIBRARY", "SPORTS"}
+
+
+def sync_subjects(db=None) -> int:
+    """Fill the subjects list from the subject codes used in the timetable (adds missing ones only,
+    never changes existing subjects). Codes shared by several different slots (e.g. TUTORIAL) are left out."""
+    own = db is None
+    db = db or SessionLocal()
+    try:
+        names, meta = {}, {}
+        for code, name, dept, sem in db.query(TimetableEntryModel.subject_id, TimetableEntryModel.subject_name,
+                                             TimetableEntryModel.department, TimetableEntryModel.semester).all():
+            if not code:
+                continue
+            names.setdefault(code, set()).add(name.strip())
+            meta.setdefault(code, (dept, sem))
+        have = {r[0] for r in db.query(SubjectModel.id).all()}
+        added = 0
+        for code, ns in names.items():
+            if code in have or len(ns) != 1:
+                continue
+            name = next(iter(ns))
+            low = name.lower()
+            kind = ("activity" if code in ACTIVITY_CODES else "lab" if "lab" in low else
+                    "project" if "project" in low else "theory")
+            dept, sem = meta[code]
+            db.add(SubjectModel(id=code, name=name, code=code, department=dept, semester=sem, subject_type=kind))
+            added += 1
+        db.commit()
+        if added:
+            print(f"✅ Subjects list: added {added} subjects from the timetable")
+        return added
+    finally:
+        if own:
+            db.close()
+
 
 if __name__ == "__main__":
     seed_all()

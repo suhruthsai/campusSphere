@@ -27,13 +27,24 @@ class Settings(BaseSettings):
     # Comma-separated list of allowed frontend origins
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # Public address of the website; certificate QR codes link to {FRONTEND_URL}/verify/<code>
+    FRONTEND_URL: str = "http://localhost:5173"
+
+    # Joining-fee payments. "test" simulates the gateway (no real money). A live gateway
+    # (e.g. Razorpay) needs the college's merchant account and is not wired up yet.
+    PAYMENT_MODE: str = "test"
+
+    # Number of reverse proxies in front of the app that append to X-Forwarded-For.
+    # 0 = clients connect directly (local dev, bare Docker). Render = 1.
+    TRUSTED_PROXY_HOPS: int = 0
+
     # Bootstrap admin account (created only if it doesn't exist yet)
     ADMIN_EMAIL: str = "admin@suhruth.edu"
     ADMIN_PASSWORD: Optional[str] = None
 
     # Server-side only — never expose this to the frontend bundle
     GROQ_API_KEY: Optional[str] = None
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"   # llama-3.3-70b-versatile was retired by Groq
 
     @property
     def cors_origins(self) -> List[str]:

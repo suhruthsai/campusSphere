@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 
-const DEPARTMENTS = ['CSE', 'ECE', 'Mech', 'EEE', 'Civil', 'IT', 'S&H', 'Administration', 'Library', 'Canteen'];
+const DEPARTMENTS = ['CSE', 'ECE', 'MECH', 'EEE', 'CIVIL', 'IT', 'S&H', 'Administration', 'Library', 'Canteen'];
 const ROLES = [
   { value: 'student', label: 'Student', color: '#00E5FF' },
   { value: 'faculty', label: 'Faculty', color: '#F59E0B' },

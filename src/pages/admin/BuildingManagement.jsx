@@ -1,7 +1,7 @@
-// BuildingManagement.jsx — Add/Edit/Delete buildings, health, equipment
+// BuildingManagement.jsx — Add/Edit/Delete campus buildings (saved in the database) and their health
 import {
   AlertCircle, Building2, CheckCircle, ChevronDown, ChevronUp,
-  Edit2, PlusCircle, Trash2, X, Wrench,
+  Edit2, PlusCircle, Trash2, X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
@@ -15,17 +15,7 @@ const HEALTH_STYLE = {
   Critical: { bg: 'rgba(239,68,68,0.12)',  text: '#ef4444', icon: AlertCircle },
 };
 
-// Attach initial health and equipment to buildings
-const enrichBuilding = (b, i) => ({
-  ...b,
-  equipment: [
-    { name: 'Projectors',   count: (i % 3) + 2 },
-    { name: 'AC Units',     count: (i % 4) + 3 },
-    { name: 'CCTV Cameras', count: (i % 2) + 4 },
-  ],
-});
-
-const EMPTY_FORM = { name: '', type: '', floors: 2, color: '#00E5FF', health: 'Good' };
+const EMPTY_FORM = { name: '', type: '', floors: 2, capacity: '', color: '#00E5FF', health: 'Good' };
 
 export default function BuildingManagement() {
   const [buildingList, setBuildingList] = useState([]);
@@ -40,7 +30,7 @@ export default function BuildingManagement() {
     try {
       setLoading(true);
       const res = await buildingsApi.list();
-      setBuildingList(res.map((b, i) => enrichBuilding(b, i)));
+      setBuildingList(res);
     } catch (e) {
       console.error(e);
       alert('Failed to load buildings');
@@ -56,22 +46,29 @@ export default function BuildingManagement() {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const openAdd  = ()  => { setEditBuilding(null); setForm(EMPTY_FORM); setModalOpen(true); };
-  const openEdit = (b) => { setEditBuilding(b); setForm({ name: b.name, type: b.type, floors: b.floors, color: b.color, health: b.health }); setModalOpen(true); };
+  const openEdit = (b) => { setEditBuilding(b); setForm({ name: b.name, type: b.type, floors: b.floors, capacity: b.capacity ?? '', color: b.color, health: b.health }); setModalOpen(true); };
 
-  const save = () => {
-    if (!form.name) return;
-    if (editBuilding) {
-      setBuildingList((prev) => prev.map((b) => b.id === editBuilding.id ? { ...b, ...form } : b));
-    } else {
-      const nb = { id: 'bx' + Date.now(), ...form, x: 0, z: 0, height: 1.2, occupancy: 0, energy: 'Normal', departments: [], capacity: Number(form.floors) * 120, equipment: [] };
-      setBuildingList((prev) => [...prev, nb]);
+  const save = async () => {
+    if (!form.name || !form.type) { alert('Enter the building name and type.'); return; }
+    const data = { ...form, floors: Number(form.floors), capacity: form.capacity === '' ? null : Number(form.capacity) };
+    try {
+      if (editBuilding) await buildingsApi.update(editBuilding.id, data);
+      else await buildingsApi.create(data);
+      setModalOpen(false);
+      loadBuildings();
+    } catch (e) {
+      alert(e.message || 'Could not save the building');
     }
-    setModalOpen(false);
   };
 
-  const confirmDelete = () => {
-    setBuildingList((prev) => prev.filter((b) => b.id !== deleteTarget.id));
-    setDeleteTarget(null);
+  const confirmDelete = async () => {
+    try {
+      await buildingsApi.remove(deleteTarget.id);
+      setDeleteTarget(null);
+      loadBuildings();
+    } catch (e) {
+      alert(e.message || 'Could not remove the building');
+    }
   };
 
   return (
@@ -84,7 +81,7 @@ export default function BuildingManagement() {
             <h1 className="font-display text-2xl font-extrabold text-white flex items-center gap-2">
               <Building2 size={22} className="text-[#7B61FF]" /> Building Management
             </h1>
-            <p className="mt-0.5 text-sm text-slate-400">{buildingList.length} campus buildings · Suhruth University</p>
+            <p className="mt-0.5 text-sm text-slate-400">{buildingList.length} campus buildings · MVSR Engineering College</p>
           </div>
           <button onClick={openAdd}
                   className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold text-[#020814] transition"
@@ -146,15 +143,15 @@ export default function BuildingManagement() {
                   </span>
 
                   <div className="flex gap-1 shrink-0">
-                    <button onClick={() => openEdit(b)}
+                    <button onClick={() => openEdit(b)} title="Edit" aria-label={`Edit ${b.name}`}
                             className="rounded-lg border border-white/8 bg-white/4 p-1.5 text-slate-400 hover:text-[#7B61FF] transition">
                       <Edit2 size={12} />
                     </button>
-                    <button onClick={() => setDeleteTarget(b)}
+                    <button onClick={() => setDeleteTarget(b)} title="Delete" aria-label={`Delete ${b.name}`}
                             className="rounded-lg border border-white/8 bg-white/4 p-1.5 text-slate-400 hover:text-red-400 transition">
                       <Trash2 size={12} />
                     </button>
-                    <button onClick={() => setExpanded(isExpanded ? null : b.id)}
+                    <button onClick={() => setExpanded(isExpanded ? null : b.id)} title="Details" aria-label={`Details for ${b.name}`}
                             className="rounded-lg border border-white/8 bg-white/4 p-1.5 text-slate-400 hover:text-white transition">
                       {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                     </button>
@@ -167,7 +164,7 @@ export default function BuildingManagement() {
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
                                 transition={{ duration: 0.25 }}
                                 className="border-t border-white/6 px-4 pb-4">
-                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         {/* Departments */}
                         <div>
                           <p className="mb-2 text-slate-500 font-medium">Departments</p>
@@ -188,20 +185,6 @@ export default function BuildingManagement() {
                           <p className="text-slate-500 text-[10px]">{b.floors} floors</p>
                         </div>
 
-                        {/* Equipment */}
-                        <div>
-                          <p className="mb-2 text-slate-500 font-medium flex items-center gap-1">
-                            <Wrench size={10} /> Equipment
-                          </p>
-                          <div className="space-y-1">
-                            {(b.equipment || []).map((eq) => (
-                              <div key={eq.name} className="flex justify-between">
-                                <span className="text-slate-400">{eq.name}</span>
-                                <span className="text-white font-medium">{eq.count}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
                       </div>
                     </motion.div>
                   )}
@@ -231,6 +214,11 @@ export default function BuildingManagement() {
                 <div>
                   <label className="mb-1 block text-xs text-slate-400">Floors</label>
                   <input type="number" min={1} max={20} value={form.floors} onChange={set('floors')}
+                         className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-[#7B61FF]/50" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-400">Capacity (persons)</label>
+                  <input type="number" min={0} value={form.capacity} onChange={set('capacity')} placeholder="floors × 120"
                          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-[#7B61FF]/50" />
                 </div>
                 <div>

@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from typing import List, Optional
-from datetime import datetime
+from typing import Optional
 import os, uuid
 
 from backend.app.db.session import get_db
-from backend.app.core.security import require_admin, require_staff, get_current_user
+from backend.app.core.security import require_admin, require_staff
 from backend.app.models.campus import RoomMediaModel
 
 router = APIRouter()

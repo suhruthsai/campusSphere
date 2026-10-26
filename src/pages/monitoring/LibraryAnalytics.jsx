@@ -11,8 +11,9 @@ export default function LibraryAnalytics() {
 
   return (
     <MonitoringLayout
+      simulated="There is no library gate counter or seat sensor connected yet."
       title="Library Analytics"
-      subtitle="Live seat occupancy & AI insights · Suhruth University Library"
+      subtitle="Live seat occupancy & AI insights · MVSR Engineering College Library"
       icon={<BookOpen size={22} />}
       accentColor="#7B61FF"
       liveLabel="Live · Refreshed every 30s"

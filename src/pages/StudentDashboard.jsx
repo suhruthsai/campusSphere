@@ -1,102 +1,76 @@
-import { Bell, BookOpenCheck, CalendarClock, ChartSpline, ClipboardCheck, Trophy, Star } from 'lucide-react';
-import { motion } from 'framer-motion';
+// Student home: today's classes from the real timetable, my certificate requests, joining / leaving status.
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { CalendarClock, ClipboardCheck, DoorOpen, FileText } from 'lucide-react';
 import PageTransition from '../components/PageTransition.jsx';
 import MetricCard from '../components/dashboard/MetricCard.jsx';
-import BarChart from '../components/dashboard/BarChart.jsx';
-import { timetable } from '../data/campus.js';
-
-const assignments = [
-  { name: 'Digital Systems Report', due: 'Tonight', status: 'Draft ready', urgent: true },
-  { name: 'AI Ethics Reflection', due: 'Jun 12', status: 'Needs review', urgent: false },
-  { name: 'Capstone Prototype', due: 'Jun 18', status: 'On track', urgent: false },
-];
+import MyDay, { fmtIn, placeOf, today } from '../components/dashboard/MyDay.jsx';
+import { StatusBadge, whereNow } from '../components/services/requestUi.jsx';
+import { joiningApi, leavingApi, servicesApi, timetableApi } from '../utils/api.js';
 
 export default function StudentDashboard() {
+  const [week, setWeek] = useState(null);
+  const [requests, setRequests] = useState(null);
+  const [joining, setJoining] = useState(undefined);
+  const [leaving, setLeaving] = useState(undefined);
+
+  useEffect(() => {
+    timetableApi.mine().then(setWeek).catch((e) => setWeek({ entries: [], substitutions_today: [], reason: e.message }));
+    servicesApi.myRequests().then(setRequests).catch(() => setRequests([]));
+    joiningApi.mine().then(setJoining).catch(() => setJoining(null));
+    leavingApi.mine().then(setLeaving).catch(() => setLeaving(null));
+  }, []);
+
+  const day = week ? today(week.entries) : null;
+  const open = (requests || []).filter((r) => ['awaiting_payment', 'in_review', 'processing'].includes(r.status));
+  const ready = (requests || []).filter((r) => r.status === 'approved');
+
   return (
     <PageTransition className="mx-auto min-h-screen max-w-7xl px-4 pb-20 pt-28 sm:px-6">
-      <DashboardHeading eyebrow="Student command center" title="Attendance, timetable, assignments & academic momentum." />
+      <DashboardHeading eyebrow="Student home" title="Your day, your requests, your campus." />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={ClipboardCheck} label="Attendance this term" value="92%"  meta="+4% vs last month" />
-        <MetricCard icon={CalendarClock}  label="Classes today"        value="4"     meta="Next in 42 min"    tone="secondary" />
-        <MetricCard icon={BookOpenCheck}  label="Assignments open"     value="3"     meta="1 urgent"          tone="accent" />
-        <MetricCard icon={Trophy}         label="Performance index"    value="8.7"   meta="Top 12%"           />
+        <MetricCard icon={CalendarClock} label="Classes today"
+          value={!day ? '…' : week.reason ? '—' : String(day.list.length)}
+          meta={!day ? '' : week.reason ? 'No timetable yet' : day.current ? `Now: ${day.current.subject_name}` : day.next ? `Next in ${fmtIn(day.next.startsIn)}` : 'No more classes today'} />
+        <MetricCard icon={FileText} label="Requests in progress" value={requests ? String(open.length) : '…'}
+          meta={requests ? `${ready.length} ready to download` : ''} tone="secondary" />
+        <MetricCard icon={ClipboardCheck} label="Joining"
+          value={joining === undefined ? '…' : !joining ? '—' : joining.status === 'enrolled' ? 'Enrolled' : joining.status.replace('_', ' ')}
+          meta={joining ? `${joining.progress.filter((p) => p.done).length}/${joining.progress.length} steps` : 'Not started'} tone="accent" />
+        <MetricCard icon={DoorOpen} label="No-dues clearance"
+          value={leaving === undefined ? '…' : !leaving ? '—' : `${leaving.counts.cleared}/${leaving.items.length}`}
+          meta={!leaving ? 'Not started' : leaving.status === 'cleared' ? 'All sections cleared' : `${leaving.counts.dues} with dues`} />
       </div>
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
-        {/* Timetable */}
-        <section className="glass rounded-2xl p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <h2 className="section-title">Today&rsquo;s Timetable</h2>
-            <span className="grid h-8 w-8 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20">
-              <Bell size={16} />
-            </span>
-          </div>
-          <div className="space-y-3">
-            {timetable.map((item, i) => (
-              <motion.article
-                key={item.time}
-                initial={{ opacity: 0, x: -12 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.08 }}
-                className="glass-card rounded-xl p-4 cursor-default"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <span className="text-xs font-semibold text-primary tracking-wider">{item.time}</span>
-                    <h3 className="mt-1 font-bold text-white">{item.course}</h3>
-                    <p className="text-xs text-slate-400">{item.room}</p>
-                  </div>
-                  <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs font-medium text-accent">
-                    {item.progress}% ready
-                  </span>
-                </div>
-                <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/8">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    whileInView={{ width: `${item.progress}%` }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.9 }}
-                    className="h-full rounded-full bg-gradient-to-r from-primary to-accent"
-                  />
-                </div>
-              </motion.article>
-            ))}
-          </div>
-        </section>
+      <div className="mt-6 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+        {week ? <MyDay data={week} /> : <section className="glass rounded-2xl p-6 text-sm text-slate-400">Loading timetable…</section>}
 
-        {/* Performance */}
         <section className="glass rounded-2xl p-6">
-          <div className="mb-5 flex items-center gap-2.5">
-            <span className="grid h-8 w-8 place-items-center rounded-xl bg-accent/10 text-accent border border-accent/20">
-              <ChartSpline size={15} />
-            </span>
-            <h2 className="section-title">Academic Performance</h2>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="section-title">My certificate requests</h2>
+            <Link to="/services" className="text-xs font-semibold text-cyan-300 hover:underline">Open services →</Link>
           </div>
-          <BarChart
-            data={[
-              { name: 'AI Systems', occupancy: 94 },
-              { name: 'Design Lab', occupancy: 88 },
-              { name: 'Research', occupancy: 81 },
-              { name: 'Participation', occupancy: 76 },
-            ]}
-          />
-          <div className="mt-6 space-y-2.5">
-            {assignments.map((item) => (
-              <div
-                key={item.name}
-                className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm transition hover:border-white/15 ${
-                  item.urgent
-                    ? 'border-primary/20 bg-primary/5'
-                    : 'border-white/8 bg-white/4'
-                }`}
-              >
-                <span className="font-medium text-white">{item.name}</span>
-                <span className="text-xs text-slate-400">{item.due} · {item.status}</span>
-              </div>
-            ))}
-          </div>
+          {!requests ? <p className="text-sm text-slate-400">Loading…</p>
+            : requests.length === 0 ? <p className="text-sm text-slate-400">No requests yet. Ask for a bonafide, NOC or other document at a service counter.</p>
+            : (
+              <ul className="space-y-2">
+                {requests.slice(0, 5).map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-white">{r.doc_name}</p>
+                      <p className="truncate text-xs text-slate-400">{whereNow(r)}</p>
+                    </div>
+                    <StatusBadge status={r.status} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          {day?.next && !week.reason && (
+            <p className="mt-5 rounded-xl border border-cyan-400/20 bg-cyan-500/5 px-4 py-3 text-xs text-slate-300">
+              Next: <b className="text-white">{day.next.subject_name}</b> at {day.next.start_time} in {placeOf(day.next)}.
+            </p>
+          )}
         </section>
       </div>
     </PageTransition>

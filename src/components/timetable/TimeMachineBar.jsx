@@ -1,11 +1,13 @@
 import { useState } from 'react';
 
+// MVSR's six periods (as in the timetable); lunch is 13:40–14:15
 const PERIOD_PRESETS = [
   { label: 'P1 (09:30)', time: '09:30' },
   { label: 'P2 (10:30)', time: '10:30' },
   { label: 'P3 (11:40)', time: '11:40' },
-  { label: 'P4 (14:15)', time: '14:15' },
-  { label: 'P5 (15:15)', time: '15:15' },
+  { label: 'P4 (12:40)', time: '12:40' },
+  { label: 'P5 (14:15)', time: '14:15' },
+  { label: 'P6 (15:15)', time: '15:15' },
 ];
 
 export default function TimeMachineBar({ onTimeChange }) {

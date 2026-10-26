@@ -20,5 +20,6 @@ USER appuser
 
 EXPOSE 8000
 
-# Most hosts (Render, Railway, Fly, Cloud Run) inject $PORT
-CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*'"]
+# Most hosts (Render, Railway, Fly, Cloud Run) inject $PORT.
+# Behind a reverse proxy, set TRUSTED_PROXY_HOPS so rate limiting sees real client IPs.
+CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT}"]

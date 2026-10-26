@@ -6,8 +6,6 @@ The Groq API key stays on the server. The model can request 3D-scene actions
 to the frontend as `actions`, which the browser applies to the scene.
 """
 import json
-import time
-from collections import defaultdict, deque
 from typing import List, Literal, Optional
 
 import httpx
@@ -16,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from backend.app.core.config import settings
 from backend.app.core.security import get_current_user
+from backend.app.core.rate_limit import SlidingWindowLimiter
 
 router = APIRouter()
 
@@ -24,10 +23,10 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 VALID_BUILDINGS = [
     "R&D", "Canteen", "CAD Lab", "Examination Department", "S&H Block",
     "ECE", "CSE", "Mech & EEE", "Civil & IT",
-    "Library", "Auditorium", "Suhruth University (Main Gate)", "Back Gate", "Security Room",
+    "Library", "Placement Cell", "Auditorium", "MVSR Engineering College (Main Gate)", "Back Gate", "Security Room",
 ]
 
-GUIDE_PROMPT = f"""You are the Suhruth Digital Twin AI Assistant, an interactive and highly intelligent campus guide.
+GUIDE_PROMPT = f"""You are the MVSR Digital Twin AI Assistant, an interactive and highly intelligent campus guide.
 Your job is to help users navigate the 3D campus map, find buildings, and understand the layout.
 
 Here are the exact names of the buildings that exist on the map:
@@ -53,7 +52,7 @@ STUDENT_PERSONAS = {
 }
 
 def _student_prompt(name: str, major: str, trait: str) -> str:
-    return f"""You are {name}, a student majoring in {major} at Suhruth University.
+    return f"""You are {name}, a student majoring in {major} at MVSR Engineering College.
 Your defining personality trait is: {trait}.
 You are currently walking around the campus. The user has just stopped to talk to you.
 Respond completely in character as this student. Keep your answers relatively brief (1-2 sentences max), as you are busy walking around. Do not act like an AI assistant."""
@@ -93,19 +92,8 @@ TOOLS = [
     },
 ]
 
-# ── Simple per-user rate limit (in-memory; fine for a single backend instance) ──
-RATE_LIMIT = 20          # requests
-RATE_WINDOW = 60.0       # seconds
-_recent: dict = defaultdict(deque)
-
-def _check_rate_limit(user_id: str):
-    now = time.monotonic()
-    q = _recent[user_id]
-    while q and now - q[0] > RATE_WINDOW:
-        q.popleft()
-    if len(q) >= RATE_LIMIT:
-        raise HTTPException(status_code=429, detail="Too many AI requests. Please wait a minute.")
-    q.append(now)
+# Per-user limit so one account can't burn through the Groq quota
+ai_limiter = SlidingWindowLimiter(limit=20, window=60)
 
 
 class ChatTurn(BaseModel):
@@ -169,7 +157,7 @@ def _run_tool(name: str, raw_args: str, actions: list) -> str:
 def ai_chat(req: AIChatRequest, current: dict = Depends(get_current_user)):
     if not settings.GROQ_API_KEY:
         raise HTTPException(status_code=503, detail="AI assistant is not configured (GROQ_API_KEY missing on server).")
-    _check_rate_limit(current["sub"])
+    ai_limiter.check_and_hit(current["sub"], "Too many AI requests.")
 
     if req.target is None:
         system, use_tools = GUIDE_PROMPT, True

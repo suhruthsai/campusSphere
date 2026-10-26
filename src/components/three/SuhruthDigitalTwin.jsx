@@ -1,23 +1,127 @@
 // SuhruthDigitalTwin.jsx — Interactive 3D Digital Twin anchored to Real Campus GPS
-import React, { useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { Layers, X } from 'lucide-react';
 import { useCampusStore } from '../../store/useCampusStore.js';
 import ClassroomInfoPanel from '../timetable/ClassroomInfoPanel.jsx';
-import RoomInterior3DModal from './RoomInterior3DModal.jsx';
-import { buildingsApi } from '../../utils/api.js';
+// The room walkthrough is a second large 3D scene; load it only when a room is opened
+const RoomInterior3DModal = lazy(() => import('./RoomInterior3DModal.jsx'));
+import { buildingsApi, classroomsApi, joiningApi, leavingApi, servicesApi, timetableApi } from '../../utils/api.js';
+import { PLACE_NAMES } from '../joining/joiningUi.jsx';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext.jsx';
+import ServiceCounter, { COUNTER_NAMES } from '../services/ServiceCounter.jsx';
+import { fmtWaiting, whereNow } from '../services/requestUi.jsx';
+import {
+  istNow, solarPosition, skyDirection, periodsFrom, liveSessionsByBuilding, campusPhase,
+  createSignpost, createPlaque, createFlowerBed, createCourtyardGarden, createBollardLamp,
+  createLiveMarker, createCrowd, createIntroPath, createDocToken, createClearancePin,
+} from './twinExtras.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { dedupeMaterials, mergeStaticMeshes, disposeObject, disposeRenderer } from './sceneOptimizer.js';
+
+// Max real point/spot lights switched on at night. Each visible light is evaluated for
+// every pixel of every lit surface (~4 ms/frame each on an integrated GPU), so the
+// original ~100 made night mode unusably slow. 12 keeps the area floodlights, the
+// auditorium lights and the main building entrances.
+const NIGHT_LIGHT_BUDGET = 12;
+
+// One additive "pool of light" decal per street-lamp head, merged into a single mesh.
+function createLightPools(scene, streetLights) {
+  if (!streetLights.length) return null;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, 'rgba(255,205,140,0.9)');
+  grad.addColorStop(0.45, 'rgba(255,185,110,0.35)');
+  grad.addColorStop(1, 'rgba(255,170,90,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+
+  scene.updateMatrixWorld(true);
+  const pos = new THREE.Vector3();
+  const quads = [];
+  streetLights.forEach(({ light1, light2 }) => {
+    [light1, light2].forEach((l) => {
+      l.getWorldPosition(pos);
+      const g = new THREE.PlaneGeometry(18, 18);
+      g.rotateX(-Math.PI / 2);
+      g.translate(pos.x, 0.65, pos.z);
+      quads.push(g);
+    });
+  });
+  const geometry = mergeGeometries(quads);
+  quads.forEach((g) => g.dispose());
+  const material = new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(canvas), transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -2,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.visible = false;
+  mesh.renderOrder = 1;
+  scene.add(mesh);
+  return mesh;
+}
+
+// Gate sign lettering: white on navy, canvas sized to the sign's aspect ratio.
+function textTextureForGate(lines, aspect) {
+  const height = 160;
+  const width = Math.round(height * aspect);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#0D2137';
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = '#D4AF37';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(6, 6, width - 12, height - 12);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  lines.forEach(({ text, font }, i) => {
+    ctx.font = font;
+    let size = parseInt(font.match(/(\d+)px/)[1], 10);
+    while (ctx.measureText(text).width > width * 0.92 && size > 10) {
+      size -= 2;
+      ctx.font = font.replace(/\d+px/, `${size}px`);
+    }
+    ctx.fillText(text, width / 2, (height / (lines.length + 1)) * (i + 1) + (i === 0 ? 6 : 0));
+  });
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// Class periods of the seeded timetable; used for the campus clock if the timetable can't be loaded.
+const DEFAULT_PERIODS = [
+  { n: 1, start: 570, end: 630 }, { n: 2, start: 630, end: 690 }, { n: 3, start: 700, end: 760 },
+  { n: 4, start: 760, end: 820 }, { n: 5, start: 855, end: 915 }, { n: 6, start: 915, end: 975 },
+];
+const INTRO_SEEN_KEY = 'mvsr-twin-intro-seen';
+const INTRO_SECONDS = 11;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 1. REAL-WORLD GPS ANCHOR
 // ══════════════════════════════════════════════════════════════════════════════
-const CENTER_LAT = 17.2817706;
-const CENTER_LON = 78.5378417;
-const LAT_PER_M = 1 / 111320;
+// Scene origin = centroid of the MVSR campus outline in OpenStreetMap (way 557838247).
+// The campus grid is turned 3.57° clockwise from true north; the scene is built
+// axis-aligned to that grid, so toGPS() rotates back before converting to lat/lon.
+// Survey data: docs/mvsr-survey/mvsr_survey.json
+const CENTER_LAT = 17.2814455;
+const CENTER_LON = 78.5396206;
+const GRID_ROTATION = (3.57 * Math.PI) / 180;
+const LAT_PER_M = 1 / 110574;
 const LON_PER_M = 1 / (111320 * Math.cos((CENTER_LAT * Math.PI) / 180));
 
 function toGPS(x, z) {
-  const lat = CENTER_LAT + -z * LAT_PER_M;
-  const lon = CENTER_LON + x * LON_PER_M;
+  const east  = x * Math.cos(GRID_ROTATION) - z * Math.sin(GRID_ROTATION);
+  const south = x * Math.sin(GRID_ROTATION) + z * Math.cos(GRID_ROTATION);
+  const lat = CENTER_LAT - south * LAT_PER_M;
+  const lon = CENTER_LON + east * LON_PER_M;
   return { lat, lon };
 }
 
@@ -44,7 +148,7 @@ const STUDENT_PROFILES = [
 
 const BUILDINGS = [
   { 
-    id: 'rnd', name: 'R&D', type: 'Research & Development', depts: ['Research & Development'], x: -78, z: -50, w: 11, d: 9, shape: 'box', color: 0x14b8a6, gate: { x: -78, z: -44 }, 
+    id: 'rnd', name: 'R&D', type: 'Research & Development', depts: ['Research & Development'], x: -14, z: 70, w: 21, d: 26, rotY: Math.PI, shape: 'box', color: 0x14b8a6, gate: { x: -14, z: 55 }, link: { x: -14, z: 47 }, 
     stats: { 
       floors: 2, classes: 0, washrooms: 2, staffCabins: 0, labs: 6, 
       layoutData: [
@@ -61,7 +165,7 @@ const BUILDINGS = [
     } 
   },
   { 
-    id: 'cant', name: 'Canteen', type: 'Canteen', depts: ['Canteen'], x: -55, z: -50, w: 16, d: 9, shape: 'box', color: 0xf97316, gate: { x: -55, z: -44 }, 
+    id: 'cant', name: 'Canteen', type: 'Canteen', depts: ['Canteen'], x: -40, z: 75.5, w: 31, d: 17, rotY: Math.PI, shape: 'box', color: 0xf97316, gate: { x: -40, z: 65 }, link: { x: -40, z: 47 }, 
     stats: { 
       floors: 2, classes: 0, washrooms: 0, staffCabins: 1, labs: 0, 
       layoutData: [
@@ -79,7 +183,7 @@ const BUILDINGS = [
     } 
   },
   { 
-    id: 'cad', name: 'CAD Lab', type: 'Lab', depts: ['CAD Lab'], x: -28, z: -50, w: 12, d: 9, shape: 'box', color: 0x3b82f6, gate: { x: -28, z: -44 }, 
+    id: 'cad', name: 'CAD Lab', type: 'Lab', depts: ['CAD Lab'], x: -106, z: 83, w: 32, d: 21, rotY: Math.PI, shape: 'box', color: 0x3b82f6, gate: { x: -106, z: 70.5 }, link: { x: -106, z: 47 }, 
     stats: { 
       floors: 1, classes: 0, washrooms: 0, staffCabins: 0, labs: 3, 
       layoutData: [
@@ -91,7 +195,7 @@ const BUILDINGS = [
     } 
   },
   { 
-    id: 'exam', name: 'Examination Department', type: 'Admin', depts: ['Examination Department'], x: -2, z: -50, w: 17, d: 9, shape: 'box', color: 0xec4899, gate: { x: -2, z: -44 }, 
+    id: 'exam', name: 'Examination Department', type: 'Admin', depts: ['Examination Department'], x: -105, z: 110, w: 42, d: 23, rotY: Math.PI, shape: 'box', color: 0xec4899, gate: { x: -105, z: 96.5 }, link: { x: -129.5, z: 96.5 }, 
     stats: { 
       floors: 4, classes: 15, washrooms: 4, staffCabins: 1, labs: 1, 
       layoutData: [
@@ -118,7 +222,7 @@ const BUILDINGS = [
     } 
   },
   { 
-    id: 'sh', name: 'S&H Block', type: 'Academic', depts: ['Science & Humanities'], x: 45, z: -50, w: 22, d: 11, shape: 'box', color: 0x6366f1, gate: { x: 45, z: -44 }, 
+    id: 'sh', name: 'S&H Block', type: 'Academic', depts: ['Science & Humanities'], x: -162.5, z: 85, w: 41, d: 40, rotY: Math.PI, court: { w: 9, d: 9 }, shape: 'box', color: 0x6366f1, gate: { x: -162.5, z: 63 }, link: { x: -162.5, z: 47 }, 
     stats: { 
       floors: 4, classes: 15, washrooms: 4, staffCabins: 3, labs: 7, 
       layoutData: [
@@ -147,7 +251,7 @@ const BUILDINGS = [
   },
 
   { 
-    id: 'ece', name: 'ECE', type: 'Academic', depts: ['Electronics & Communication Engg.'], x: -65, z: -15, w: 14, d: 12, shape: 'box', color: 0x0ea5e9, gate: { x: -65, z: -9 }, 
+    id: 'ece', name: 'ECE', type: 'Academic', depts: ['Electronics & Communication Engg.'], x: -7, z: 18, w: 35, d: 51, rotY: Math.PI, shape: 'box', color: 0x0ea5e9, gate: { x: -7, z: -9.5 }, link: { x: -7, z: -20 }, 
     stats: { 
       floors: 2, classes: 7, washrooms: 4, staffCabins: 2, labs: 7, 
       layoutData: [
@@ -168,7 +272,7 @@ const BUILDINGS = [
     } 
   },
   { 
-    id: 'cse', name: 'CSE', type: 'Academic', depts: ['Computer Science Engg.'], x: -40, z: -15, w: 14, d: 12, shape: 'box', color: 0x8b5cf6, gate: { x: -40, z: -9 }, 
+    id: 'cse', name: 'CSE', type: 'Academic', depts: ['Computer Science Engg.'], x: -50, z: 19.5, w: 34, d: 46, rotY: Math.PI, court: { w: 10, d: 7 }, shape: 'box', color: 0x8b5cf6, gate: { x: -50, z: -6 }, link: { x: -50, z: -20 }, 
         stats: { 
       floors: 3, classes: 16, washrooms: 6, staffCabins: 5, labs: 8, 
       layoutData: [
@@ -198,9 +302,9 @@ const BUILDINGS = [
       ]
     } 
   },
-  { id: 'mecheee',  name: 'Mech & EEE',           type: 'Academic',               depts: ['Mechanical Engg.', 'Electrical & Electronics Engg.'], x: -10, z: -15, w: 16, d: 12, shape: 'box',  color: 0xf59e0b, gate: { x: -10, z: -9  }, stats: { floors: 0, classes: 0, washrooms: 0, staffCabins: 0, labs: 0 } },
+  { id: 'mecheee',  name: 'Mech & EEE',           type: 'Academic',               depts: ['Mechanical Engg.', 'Electrical & Electronics Engg.'], x: -102, z: 18.5, w: 44, d: 50, rotY: Math.PI, court: { w: 13, d: 13 }, shape: 'box',  color: 0xf59e0b, gate: { x: -102, z: -9 }, link: { x: -102, z: -20 }, stats: { floors: 0, classes: 0, washrooms: 0, staffCabins: 0, labs: 0 } },
   { 
-    id: 'civilit', name: 'Civil & IT Block', type: 'Academic', depts: ['Civil Engineering', 'Information Technology'], x: 23, z: -15, w: 16, d: 12, shape: 'box', color: 0x10b981, gate: { x: 23, z: -9 }, 
+    id: 'civilit', name: 'Civil & IT Block', type: 'Academic', depts: ['Civil Engineering', 'Information Technology'], x: -158, z: 20, w: 46, d: 47, rotY: Math.PI, court: { w: 14, d: 14 }, shape: 'box', color: 0x10b981, gate: { x: -158, z: -6 }, link: { x: -158, z: -20 }, 
     stats: { 
       floors: 3, classes: 8, washrooms: 6, staffCabins: 4, labs: 8, 
       layoutData: [
@@ -250,7 +354,7 @@ const BUILDINGS = [
   },
 
   { 
-    id: 'lib', name: 'Library', type: 'Library', depts: ['Library'], x: -30, z: 55, w: 18, d: 14, shape: 'box', color: 0xd946ef, gate: { x: -30, z: 48 }, 
+    id: 'lib', name: 'Library', type: 'Library', depts: ['Library'], x: -63, z: -59, w: 31, d: 31, shape: 'box', color: 0xd946ef, gate: { x: -63, z: -41 }, link: { x: -63, z: -30 }, 
     stats: { 
       floors: 2, classes: 3, washrooms: 2, staffCabins: 1, labs: 0, 
       layoutData: [
@@ -270,65 +374,148 @@ const BUILDINGS = [
       ]
     } 
   },
-  { id: 'aud',       name: 'Auditorium',            type: 'Auditorium',             depts: ['Auditorium'],                                         x: 12,  z: 55,  w: 50, d: 22, shape: 'oval', color: 0xf43f5e, gate: { x: 12,  z: 43  }, stats: { floors: 0, classes: 0, washrooms: 0, staffCabins: 0, labs: 0 } },
-  { id: 'frontgate', name: 'Suhruth University',    type: 'Entrance',               depts: [],                                                     x: 81,  z: 2,   w: 8,  d: 110, shape: 'box',  color: 0x334155, gate: { x: 87,  z: 0  } },
-  { id: 'backgate',  name: 'Back Gate',             type: 'Entrance',               depts: [],                                                     x: -77, z: 55,  w: 25, d: 8,   shape: 'box',  color: 0x334155, gate: { x: -77, z: 48 } },
-  { id: 'boyshostel',name: 'Boys Hostel',           type: 'Hostel',                 depts: ['Accommodation'],                                      x: 82,  z: -35, w: 15, d: 25,  shape: 'box',  color: 0x3b82f6, gate: { x: 74,  z: -35 } },
-  { id: 'girlshostel',name:'Girls Hostel',          type: 'Hostel',                 depts: ['Accommodation'],                                      x: 82,  z: 45,  w: 15, d: 25,  shape: 'box',  color: 0xec4899, gate: { x: 74,  z: 45 } },
-  { id: 'security',  name: 'Security Room',         type: 'Admin',                  depts: ['Security'],                                           x: 74,  z: -8,  w: 6,  d: 6,  shape: 'box',  color: 0x475569, gate: { x: 74,  z: -5  } },
+  {
+    // Beside the Library on its east side; room list is a placeholder.
+    id: 'placement', name: 'Placement Cell', type: 'Admin', depts: ['Training & Placement'], x: -33, z: -50, w: 14, d: 17, floors: 3, shape: 'box', color: 0x7c3aed, gate: { x: -33, z: -39 }, link: { x: -33, z: -30 },
+    stats: {
+      floors: 3, classes: 0, washrooms: 2, staffCabins: 1, labs: 1,
+      layoutData: [
+        { floor: "Ground Floor", rooms: [
+            {type: 'office', label: 'Placement Office'}, {type: 'cabin', label: 'Reception & Waiting Area'},
+            {type: 'washroom', label: 'Boys Washroom'}, {type: 'washroom', label: 'Girls Washroom'}
+          ]
+        },
+        { floor: "First Floor", rooms: [
+            {type: 'cabin', label: 'Interview Room 1'}, {type: 'cabin', label: 'Interview Room 2'},
+            {type: 'cabin', label: 'Interview Room 3'}, {type: 'seminar', label: 'Group Discussion Room'}
+          ]
+        },
+        { floor: "Second Floor", rooms: [
+            {type: 'seminar', label: 'Pre-Placement Talk Hall'}, {type: 'lab', label: 'Online Assessment Lab'}
+          ]
+        }
+      ]
+    }
+  },
+  { id: 'aud',       name: 'Auditorium',            type: 'Auditorium',             depts: ['Auditorium'],                                         x: -139, z: -58, w: 50, d: 22, rotY: Math.PI, shape: 'oval', color: 0xf43f5e, gate: { x: -139, z: -45 }, link: { x: -139, z: -30 }, stats: { floors: 0, classes: 0, washrooms: 0, staffCabins: 0, labs: 0 } },
+  // Gates sit on the boundary wall; rotY turns the gate so its outward face (local +x) points off campus.
+  { id: 'frontgate', name: 'MVSR Engineering College',    type: 'Entrance',               depts: [],                                                     x: -229, z: -25, w: 8, d: 30,  rotY: Math.PI,     gateSpan: 30, shape: 'box',  color: 0x334155, gate: { x: -225, z: -20 }, link: { x: -189, z: -20 } },
+  { id: 'backgate',  name: 'Back Gate',             type: 'Entrance',               depts: [],                                                     x: 20,  z: -79, w: 40, d: 8,   rotY: Math.PI / 2, gateSpan: 40, shape: 'box',  color: 0x334155, gate: { x: 20,  z: -76 }, link: { x: 20, z: -70 } },
+  // Hostels are turned 90° to face east, so w is their north-south length and d their east-west depth.
+  { id: 'boyshostel',name: 'Boys Hostel',           type: 'Hostel',                 depts: ['Accommodation'],                                      x: -190.5, z: -58, w: 39, d: 25, rotY: Math.PI / 2, shape: 'box',  color: 0x3b82f6, gate: { x: -176, z: -58 }, link: { x: -176, z: -30 } },
+  { id: 'girlshostel',name:'Girls Hostel',          type: 'Hostel',                 depts: ['Accommodation'],                                      x: -208, z: 77.5, w: 69, d: 30, rotY: Math.PI / 2, shape: 'box',  color: 0xec4899, gate: { x: -191, z: 77.5 }, link: { x: -189, z: 77.5 } },
+  { id: 'security',  name: 'Security Room',         type: 'Admin',                  depts: ['Security'],                                           x: -215, z: -40, w: 6,  d: 6,  shape: 'box',  color: 0x475569, gate: { x: -215, z: -36.5 }, link: { x: -215, z: -30 } },
 ];
+
+// Boundary wall runs [x1, z1, x2, z2], traced from the OSM campus outline. The gaps at
+// x 0..40 (north) and z -40..-10 (west) are filled by the main gate and back gate models.
+const WALL_RUNS = [
+  [-229, -79, 0, -79], [40, -79, 103, -72], [103, -72, 224, -53], [224, -53, 228, 24],
+  [228, 24, 166, 54], [166, 54, 168, 85], [168, 85, -57, 85], [-57, 85, -60, 122],
+  [-60, 122, -229, 122], [-229, 122, -229, -10], [-229, -40, -229, -79],
+];
+
+function wallSegment([x1, z1, x2, z2], i) {
+  const len = Math.hypot(x2 - x1, z2 - z1);
+  return {
+    name: `Wall ${i + 1}`, x: (x1 + x2) / 2, z: (z1 + z2) / 2, w: len, d: 1, h: 3,
+    rotY: Math.atan2(-(z2 - z1), x2 - x1), shape: 'box', color: 0x1A202C, hideLabel: true,
+  };
+}
+
+// A flat ground following an outline [[x, z], ...]; x/z/w/d are its bounding box.
+function polygonGround(name, points, extra) {
+  const xs = points.map((p) => p[0]);
+  const zs = points.map((p) => p[1]);
+  const [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+  return { name, shape: 'polygon', points, x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0, ...extra };
+}
+
+function insidePolygon(points, x, z) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, zi] = points[i];
+    const [xj, zj] = points[j];
+    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
 
 const GROUNDS = [
-  { name: 'Basketball Court', x: -97.5, z: -50, w: 24,  d: 14, shape: 'box',  color: 0xCC5500, hideLabel: true },
-  { name: 'Garden',           x: 51,  z: -15, w: 28,  d: 25, shape: 'box',  color: 0x6FA85A, hideLabel: true },
-  { name: 'Ground',           x: -95, z: 5,   w: 20,  d: 60, shape: 'box',  color: 0x7C9A6B, hideLabel: true },
-  { name: 'Parking (North)',  x: -95, z: 48,  w: 20,  d: 24, shape: 'box',  color: 0x9B9B93, hideLabel: true },
-  { name: 'Parking (South)',  x: -60, z: 55,  w: 15,  d: 15, shape: 'oval', color: 0x9B9B93, hideLabel: true },
-  { name: 'Road',             x: 87,  z: 0,   w: 6,   d: 130,shape: 'box',  color: 0x4A4A4A },
-  { name: 'Path (North)',     x: -5,  z: -35, w: 160, d: 5,  shape: 'box',  color: 0x4A4A4A }, 
-  { name: 'Path (Center)',    x: -5,  z: 0,   w: 160, d: 5,  shape: 'box',  color: 0x4A4A4A }, 
-  { name: 'Path (South)',     x: -5,  z: 35,  w: 160, d: 5,  shape: 'box',  color: 0x4A4A4A }, 
-  { name: 'Path (ECE-CSE)',   x: -52.5, z: -17.5, w: 5, d: 35, shape: 'box', color: 0x4A4A4A, hideLabel: true }, 
-  { name: 'Path (CSE-Mech)',  x: -25.5, z: -17.5, w: 5, d: 35, shape: 'box', color: 0x4A4A4A, hideLabel: true }, 
-  { name: 'Path (East)',      x: 6.5,  z: -27.5, w: 5, d: 55, shape: 'box',  color: 0x4A4A4A }, 
-  { name: 'Path (Exam-SH)',   x: 21.5,z: -44, w: 47,  d: 4,  h: 0.36, shape: 'box',  color: 0x4A4A4A, hideLabel: true }, 
-  { name: 'Path (Far West)',  x: -76, z: 0, w: 5, d: 75, shape: 'box',  color: 0x4A4A4A, hideLabel: true }, 
-  { name: 'Path (Far East)',  x: 68,  z: 0, w: 5, d: 75, shape: 'box', color: 0x4A4A4A, hideLabel: true },
-  { name: 'Main Curbed Median', x: -15, z: 17.5, w: 130, d: 5, h: 0.6, shape: 'curbed-median', hideLabel: true },
-  { name: 'Wall (North)',     x: -10, z: -65, w: 204, d: 2,  h: 5, shape: 'box', color: 0x1A202C, hideLabel: true },
-  { name: 'Wall (South)',     x: -10, z: 68,  w: 204, d: 2,  h: 5, shape: 'box', color: 0x1A202C, hideLabel: true },
-  { name: 'Wall (West)',      x: -111,z: 1.5, w: 2,   d: 135,h: 5, shape: 'box', color: 0x1A202C, hideLabel: true },
-  { name: 'Wall (East)',      x: 91,  z: 1.5, w: 2,   d: 135,h: 5, shape: 'box', color: 0x1A202C, hideLabel: true },
+  // Open grounds & courts
+  // West edge stops at x 28, leaving a bench walk (x 23-28) between the east road and the ground
+  polygonGround('Ground', [[28, -55], [150, -55], [218, -48], [222, 22], [163, 50], [165, 83], [28, 83]], { color: 0xD9C49A, hideLabel: true }),
+  { name: 'Parking (Cars)',     x: 59,   z: 9,    w: 52,  d: 40,  h: 0.38, shape: 'box',  color: 0x4B4F54, hideLabel: true },
+  { name: 'Parking (Buses)',    x: 84,   z: -38,  w: 36,  d: 30,  h: 0.38, shape: 'box',  color: 0x4B4F54, hideLabel: true },
+  // One full-size court running north-south (green court, blue surround on the imagery)
+  { name: 'Basketball Court',   x: 6,    z: 69,   w: 18,  d: 30,  shape: 'box',  color: 0x2F7D4F, hideLabel: true },
+  { name: 'Rock Garden',        x: -211, z: 15,   w: 32,  d: 46,  shape: 'box',  color: 0x6FA85A },
+  // Smaller structures seen on satellite imagery (not named in any source)
+  { name: 'Bank & ATM',         x: -211, z: -55,  w: 15,  d: 17,  h: 4,   shape: 'box', color: 0xCBD5E1 },
+  { name: 'S&H Annex',          x: -163.5, z: 112, w: 40, d: 13,  h: 4,   shape: 'box', color: 0xE2E8F0, hideLabel: true },
+  { name: 'Workshop Shed',      x: -76,  z: 88,   w: 13,  d: 48,  h: 5,   shape: 'box', color: 0x6B7280, hideLabel: true },
+  // Public roads outside the wall
+  { name: 'Road (Badangpet-Nadergul Main Rd)', x: -5, z: -91, w: 520, d: 10, shape: 'box', color: 0x4A4A4A },
+  { name: 'Road (West)',        x: -248, z: 15,   w: 10,  d: 250, shape: 'box', color: 0x4A4A4A, hideLabel: true },
+  // Campus roads & paths (centrelines from OSM)
+  { name: 'Road (Back Gate Lane)', x: 20, z: -50, w: 10, d: 60, shape: 'box', color: 0x4A4A4A, hideLabel: true },
+  { name: 'Path (Boulevard North)',  x: -104.5, z: -30, w: 249, d: 5, shape: 'box', color: 0x4A4A4A, hideLabel: true },
+  { name: 'Path (Boulevard South)',  x: -104.5, z: -20, w: 249, d: 5, shape: 'box', color: 0x4A4A4A },
+  { name: 'Main Curbed Median',      x: -127, z: -25, w: 114, d: 5, h: 0.6, shape: 'curbed-median', hideLabel: true },
+  { name: 'Main Curbed Median 2',    x: -22,  z: -25, w: 68,  d: 5, h: 0.6, shape: 'curbed-median', hideLabel: true },
+  { name: 'Path (East)',             x: 20,   z: 13.5, w: 6,  d: 67,  shape: 'box', color: 0x4A4A4A, hideLabel: true },
+  { name: 'Path (South)',            x: -84,  z: 47,  w: 210, d: 5,   shape: 'box', color: 0x4A4A4A },
+  { name: 'Path (West)',             x: -189, z: 39,  w: 5,   d: 145, shape: 'box', color: 0x4A4A4A, hideLabel: true },
+  { name: 'Path (Civil-EEE)',        x: -129.5, z: 13.5, w: 4, d: 67, shape: 'box', color: 0x4A4A4A, hideLabel: true },
+  { name: 'Path (S&H-Exam)',         x: -129.5, z: 77, w: 5,  d: 60,  shape: 'box', color: 0x4A4A4A, hideLabel: true },
+  // Access road from the back-gate lane to the bus bay and car park
+  { name: 'Road (Car Park Access)',  x: 41,   z: -40,  w: 32, d: 6, h: 0.39, shape: 'box', color: 0x4A4A4A, hideLabel: true },
+  { name: 'Road (Car Park Entry)',   x: 57,   z: -25,  w: 6,  d: 30, h: 0.39, shape: 'box', color: 0x4A4A4A, hideLabel: true },
+  { name: 'Road (CSE-ECE)',          x: -28.75, z: 13.5, w: 6, d: 67, shape: 'box', color: 0x4A4A4A, hideLabel: true },
+  { name: 'Path (EEE-CSE)',          x: -73.5, z: 13.5, w: 4,  d: 67,  shape: 'box', color: 0x4A4A4A, hideLabel: true },
+  ...WALL_RUNS.map(wallSegment),
 ];
 
+// Ground boxes that block trees and benches (walls are thin and rotated, so they are left out).
+const SOLID_GROUNDS = GROUNDS.filter((g) => !g.name.startsWith('Wall'));
+
 // ══════════════════════════════════════════════════════════════════════════════
-// 3. DIJKSTRA GRAPH
+// 3. DIJKSTRA GRAPH  (kept in sync with backend/app/api/v1/endpoints/routing.py)
 // ══════════════════════════════════════════════════════════════════════════════
 const NODES = {
-  bA: { x: -95, z: -44 }, bB: { x: -78, z: -44 }, bC: { x: -55, z: -44 }, bD: { x: -28, z: -44 },
-  bE: { x: -2,  z: -44 }, bF: { x: 20,  z: -44 }, bG: { x: 45,  z: -44 }, bH: { x: 72,  z: -44 },
-  pJ: { x: 20,  z: -21 },
-  aA: { x: -60, z: -9  }, aB: { x: -35, z: -9  }, aC: { x: -5,  z: -9  }, aD: { x: 28,  z: -9  }, aE: { x: 87, z: -9 },
-  wA: { x: -85, z: -44 }, wB: { x: -85, z: -9  }, wC: { x: -85, z: 20  }, wD: { x: -85, z: 55  },
-  kA: { x: -60, z: 20  }, kB: { x: -35, z: 20  }, kC: { x: -5,  z: 20  }, kD: { x: 28,  z: 20  }, kE: { x: 47, z: 20 },
-  rA: { x: 87,  z: -44 }, rB: { x: 87,  z: -9  }, rC: { x: 87,  z: 20  }, rD: { x: 87,  z: 55  }, rMid: { x: 87, z: 0 },
-  fA: { x: -60, z: 48  }, fB: { x: -30, z: 48  }, fC: { x: 45,  z: 48  }, fD: { x: 12,  z: 48  }, bg: { x: -77, z: 48 },
+  // Back gate lane (x = 20)
+  V_GATE: { x: 20, z: -70 }, V_N: { x: 20, z: -30 }, V_S: { x: 20, z: -20 },
+  // Boulevard, north lane (z = -30)
+  N_LIB: { x: -63, z: -30 }, N_PLC: { x: -33, z: -30 }, N_AUD: { x: -139, z: -30 }, N_BOYS: { x: -176, z: -30 }, N_W: { x: -189, z: -30 }, N_SEC: { x: -215, z: -30 },
+  // Boulevard, south lane (z = -20)
+  L_ECE: { x: -7, z: -20 }, P3_N: { x: -28.75, z: -20 }, L_CSE: { x: -50, z: -20 }, L_MID: { x: -63, z: -20 }, P2_N: { x: -73.5, z: -20 },
+  L_MECH: { x: -102, z: -20 }, P1_N: { x: -129.5, z: -20 }, L_CIV: { x: -158, z: -20 }, W_N: { x: -189, z: -20 },
+  // West road (x = -189)
+  W_S: { x: -189, z: 47 }, W_GIRLS: { x: -189, z: 77.5 },
+  // South road (z = 47)
+  S_SH: { x: -162.5, z: 47 }, P1_S: { x: -129.5, z: 47 }, S_CAD: { x: -106, z: 47 }, P2_S: { x: -73.5, z: 47 },
+  S_CANT: { x: -40, z: 47 }, P3_S: { x: -28.75, z: 47 }, S_RND: { x: -14, z: 47 }, E_S: { x: 20, z: 47 },
+  // S&H-Exam road, east road, parking
+  I_EXAM: { x: -129.5, z: 96.5 },
+  // Car park access road and the car park's north aisle
+  D_LANE: { x: 20, z: -40 }, D_TURN: { x: 57, z: -40 }, PK_N: { x: 57, z: -7 },
 };
 
 const EDGE_LIST = [
-  ['bA', 'bB'], ['bB', 'bC'], ['bC', 'bD'], ['bD', 'bE'], ['bE', 'bF'], ['bF', 'bG'], ['bG', 'bH'],
-  ['bF', 'pJ'], ['pJ', 'aC'], ['pJ', 'aD'],
-  ['aA', 'aB'], ['aB', 'aC'], ['aC', 'aD'], ['aD', 'aE'], ['aE', 'rB'],
-  ['wA', 'wB'], ['wB', 'wC'], ['wC', 'wD'],
-  ['wA', 'bA'], ['wB', 'aA'], ['wC', 'kA'], ['wD', 'fA'],
-  ['kA', 'kB'], ['kB', 'kC'], ['kC', 'kD'], ['kD', 'kE'], ['kE', 'rC'],
-  ['aA', 'kA'], ['aB', 'kB'], ['aC', 'kC'], ['aD', 'kD'],
-  ['rA', 'rB'], ['rB', 'rMid'], ['rMid', 'rC'], ['rC', 'rD'],
-  ['rA', 'bH'], ['rD', 'fC'],
-  ['fA', 'bg'], ['bg', 'fB'], ['fB', 'fD'], ['fD', 'fC'],
-  ['rnd', 'bB'], ['cant', 'bC'], ['cad', 'bD'], ['exam', 'bE'], ['sh', 'bG'],
-  ['ece', 'aA'], ['cse', 'aB'], ['mecheee', 'aC'], ['civilit', 'aD'],
-  ['lib', 'fB'], ['aud', 'fD'], ['frontgate', 'rMid'], ['backgate', 'bg'], ['security', 'rMid']
+  ['V_GATE', 'D_LANE'], ['D_LANE', 'V_N'], ['D_LANE', 'D_TURN'], ['D_TURN', 'PK_N'], ['V_N', 'V_S'],
+  ['V_N', 'N_PLC'], ['N_PLC', 'N_LIB'], ['N_LIB', 'N_AUD'], ['N_AUD', 'N_BOYS'], ['N_BOYS', 'N_W'], ['N_W', 'N_SEC'],
+  ['V_S', 'L_ECE'], ['L_ECE', 'P3_N'], ['P3_N', 'L_CSE'], ['L_CSE', 'L_MID'], ['L_MID', 'P2_N'], ['P2_N', 'L_MECH'],
+  ['L_MECH', 'P1_N'], ['P1_N', 'L_CIV'], ['L_CIV', 'W_N'],
+  ['N_W', 'W_N'], ['N_LIB', 'L_MID'],
+  ['W_N', 'W_S'], ['W_S', 'W_GIRLS'],
+  ['W_S', 'S_SH'], ['S_SH', 'P1_S'], ['P1_S', 'S_CAD'], ['S_CAD', 'P2_S'], ['P2_S', 'S_CANT'],
+   ['S_CANT', 'P3_S'], ['P3_S', 'S_RND'], ['S_RND', 'E_S'],
+  ['P1_N', 'P1_S'], ['P2_N', 'P2_S'], ['P3_N', 'P3_S'], ['P1_S', 'I_EXAM'],
+  ['V_S', 'E_S'],
+  ['backgate', 'V_GATE'], ['security', 'N_SEC'], ['lib', 'N_LIB'], ['boyshostel', 'N_BOYS'],
+  ['frontgate', 'W_N'], ['civilit', 'L_CIV'], ['mecheee', 'L_MECH'], ['cse', 'L_CSE'], ['ece', 'L_ECE'],
+  ['girlshostel', 'W_GIRLS'], ['sh', 'S_SH'], ['exam', 'I_EXAM'], ['cad', 'S_CAD'],
+  ['cant', 'S_CANT'], ['rnd', 'S_RND'], ['aud', 'N_AUD'], ['placement', 'N_PLC'],
 ];
 
 BUILDINGS.forEach((b) => { NODES[b.id] = b.gate; });
@@ -350,7 +537,9 @@ EDGE_LIST.forEach(([a, c]) => {
 // ══════════════════════════════════════════════════════════════════════════════
 export default function SuhruthDigitalTwin() {
   const mountRef = useRef(null);
-  const { aiHighlightTypes, aiFlyTarget, openChatWithTarget } = useCampusStore();
+  // Select only what this component needs — subscribing to the whole store re-rendered
+  // this (very large) component on every telemetry message.
+  const openChatWithTarget = useCampusStore((state) => state.openChatWithTarget);
 
   // State
   const [selectedBuilding, setSelectedBuilding] = useState(null);
@@ -360,13 +549,39 @@ export default function SuhruthDigitalTwin() {
   const [selectedRoom, setSelectedRoom]         = useState(null);
   const [room3DModal, setRoom3DModal]           = useState(null);
   const [room3DModalTime, setRoom3DModalTime]   = useState(null);
+  // Pause the campus render loop while the room walkthrough covers it
+  const room3DOpenRef = useRef(false);
+  useEffect(() => { room3DOpenRef.current = !!room3DModal; }, [room3DModal]);
   const [simulatedDateTime, setSimulatedDateTime] = useState(null);
   const [fromBuilding, setFromBuilding]         = useState('cant');
   const [toBuilding, setToBuilding]             = useState('lib');
   const [routeInfo, setRouteInfo]               = useState(null);
   const [routeMode, setRouteMode]               = useState('walk');
+  // A route asked for by the Navigation page
+  const routeRequest = useCampusStore((state) => state.routeRequest);
+  const pendingRouteRef = useRef(null);
+  const [routeNonce, setRouteNonce] = useState(0);   // re-runs the draw even if the panel already shows this pair
   const [isNightMode, setIsNightMode]           = useState(false);
   const [cameraMode, setCameraMode]             = useState('orbit');
+  // Live campus: classes in session per building, the campus clock phase and the real sun
+  const [liveInfo, setLiveInfo]                 = useState({ sessions: {}, phase: null });
+  const [introPlaying, setIntroPlaying]         = useState(false);
+  // Student Services: the service counter modal and the document tokens on the map
+  const { user } = useAuth();
+  const [counterOpen, setCounterOpen]           = useState(null);
+  const [roomCounts, setRoomCounts]             = useState({});   // { buildingId: { classes, labs, rooms } } from the room list
+  const [buildingRooms, setBuildingRooms]       = useState({});   // { buildingId: [room, ...] } from the room list
+  const docTokenApiRef  = useRef(null);
+  // Joining Day quest: the new student's application and the gold "next stop" beacon
+  const [joining, setJoining]                   = useState(null);
+  const questApiRef     = useRef(null);
+  // Leaving the college: one pin per no-dues section (amber waiting, red dues, green cleared)
+  const clearanceApiRef = useRef(null);
+  const liveRef         = useRef({ sessions: {}, phase: campusPhase(DEFAULT_PERIODS, istNow()) });
+  const liveMarkersRef  = useRef({});
+  const nightRef        = useRef(false);
+  const applySunRef     = useRef(null);
+  const introRef        = useRef({ active: false, t: 0 });
 
   const cameraModeRef = useRef('orbit');
   useEffect(() => {
@@ -378,7 +593,6 @@ export default function SuhruthDigitalTwin() {
   const weatherData  = useCampusStore((state) => state.weatherData);
   const isRaining    = useCampusStore((state) => state.isRaining);
   const toggleRain   = useCampusStore((state) => state.toggleRain);
-  const parkingData  = useCampusStore((state) => state.parkingData);
   const initWebSocket = useCampusStore((state) => state.initWebSocket);
 
   useEffect(() => {
@@ -400,6 +614,7 @@ export default function SuhruthDigitalTwin() {
   const routePtsRef     = useRef(null);
   const streetLightsRef = useRef([]);
   const nightLightsRef  = useRef([]);
+  const glowPoolsRef    = useRef(null);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -415,17 +630,17 @@ export default function SuhruthDigitalTwin() {
     // Scene & Fog
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x11151b);
-    scene.fog = new THREE.Fog(0x11151b, 180, 420);
+    scene.fog = new THREE.Fog(0x11151b, 420, 1100);
     sceneRef.current = scene;
 
     // Camera
-    const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 1000);
-    const target = new THREE.Vector3(-5, 4, 5);
-    let radius = 175, theta = Math.PI * 0.28, phi = Math.PI * 0.32;
+    const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 2500);
+    const target = new THREE.Vector3(-10, 4, 15);
+    let radius = 340, theta = Math.PI * 0.28, phi = Math.PI * 0.32;
 
     function updateCamera() {
       phi = Math.max(0.15, Math.min(1.35, phi));
-      radius = Math.max(60, Math.min(300, radius));
+      radius = Math.max(60, Math.min(650, radius));
       camera.position.set(
         target.x + radius * Math.sin(phi) * Math.sin(theta),
         target.y + radius * Math.cos(phi),
@@ -457,31 +672,31 @@ export default function SuhruthDigitalTwin() {
     ambientLightRef.current = amb;
 
     const sun = new THREE.DirectionalLight(0xfff4e0, 1.05);
-    sun.position.set(-60, 110, 60);
+    sun.position.set(-130, 230, 130);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -160; sun.shadow.camera.right = 160;
-    sun.shadow.camera.top = 160;   sun.shadow.camera.bottom = -160;
-    sun.shadow.camera.far = 320;
+    sun.shadow.camera.left = -290; sun.shadow.camera.right = 290;
+    sun.shadow.camera.top = 290;   sun.shadow.camera.bottom = -290;
+    sun.shadow.camera.far = 700;
     scene.add(sun);
     sunRef.current = sun;
 
     const fill = new THREE.DirectionalLight(0x9db8d6, 0.35);
-    fill.position.set(80, 60, -60);
+    fill.position.set(170, 120, -130);
     scene.add(fill);
 
     // Base Ground Plane
     const base = new THREE.Mesh(
-      new THREE.PlaneGeometry(280, 220),
+      new THREE.PlaneGeometry(520, 250),
       new THREE.MeshStandardMaterial({ color: 0xEDEAE0, roughness: 1 })
     );
     base.rotation.x = -Math.PI / 2;
     base.receiveShadow = true;
-    base.position.set(-5, 0, 0);
+    base.position.set(-5, 0, 15);
     scene.add(base);
 
-    const grid = new THREE.GridHelper(280, 56, 0xbfb9a6, 0xd9d5c8);
-    grid.position.set(-5, 0.02, 0);
+    const grid = new THREE.GridHelper(520, 104, 0xbfb9a6, 0xd9d5c8);
+    grid.position.set(-5, 0.02, 15);
     grid.material.opacity = 0.5;
     grid.material.transparent = true;
     scene.add(grid);
@@ -490,14 +705,14 @@ export default function SuhruthDigitalTwin() {
     const sunGeom = new THREE.SphereGeometry(12, 32, 32);
     const sunMat = new THREE.MeshBasicMaterial({ color: 0xfff0aa, fog: false });
     const celestialSun = new THREE.Mesh(sunGeom, sunMat);
-    celestialSun.position.set(-80, 120, 80);
+    celestialSun.position.set(-170, 250, 170);
     scene.add(celestialSun);
     celestialSunRef.current = celestialSun;
 
     const moonGeom = new THREE.SphereGeometry(10, 32, 32);
     const moonMat = new THREE.MeshBasicMaterial({ color: 0xc4c7cc, fog: false });
     const celestialMoon = new THREE.Mesh(moonGeom, moonMat);
-    celestialMoon.position.set(80, 100, -80);
+    celestialMoon.position.set(170, 210, -170);
     celestialMoon.visible = false;
     scene.add(celestialMoon);
     celestialMoonRef.current = celestialMoon;
@@ -507,9 +722,9 @@ export default function SuhruthDigitalTwin() {
     const rainGeo = new THREE.BufferGeometry();
     const rainPos = new Float32Array(rainCount * 3);
     for (let i = 0; i < rainCount; i++) {
-      rainPos[i * 3] = (Math.random() - 0.5) * 300;
+      rainPos[i * 3] = (Math.random() - 0.5) * 520 - 5;
       rainPos[i * 3 + 1] = Math.random() * 150;
-      rainPos[i * 3 + 2] = (Math.random() - 0.5) * 300;
+      rainPos[i * 3 + 2] = (Math.random() - 0.5) * 250 + 15;
     }
     rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
     const rainMat = new THREE.PointsMaterial({
@@ -524,6 +739,10 @@ export default function SuhruthDigitalTwin() {
     rainSystemRef.current = rainSystem;
 
     // Canvas Label Maker
+    // Every floating name label, so the fly-in can hide them for a clean shot
+    const labelSprites = [];
+    const setLabelsVisible = (v) => labelSprites.forEach((l) => { l.visible = v; });
+
     function makeLabel(text, opts = {}) {
       const scale = opts.scale || 1;
       const canvas = document.createElement('canvas');
@@ -550,6 +769,7 @@ export default function SuhruthDigitalTwin() {
       const worldW = (canvas.width / canvas.height) * 5.4 * scale;
       sprite.scale.set(worldW, 5.4 * scale, 1);
       sprite.renderOrder = 999;
+      labelSprites.push(sprite);
       return sprite;
     }
 
@@ -563,10 +783,30 @@ export default function SuhruthDigitalTwin() {
       ctx.closePath();
     }
 
-    function footprintGeometry(shape, w, d, h) {
+    // court = { w, d } cuts an open courtyard through the middle of a box footprint.
+    function footprintGeometry(shape, w, d, h, court) {
       if (shape === 'oval') {
         const geo = new THREE.CylinderGeometry(w / 2, w / 2, h, 40);
         geo.scale(1, 1, d / w);
+        return geo;
+      }
+      if (court) {
+        const outline = new THREE.Shape();
+        outline.moveTo(-w / 2, -d / 2);
+        outline.lineTo(w / 2, -d / 2);
+        outline.lineTo(w / 2, d / 2);
+        outline.lineTo(-w / 2, d / 2);
+        outline.closePath();
+        const hole = new THREE.Path();
+        hole.moveTo(-court.w / 2, -court.d / 2);
+        hole.lineTo(-court.w / 2, court.d / 2);
+        hole.lineTo(court.w / 2, court.d / 2);
+        hole.lineTo(court.w / 2, -court.d / 2);
+        hole.closePath();
+        outline.holes.push(hole);
+        const geo = new THREE.ExtrudeGeometry(outline, { depth: h, bevelEnabled: false });
+        geo.rotateX(-Math.PI / 2);
+        geo.translate(0, -h / 2, 0);
         return geo;
       }
       return new THREE.BoxGeometry(w, h, d);
@@ -605,10 +845,24 @@ export default function SuhruthDigitalTwin() {
       scene.add(benchGrp);
     }
 
-    // Add benches all the way down the Far West Path alongside the Ground (-25 to 35)
-    for (let z = -23; z <= 33; z += 6) {
-      createBench(-81.5, z, -Math.PI / 2);
-    }
+    // Footprint of a building in world space (hostels are turned 90°, which swaps w and d).
+    const footprintOf = (b) => {
+      const turned = Math.abs(Math.sin(b.rotY || 0)) > 0.5;
+      return { x: b.x, z: b.z, w: turned ? b.d : b.w, d: turned ? b.w : b.d };
+    };
+    const SOLID_RECTS = [...BUILDINGS.map(footprintOf), ...SOLID_GROUNDS];
+
+    // True when (x, z) is inside the campus wall and clear of every building, road and ground.
+    const isOpenGround = (x, z, margin = 3) => {
+      let inside = false;
+      WALL_RUNS.forEach(([x1, z1, x2, z2]) => {
+        if ((z1 > z) !== (z2 > z) && x < ((x2 - x1) * (z - z1)) / (z2 - z1) + x1) inside = !inside;
+      });
+      if (!inside) return false;
+      return !SOLID_RECTS.some((r) => (r.points
+        ? insidePolygon(r.points, x, z)
+        : Math.abs(x - r.x) < r.w / 2 + margin && Math.abs(z - r.z) < r.d / 2 + margin));
+    };
 
     // Street Light Helper
     const createStreetLight = (x, z) => {
@@ -670,21 +924,30 @@ export default function SuhruthDigitalTwin() {
       streetLightsRef.current.push({ bulbMat, light1, light2 });
     };
 
-    // Add Double-arm street lights along the Main Curbed Median
-    for (let x = -70; x <= 40; x += 15) {
-      createStreetLight(x, 17.5);
+    // Add Double-arm street lights along the boulevard median (gap at the library crossing)
+    for (let x = -175; x <= -85; x += 15) createStreetLight(x, -25);
+    for (let x = -45; x <= 0; x += 15) createStreetLight(x, -25);
+
+    // Benches facing the library entrance
+    createBench(-71, -38, 0);
+    createBench(-55, -38, 0);
+
+    // Benches on the walkway in front of the academic blocks
+    createBench(-140, -13, 0);
+    createBench(-118, -13, 0);
+    createBench(-88, -13, 0);
+    createBench(-60, -13, 0);
+
+    // Benches all the way down the walk at the edge of the Ground, facing the field (as in the original design)
+    for (let z = -13; z <= 41; z += 6) {
+      createBench(25.5, z, Math.PI / 2);
     }
-
-    // Add benches in front of CAD Lab (x: -28) and Exam Dept (x: -2)
-    createBench(-32, -39, 0); // CAD left
-    createBench(-24, -39, 0); // CAD right
-    createBench(-6, -39, 0);  // Exam left
-    createBench(2, -39, 0);   // Exam right
-
-    // Benches in the alley between CAD Lab and Exam Dept
-    createBench(-15, -39, 0);             // Facing path
-    createBench(-17, -46, -Math.PI / 2);  // Facing east in alley
-    createBench(-13, -46, Math.PI / 2);   // Facing west in alley
+    // Walkway lamps in the gaps between the benches (lit with the street lamps at night)
+    [-4, 2, 14, 20, 32, 38].forEach((z) => {
+      const lamp = createBollardLamp(24.2, z);
+      scene.add(lamp.group);
+      streetLightsRef.current.push(lamp);
+    });
 
     // ══════════════════════════════════════════════════════════════════════════
     // REALISTIC 3D TREES & GREENERY GENERATOR
@@ -743,22 +1006,85 @@ export default function SuhruthDigitalTwin() {
     }
 
     // Populate Campus Trees
-    // 1. Trees along Main Curbed Median
-    for (let x = -75; x <= 45; x += 12) {
-      createTree(x, 17.5, 0.85, x % 24 === 0 ? 'palm' : 'oak');
+    // 1. Trees along the boulevard median (the satellite view shows a continuous tree line)
+    for (let x = -180; x <= 6; x += 12) {
+      if (Math.abs(x + 63) < 9) continue; // library crossing
+      createTree(x, -25, 0.85, x % 24 === 0 ? 'palm' : 'oak');
     }
-    // 2. Trees around Ground & Sports Court perimeter
-    for (let z = -60; z <= 30; z += 15) {
-      createTree(-108, z, 1.1, 'pine'); // Moved further left outside field
-      createTree(-83, z, 1.0, 'oak');   // Moved further right outside field
-    }
-    // 3. Trees in Front Lawn & Garden
-    createTree(-25, 45, 1.2, 'oak');
-    createTree(-10, 48, 1.1, 'palm');
-    // 4. Trees between Academic Blocks & Path North
-    createTree(-52, -26, 0.9, 'oak');
-    createTree(-23, -26, 0.95, 'pine');
-    createTree(12, -26, 0.9, 'oak');
+    // 2. Tree belts just inside the boundary wall and around the open ground
+    const treeLines = [
+      { from: [-170, -36], to: [12, -36], step: 11, type: 'oak' },     // north side of boulevard
+      { from: [-220, -73], to: [16, -73], step: 10, type: 'pine' },    // north wall
+      { from: [44, -66], to: [210, -45], step: 12, type: 'pine' },     // north-east wall
+      { from: [-223, -70], to: [-223, 118], step: 10, type: 'oak' },   // west wall
+      { from: [-180, 53], to: [-30, 53], step: 13, type: 'oak' },      // south road verge
+      { from: [160, 30], to: [160, 80], step: 10, type: 'oak' },       // east of the ground
+      { from: [-50, 81], to: [150, 81], step: 12, type: 'pine' },      // south wall (east part)
+    ];
+    treeLines.forEach(({ from: [x1, z1], to: [x2, z2], step, type }) => {
+      const n = Math.max(1, Math.round(Math.hypot(x2 - x1, z2 - z1) / step));
+      for (let i = 0; i <= n; i++) {
+        const x = x1 + ((x2 - x1) * i) / n;
+        const z = z1 + ((z2 - z1) * i) / n;
+        if (isOpenGround(x, z, 2)) createTree(x, z, 0.9 + (i % 3) * 0.1, i % 4 === 0 ? 'palm' : type);
+      }
+    });
+    // 3. Oaks between the benches on the Ground's bench walk
+    [-10, 8, 26, 44].forEach((z) => createTree(26.5, z, 1.0, 'oak'));
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // LANDSCAPING: flower beds flanking the entrances on the boulevard side
+    // ══════════════════════════════════════════════════════════════════════════
+    let bedSeed = 1;
+    ['civilit', 'mecheee', 'cse', 'ece', 'lib', 'placement'].forEach((id) => {
+      const b = BUILDINGS.find((x) => x.id === id);
+      const facesSouth = !b.rotY;                      // library & placement cell face the boulevard to the south
+      const z = facesSouth ? b.z + b.d / 2 + 2 : b.z - b.d / 2 - 2.2;
+      const left = b.x - b.w / 2 + 1.2;
+      const right = b.x + b.w / 2 - 1.2;
+      [[left, b.gate.x - 3.2], [b.gate.x + 3.2, right]].forEach(([x1, x2]) => {
+        if (x2 - x1 > 2) scene.add(createFlowerBed((x1 + x2) / 2, z, x2 - x1, 1.6, bedSeed++));
+      });
+    });
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // WAYFINDING: fingerposts at the main junctions + name plaques at entrances
+    // ══════════════════════════════════════════════════════════════════════════
+    [
+      // Just inside the main gate
+      [-212, -13, [
+        { label: 'Academic Blocks · Library', heading: 'east' },
+        { label: 'Boys Hostel · Bank', heading: 'north' },
+        { label: 'Girls Hostel · S&H · Exam', heading: 'south' },
+      ]],
+      // In front of CSE, by the CSE-ECE road
+      [-37, -12, [
+        { label: 'ECE · Car Park · Back Gate', heading: 'east' },
+        { label: 'Mech & EEE · Civil · Main Gate', heading: 'west' },
+        { label: 'Library · Placement Cell', heading: 'north' },
+        { label: 'Canteen · R&D (via road)', heading: 'south' },
+      ]],
+      // South road, by the canteen
+      [-24, 53, [
+        { label: 'Basketball · Ground', heading: 'east' },
+        { label: 'S&H · Exam · CAD Lab', heading: 'west' },
+        { label: 'CSE · ECE', heading: 'north' },
+      ]],
+      // Inside the back gate
+      [28, -66, [
+        { label: 'Academic Blocks · Library', heading: 'south' },
+        { label: 'Car Park · Bus Bay', heading: 'east' },
+      ]],
+    ].forEach(([x, z, boards]) => scene.add(createSignpost(x, z, boards)));
+
+    BUILDINGS.forEach((b) => {
+      if (!b.gate || !b.link || ['frontgate', 'backgate', 'security'].includes(b.id)) return;
+      const dx = b.link.x - b.gate.x;
+      const dz = b.link.z - b.gate.z;
+      const len = Math.hypot(dx, dz) || 1;
+      // Beside the entrance path, facing the road the path leads to
+      scene.add(createPlaque(b.gate.x - (dz / len) * 4, b.gate.z + (dx / len) * 4, Math.atan2(dx, dz), b.name));
+    });
 
     // ══════════════════════════════════════════════════════════════════════════
     // REALISTIC GARDEN FEATURES
@@ -805,93 +1131,66 @@ export default function SuhruthDigitalTwin() {
       scene.add(group);
     }
 
-    // Populate Garden
-    createFountain(51, -15);
-    
+    // Populate the Rock Garden (west edge of campus)
+    const GX = -211, GZ = 15;
+    createFountain(GX, GZ);
+
     // Cross pathways inside garden
     const p1 = new THREE.Mesh(new THREE.BoxGeometry(28, 0.36, 3), new THREE.MeshStandardMaterial({ color: 0xC9C4B8, roughness: 1 }));
-    p1.position.set(51, 0.18, -15);
+    p1.position.set(GX, 0.18, GZ);
     p1.receiveShadow = true;
     scene.add(p1);
-    
-    const p2 = new THREE.Mesh(new THREE.BoxGeometry(3, 0.36, 25), new THREE.MeshStandardMaterial({ color: 0xC9C4B8, roughness: 1 }));
-    p2.position.set(51, 0.18, -15);
+
+    const p2 = new THREE.Mesh(new THREE.BoxGeometry(3, 0.36, 42), new THREE.MeshStandardMaterial({ color: 0xC9C4B8, roughness: 1 }));
+    p2.position.set(GX, 0.18, GZ);
     p2.receiveShadow = true;
     scene.add(p2);
 
     // Benches around fountain
-    createBench(51, -10, 0); // North
-    createBench(51, -20, Math.PI); // South
-    createBench(46, -15, Math.PI / 2); // West
-    createBench(56, -15, -Math.PI / 2); // East
+    createBench(GX, GZ + 5, 0); // North
+    createBench(GX, GZ - 5, Math.PI); // South
+    createBench(GX - 5, GZ, Math.PI / 2); // West
+    createBench(GX + 5, GZ, -Math.PI / 2); // East
 
     // Bushes at corners
-    createBush(39, -5, 1.2); createBush(41, -6, 0.9);
-    createBush(63, -25, 1.3); createBush(61, -24, 1.0);
-    createBush(39, -25, 1.1); createBush(63, -5, 1.1);
-    
+    createBush(GX - 12, GZ + 10, 1.2); createBush(GX - 10, GZ + 9, 0.9);
+    createBush(GX + 12, GZ - 10, 1.3); createBush(GX + 10, GZ - 9, 1.0);
+    createBush(GX - 12, GZ - 10, 1.1); createBush(GX + 12, GZ + 10, 1.1);
+
+    // Boulders that give the Rock Garden its name
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x8C8577, roughness: 0.95 });
+    [[-9, -16, 1.6], [8, -17, 1.2], [-11, 17, 1.4], [10, 15, 1.8], [-4, -19, 0.9], [5, 19, 1.0]].forEach(([dx, dz, r]) => {
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), rockMat);
+      rock.position.set(GX + dx, r * 0.6, GZ + dz);
+      rock.rotation.set(dx, dz, 0);
+      rock.castShadow = true;
+      scene.add(rock);
+    });
+
     // Additional Garden Trees
-    createTree(41, -22, 1.1, 'oak');
-    createTree(60, -22, 0.9, 'pine');
-    createTree(41, -8, 1.2, 'oak');
-    createTree(60, -8, 1.0, 'palm');
+    createTree(GX - 10, GZ - 8, 1.1, 'oak');
+    createTree(GX + 9, GZ - 8, 0.9, 'pine');
+    createTree(GX - 10, GZ + 8, 1.2, 'oak');
+    createTree(GX + 9, GZ + 8, 1.0, 'palm');
 
     // ══════════════════════════════════════════════════════════════════════════
     // REALISTIC SPORTS GROUNDS
     // ══════════════════════════════════════════════════════════════════════════
-    function createSportsGroundFeatures(x, z, w, d) {
+    function createBasketballCourtFeatures(cx, cz, cw, cd) {
+      // Built with the long axis along local x, then turned to match the court.
+      const court = new THREE.Group();
+      court.position.set(cx, 0, cz);
+      if (cd > cw) court.rotation.y = Math.PI / 2;
+      scene.add(court);
+      const x = 0, z = 0;
+      const w = Math.max(cw, cd), d = Math.min(cw, cd);
       const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-      const h = 0.36; 
+      const h = 0.36;
 
       const createLine = (lx, lz, lw, ld) => {
         const line = new THREE.Mesh(new THREE.BoxGeometry(lw, 0.05, ld), lineMat);
         line.position.set(lx, h, lz);
-        scene.add(line);
-      };
-
-      createLine(x, z, w - 2, 0.3); // center line
-      createLine(x - w/2 + 1, z, 0.3, d - 2); // left line
-      createLine(x + w/2 - 1, z, 0.3, d - 2); // right line
-      createLine(x, z - d/2 + 1, w - 2, 0.3); // top line
-      createLine(x, z + d/2 - 1, w - 2, 0.3); // bottom line
-      
-      const circleGeo = new THREE.RingGeometry(3, 3.3, 32);
-      const circle = new THREE.Mesh(circleGeo, lineMat);
-      circle.rotation.x = -Math.PI / 2;
-      circle.position.set(x, h, z);
-      scene.add(circle);
-
-      const postMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.8 });
-      const createGoal = (gx, gz, rotY) => {
-        const goalGrp = new THREE.Group();
-        goalGrp.position.set(gx, 0, gz);
-        goalGrp.rotation.y = rotY;
-        
-        const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.5, 8), postMat);
-        p1.position.set(-2.5, 1.25, 0);
-        const p2 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.5, 8), postMat);
-        p2.position.set(2.5, 1.25, 0);
-        
-        const cross = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 5.2, 8), postMat);
-        cross.rotation.z = Math.PI / 2;
-        cross.position.set(0, 2.5, 0);
-        
-        goalGrp.add(p1, p2, cross);
-        scene.add(goalGrp);
-      };
-
-      createGoal(x, z - d/2 + 1.2, 0);
-      createGoal(x, z + d/2 - 1.2, Math.PI);
-    }
-
-    function createBasketballCourtFeatures(x, z, w, d) {
-      const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-      const h = 0.36; 
-      
-      const createLine = (lx, lz, lw, ld) => {
-        const line = new THREE.Mesh(new THREE.BoxGeometry(lw, 0.05, ld), lineMat);
-        line.position.set(lx, h, lz);
-        scene.add(line);
+        court.add(line);
       };
 
       createLine(x, z, 0.3, d - 2); // Center line
@@ -904,7 +1203,7 @@ export default function SuhruthDigitalTwin() {
       const circle = new THREE.Mesh(circleGeo, lineMat);
       circle.rotation.x = -Math.PI / 2;
       circle.position.set(x, h, z);
-      scene.add(circle);
+      court.add(circle);
 
       const hoopMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9 });
       const backboardMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
@@ -927,15 +1226,32 @@ export default function SuhruthDigitalTwin() {
         rim.position.set(0, 2.7, 0.5);
         grp.add(rim);
 
-        scene.add(grp);
+        court.add(grp);
       };
       
       createHoop(x - w/2 + 1.2, z, Math.PI / 2);
       createHoop(x + w/2 - 1.2, z, -Math.PI / 2);
     }
 
-    createSportsGroundFeatures(-95, 5, 20, 60);
-    createBasketballCourtFeatures(-97.5, -50, 24, 14);
+    // Cricket pitch and boundary rope on the open part of the ground
+    function createCricketFeatures(cx, cz, boundaryR) {
+      const pitch = new THREE.Mesh(new THREE.BoxGeometry(3, 0.06, 20), new THREE.MeshStandardMaterial({ color: 0xC2A36B, roughness: 1 }));
+      pitch.position.set(cx, 0.37, cz);
+      scene.add(pitch);
+      const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      [-8.8, 8.8].forEach((dz) => {
+        const crease = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.05, 0.15), lineMat);
+        crease.position.set(cx, 0.41, cz + dz);
+        scene.add(crease);
+      });
+      const rope = new THREE.Mesh(new THREE.RingGeometry(boundaryR - 0.4, boundaryR, 64), lineMat);
+      rope.rotation.x = -Math.PI / 2;
+      rope.position.set(cx, 0.38, cz);
+      scene.add(rope);
+    }
+
+    createCricketFeatures(126, 20, 30);
+    createBasketballCourtFeatures(6, 69, 18, 30);
 
     // ══════════════════════════════════════════════════════════════════════════
     // REALISTIC PARKING LOTS & VEHICLES
@@ -1018,67 +1334,78 @@ export default function SuhruthDigitalTwin() {
 
     function createParkingLotFeatures() {
       const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-      
+      const paint = (x, z, w, d) => {
+        const line = new THREE.Mesh(new THREE.BoxGeometry(w, 0.04, d), lineMat);
+        line.position.set(x, 0.4, z);
+        scene.add(line);
+      };
+
+      // Car park: 4 rows x 15 bays = 60 bays, one per spot in the backend telemetry
+      // (spot_0..spot_59). Rows run east-west; aisles at z -10..-4, 6..12 and 22..28.
+      const BAY_W = 2.6, BAY_D = 5, X0 = 39.5, BAYS = 15;
+      const ROWS = [
+        { z0: -4, face: Math.PI }, // nose north, onto the north aisle
+        { z0: 1,  face: 0 },       // back-to-back with row 1, nose south
+        { z0: 12, face: Math.PI },
+        { z0: 17, face: 0 },
+      ];
+      const rowLen = BAY_W * BAYS;
       let spotId = 0;
-
-      // North Parking
-      for (let z = 38; z <= 58; z += 3) {
-        // Left spot line
-        const l1 = new THREE.Mesh(new THREE.BoxGeometry(6, 0.05, 0.1), lineMat);
-        l1.position.set(-101, 0.36, z);
-        scene.add(l1);
-        
-        // Right spot line
-        const l2 = new THREE.Mesh(new THREE.BoxGeometry(6, 0.05, 0.1), lineMat);
-        l2.position.set(-89, 0.36, z);
-        scene.add(l2);
-
-        if (z < 58) { 
-          const spotZ = z + 1.5;
-          // Left Spot
-          smartParkingSpots.push({ id: `spot_${spotId++}`, x: -101.5, z: spotZ, rotY: Math.PI / 2 });
-          // Right Spot
-          smartParkingSpots.push({ id: `spot_${spotId++}`, x: -88.5, z: spotZ, rotY: -Math.PI / 2 });
+      ROWS.forEach(({ z0, face }) => {
+        for (let i = 0; i <= BAYS; i++) paint(X0 + i * BAY_W, z0 + BAY_D / 2, 0.12, BAY_D); // bay dividers
+        for (let i = 0; i < BAYS; i++) {
+          smartParkingSpots.push({ id: `spot_${spotId++}`, x: X0 + BAY_W * (i + 0.5), z: z0 + BAY_D / 2, rotY: face });
         }
-      }
+      });
+      paint(X0 + rowLen / 2, 1, rowLen, 0.12);  // back line between rows 1 and 2
+      paint(X0 + rowLen / 2, 17, rowLen, 0.12); // back line between rows 3 and 4
+      // Dashed centre lines down each aisle
+      [-7, 9, 25].forEach((az) => {
+        for (let x = X0 + 1; x < X0 + rowLen - 1; x += 3) paint(x, az, 1.4, 0.12);
+      });
 
-      // Center aisle dashed line
-      for (let z = 37; z <= 59; z += 2) {
-        const cl = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 1), lineMat);
-        cl.position.set(-95, 0.36, z);
-        scene.add(cl);
+      // College buses in the bus bay (yellow fleet visible on satellite imagery)
+      const busMat = new THREE.MeshStandardMaterial({ color: 0xF2C230, roughness: 0.6 });
+      const busGlass = new THREE.MeshStandardMaterial({ color: 0x1F2937, roughness: 0.2, metalness: 0.6 });
+      for (let i = 0; i < 6; i++) {
+        const bus = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3, 11), busMat);
+        body.position.y = 1.9;
+        body.castShadow = true;
+        const glass = new THREE.Mesh(new THREE.BoxGeometry(2.65, 0.9, 10), busGlass);
+        glass.position.y = 2.6;
+        bus.add(body, glass);
+        bus.position.set(72 + i * 4.6, 0.38, -38);
+        scene.add(bus);
       }
-
-      // South Parking (Oval - Bikes mainly)
-      for (let i = 0; i < 15; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const rad = Math.random() * 6;
-        const vx = -60 + Math.cos(angle) * rad;
-        const vz = 55 + Math.sin(angle) * rad;
-        smartParkingSpots.push({ id: `spot_${spotId++}`, x: vx, z: vz, rotY: Math.random() * Math.PI });
-      }
+      // Bus bays painted around the six buses
+      for (let i = 0; i <= 6; i++) paint(69.7 + i * 4.6, -38, 0.12, 12);
+      paint(69.7 + 13.8, -44, 27.6, 0.12);
 
       // Initialize Zustand state with smartParkingSpots
       const initialStoreSpots = smartParkingSpots.map(s => ({ id: s.id, occupied: Math.random() > 0.3 }));
       useCampusStore.getState().initParkingSpots(initialStoreSpots);
 
-      // Create geometry for each spot (glowing plane + vehicle)
+      // Create geometry for each spot (bay tint + car)
       smartParkingSpots = smartParkingSpots.map((s, idx) => {
+        const occupied = initialStoreSpots[idx].occupied;
         const group = new THREE.Group();
-        group.position.set(s.x, 0.37, s.z);
+        group.position.set(s.x, 0.39, s.z);
         group.rotation.y = s.rotY;
 
-        // Glowing indicator plane on the ground
+        // Bay tint: soft green while free, hidden while a car is parked
         const indicator = new THREE.Mesh(
-          new THREE.PlaneGeometry(3, 1.5),
-          new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.7 })
+          new THREE.PlaneGeometry(BAY_W - 0.4, BAY_D - 0.4),
+          new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: occupied ? 0 : 0.35 })
         );
         indicator.rotation.x = -Math.PI / 2;
+        indicator.position.y = 0.02;
         group.add(indicator);
 
         // Vehicle (relative to group, so 0,0,0)
-        const v = createVehicle(0, 0, 0, Math.random() > 0.3 ? 'car' : 'bike', 0.8);
+        const v = createVehicle(0, 0, 0, 'car', 0.95);
         v.position.y -= 0.4; // offset the vehicle height since createVehicle sets y=0.4
+        v.visible = occupied;
         group.add(v);
 
         scene.add(group);
@@ -1089,22 +1416,21 @@ export default function SuhruthDigitalTwin() {
 
     createParkingLotFeatures();
 
-    // Subscribe to parking changes in Zustand to update 3D scene
-    const unsubParking = useCampusStore.subscribe(
-      (state) => state.parkingData,
-      (parkingData) => {
-        if (!parkingData || !parkingData.spots) return;
-        
-        parkingData.spots.forEach(storeSpot => {
-          const meshSpot = smartParkingSpots.find(s => s.id === storeSpot.id);
-          if (meshSpot) {
-            meshSpot.vehicle.visible = storeSpot.occupied;
-            meshSpot.indicator.material.color.setHex(storeSpot.occupied ? 0xff0000 : 0x00ff00);
-            meshSpot.indicator.material.opacity = storeSpot.occupied ? 0.3 : 0.8;
-          }
-        });
-      }
-    );
+    // Subscribe to parking changes in Zustand to update 3D scene.
+    // (The plain zustand store only supports subscribe(listener), so compare manually.)
+    const spotsById = new Map(smartParkingSpots.map((s) => [s.id, s]));
+    const unsubParking = useCampusStore.subscribe((state, prev) => {
+      const parkingData = state.parkingData;
+      if (parkingData === prev.parkingData || !parkingData || !parkingData.spots) return;
+
+      parkingData.spots.forEach(storeSpot => {
+        const meshSpot = spotsById.get(storeSpot.id);
+        if (meshSpot) {
+          meshSpot.vehicle.visible = storeSpot.occupied;
+          meshSpot.indicator.material.opacity = storeSpot.occupied ? 0 : 0.35;
+        }
+      });
+    });
 
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -1173,11 +1499,11 @@ export default function SuhruthDigitalTwin() {
 
     // Static Students sitting on benches / chatting
     const staticConfigs = [
-      { x: -32, z: -38, rot: 0, profileIdx: 2 },
-      { x: -24, z: -38, rot: 0, profileIdx: 4 },
-      { x: -17, z: -46, rot: -Math.PI / 2, profileIdx: 5 },
-      { x: -13, z: -46, rot: Math.PI / 2, profileIdx: 6 },
-      { x: -81.5, z: 0, rot: -Math.PI / 2, profileIdx: 1 },
+      { x: -71, z: -37, rot: 0, profileIdx: 2 },
+      { x: -55, z: -37, rot: 0, profileIdx: 4 },
+      { x: -140, z: -12, rot: 0, profileIdx: 5 },
+      { x: -118, z: -12, rot: 0, profileIdx: 6 },
+      { x: 25.5, z: -1, rot: Math.PI / 2, profileIdx: 1 }, // on a bench at the edge of the Ground
     ];
 
     staticConfigs.forEach((cfg) => {
@@ -1206,19 +1532,19 @@ export default function SuhruthDigitalTwin() {
       {
         prof: STUDENT_PROFILES[0],
         color: 0x3B82F6,
-        pts: [new THREE.Vector3(-75, 0, -35), new THREE.Vector3(30, 0, -35)],
+        pts: [new THREE.Vector3(-180, 0, -14.5), new THREE.Vector3(10, 0, -14.5)],
         speed: 4,
       },
       {
         prof: STUDENT_PROFILES[3],
         color: 0x10B981,
-        pts: [new THREE.Vector3(-70, 0, 17.5), new THREE.Vector3(40, 0, 17.5)],
+        pts: [new THREE.Vector3(13, 0, -75), new THREE.Vector3(13, 0, -36)],
         speed: 3.5,
       },
       {
         prof: STUDENT_PROFILES[7],
         color: 0xF59E0B,
-        pts: [new THREE.Vector3(-43, 0, -45), new THREE.Vector3(-43, 0, 45)],
+        pts: [new THREE.Vector3(-129.5, 0, -14), new THREE.Vector3(-129.5, 0, 44)],
         speed: 4.2,
       },
     ];
@@ -1256,21 +1582,19 @@ export default function SuhruthDigitalTwin() {
     BUILDINGS.forEach((b) => {
       const grp = new THREE.Group();
       grp.position.set(b.x, 0, b.z);
+      if (b.rotY) grp.rotation.y = b.rotY;
 
-      // --- Auto-generate Entrance Pathways ---
-      if (b.gate && b.gate.z !== undefined && b.id !== 'frontgate' && b.id !== 'backgate') {
-        let targetZ = 0;
-        if (b.z < -30) targetZ = -35;       // Connects to Path (North)
-        else if (b.z > 30) targetZ = 35;    // Connects to Path (South)
-        else targetZ = 0;                   // Connects to Path (Center)
-
-        const pathDepth = Math.abs(b.gate.z - targetZ);
-        if (pathDepth > 0) {
-          const pathCenterZ = (b.gate.z + targetZ) / 2;
-          const pathGeo = new THREE.BoxGeometry(4, 0.35, pathDepth);
+      // --- Entrance pathway from the building's gate to its road (b.link) ---
+      if (b.gate && b.link && b.id !== 'frontgate' && b.id !== 'backgate') {
+        const dx = b.link.x - b.gate.x;
+        const dz = b.link.z - b.gate.z;
+        const pathLen = Math.hypot(dx, dz);
+        if (pathLen > 0.5) {
+          const pathGeo = new THREE.BoxGeometry(4, 0.35, pathLen);
           const pathMat = new THREE.MeshStandardMaterial({ color: 0xC9C4B8, roughness: 1 });
           const pathMesh = new THREE.Mesh(pathGeo, pathMat);
-          pathMesh.position.set(b.gate.x, 0.18, pathCenterZ);
+          pathMesh.position.set((b.gate.x + b.link.x) / 2, 0.18, (b.gate.z + b.link.z) / 2);
+          pathMesh.rotation.y = Math.atan2(dx, dz);
           pathMesh.receiveShadow = true;
           scene.add(pathMesh);
         }
@@ -1281,7 +1605,7 @@ export default function SuhruthDigitalTwin() {
       const f2Color = baseColor.clone().offsetHSL(0, 0, 0.09);
 
       // Floor 1
-      const f1geo = footprintGeometry(b.shape, b.w, b.d, FLOOR_H);
+      const f1geo = footprintGeometry(b.shape, b.w, b.d, FLOOR_H, b.court);
       const f1mat = new THREE.MeshStandardMaterial({ color: f1Color, roughness: 0.3, metalness: 0.2, transparent: true, opacity: 1 });
       const f1 = new THREE.Mesh(f1geo, f1mat);
       f1.position.y = FLOOR_H / 2;
@@ -1292,7 +1616,7 @@ export default function SuhruthDigitalTwin() {
       const floors = b.floors || 2;
       if (floors >= 2) {
         // Floor 2
-        const f2geo = footprintGeometry(b.shape, b.w * 0.985, b.d * 0.985, FLOOR_H);
+        const f2geo = footprintGeometry(b.shape, b.w * 0.985, b.d * 0.985, FLOOR_H, b.court);
         const f2mat = new THREE.MeshStandardMaterial({ color: f2Color, roughness: 0.3, metalness: 0.2, transparent: true, opacity: 1 });
         const f2 = new THREE.Mesh(f2geo, f2mat);
         f2.position.y = FLOOR_H + FLOOR_H / 2;
@@ -1300,17 +1624,33 @@ export default function SuhruthDigitalTwin() {
         f2.userData = { building: b, floor: 2 };
         grp.add(f2); floor2List.push(f2); pickable.push(f2);
       }
+      // Floors above the first floor count as upper floors for the floor-mode toggle
+      for (let level = 3; level <= floors; level++) {
+        const fGeo = footprintGeometry(b.shape, b.w * 0.985, b.d * 0.985, FLOOR_H, b.court);
+        const fMat = new THREE.MeshStandardMaterial({ color: level % 2 ? f1Color : f2Color, roughness: 0.3, metalness: 0.2, transparent: true, opacity: 1 });
+        const fN = new THREE.Mesh(fGeo, fMat);
+        fN.position.y = FLOOR_H * (level - 1) + FLOOR_H / 2;
+        fN.castShadow = true; fN.receiveShadow = true;
+        fN.userData = { building: b, floor: level };
+        grp.add(fN); floor2List.push(fN); pickable.push(fN);
+
+        const levelSlab = new THREE.Mesh(footprintGeometry(b.shape, b.w * 1.02, b.d * 1.02, 0.22, b.court),
+          new THREE.MeshStandardMaterial({ color: 0x1c2430, roughness: 0.9 }));
+        levelSlab.position.y = FLOOR_H * (level - 1);
+        grp.add(levelSlab);
+      }
 
       // Slabs
-      const slabGeo = footprintGeometry(b.shape, b.w * 1.02, b.d * 1.02, 0.22);
+      const slabGeo = footprintGeometry(b.shape, b.w * 1.02, b.d * 1.02, 0.22, b.court);
       const slab = new THREE.Mesh(slabGeo, new THREE.MeshStandardMaterial({ color: 0x1c2430, roughness: 0.9 }));
       slab.position.y = FLOOR_H;
       grp.add(slab);
 
       if (floors >= 2) {
-        const roofGeo = footprintGeometry(b.shape, b.w * 1.02, b.d * 1.02, 0.22);
-        const roof = new THREE.Mesh(roofGeo, new THREE.MeshStandardMaterial({ color: 0x11151b, roughness: 0.9 }));
-        roof.position.y = FLOOR_H * 2 + 0.11;
+        const roofGeo = footprintGeometry(b.shape, b.w * 1.02, b.d * 1.02, 0.22, b.court);
+        // Light concrete, like the flat RCC roofs on the satellite imagery
+        const roof = new THREE.Mesh(roofGeo, new THREE.MeshStandardMaterial({ color: 0xB5AFA3, roughness: 0.9 }));
+        roof.position.y = FLOOR_H * floors + 0.11;
         grp.add(roof);
       }
 
@@ -1383,7 +1723,9 @@ export default function SuhruthDigitalTwin() {
 
         // 4. Arched Windows & Grand Central Arched Entrance on Facade
         const archWindowGeo = new THREE.CylinderGeometry(1.3, 1.3, 0.1, 16, 1, false, 0, Math.PI);
-        const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x93C5FD, roughness: 0.1, transmission: 0.85, transparent: true, opacity: 0.7 });
+        // Plain transparent glass. (transmission: 0.85 here made three.js render the whole
+        // campus a second time every frame, just for these few arched windows.)
+        const glassMat = new THREE.MeshStandardMaterial({ color: 0x93C5FD, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.7 });
 
         // Central Grand Arched Portal
         const portalArch = new THREE.Mesh(archWindowGeo, glassMat);
@@ -1603,8 +1945,8 @@ export default function SuhruthDigitalTwin() {
         cseShape.lineTo(-b.w / 2, b.d / 2);
         cseShape.lineTo(-b.w / 2, -b.d / 2);
 
-        const innerW = 7.0;
-        const innerD = 5.0;
+        const innerW = b.court?.w ?? 7.0;
+        const innerD = b.court?.d ?? 5.0;
         const hole = new THREE.Path();
         hole.moveTo(-innerW / 2, -innerD / 2);
         hole.lineTo(-innerW / 2, innerD / 2);
@@ -1894,7 +2236,7 @@ export default function SuhruthDigitalTwin() {
         
         // 1. Dispose default generic geometry and make a full 4-floor solid white box
         f1.geometry.dispose();
-        f1.geometry = footprintGeometry(b.shape, b.w, b.d, FLOOR_H * shFloors);
+        f1.geometry = footprintGeometry(b.shape, b.w, b.d, FLOOR_H * shFloors, b.court);
         f1.material = facadeMat;
         f1.position.y = (FLOOR_H * shFloors) / 2; // Center vertically for 4 floors
         
@@ -1907,7 +2249,7 @@ export default function SuhruthDigitalTwin() {
         });
 
         // Add a single custom roof slab for the entire building
-        const roofSlab = new THREE.Mesh(new THREE.BoxGeometry(b.w * 1.02, 0.4, b.d * 1.02), gridMat);
+        const roofSlab = new THREE.Mesh(footprintGeometry(b.shape, b.w * 1.02, b.d * 1.02, 0.4, b.court), gridMat);
         roofSlab.position.y = FLOOR_H * shFloors + 0.2;
         grp.add(roofSlab);
 
@@ -2764,7 +3106,7 @@ export default function SuhruthDigitalTwin() {
         
         grp.add(hugeTree);
       } else if (b.id === 'aud') {
-        // ─── The Grand Suhruth Auditorium ────────────────────────────────────
+        // ─── The Grand MVSR Auditorium ────────────────────────────────────
         // A masterpiece of sweeping curves, glass facades, and acoustic bronze ribs.
 
         f1.geometry.dispose();
@@ -2898,7 +3240,7 @@ export default function SuhruthDigitalTwin() {
         grp.add(doors);
 
 
-        // 4. ── Marquee Sign "SUHRUTH AUDITORIUM" ──
+        // 4. ── Marquee Sign "MVSR AUDITORIUM" ──
         const signBoard = new THREE.Mesh(new THREE.BoxGeometry(16, 2, 0.5), mBronze);
         signBoard.position.set(0, 6.5, -rz + 1.2);
         // Tilt sign to face slightly downward
@@ -2949,9 +3291,8 @@ export default function SuhruthDigitalTwin() {
         // Hide the default box
         f1.geometry.dispose();
         f1.visible = false;
-        if (b.id === 'backgate') {
-          grp.rotation.y = -Math.PI / 2; // Rotate so it spans along X and faces South (+Z)
-        }
+        // Local +x is the outward face; b.rotY turns it to face off campus.
+        grp.rotation.y = b.rotY ?? (b.id === 'backgate' ? -Math.PI / 2 : 0);
         grp.children.forEach(c => { if (c !== f1) c.visible = false; });
 
         // ── Materials ──────────────────────────────────────────────────────
@@ -3034,6 +3375,22 @@ export default function SuhruthDigitalTwin() {
         const nameSign = new THREE.Mesh(new THREE.BoxGeometry(0.12, gArchBeamH - 0.6, gBeamTotalZ - 1.5), gWhiteSign);
         nameSign.position.set(gArchBeamD/2 + 0.06, gPylonH + gArchBeamH/2, 0);
         grp.add(nameSign);
+
+        // Readable lettering over the sign: outer face names the gate, inner face greets you on campus
+        const outerText = b.id === 'frontgate'
+          ? [{ text: 'MVSR ENGINEERING COLLEGE', font: 'bold 60px serif' }, { text: '(AUTONOMOUS) · NADERGUL', font: '600 30px sans-serif' }]
+          : [{ text: 'MVSR ENGINEERING COLLEGE', font: 'bold 60px serif' }, { text: 'BACK GATE', font: '600 30px sans-serif' }];
+        const signW = gBeamTotalZ - 1.5;
+        const signH = gArchBeamH - 0.6;
+        [[gArchBeamD / 2 + 0.13, Math.PI / 2, outerText],
+          [-(gArchBeamD / 2 + 0.03), -Math.PI / 2, [{ text: 'MVSR ENGINEERING COLLEGE', font: 'bold 60px serif' }, { text: 'Estd. 1981', font: '600 30px sans-serif' }]]]
+          .forEach(([x, rotY, lines]) => {
+            const tex = textTextureForGate(lines, signW / signH);
+            const plate = new THREE.Mesh(new THREE.PlaneGeometry(signW, signH), new THREE.MeshBasicMaterial({ map: tex }));
+            plate.position.set(x, gPylonH + gArchBeamH / 2, 0);
+            plate.rotation.y = rotY;
+            grp.add(plate);
+          });
 
         // Individual raised letter slabs for MVSR (bold caps look)
         const letterLabels = ['M','V','S','R','E','N','G','I','N','E','E','R','I','N','G'];
@@ -3154,7 +3511,7 @@ export default function SuhruthDigitalTwin() {
         // ── 5. Boundary Walls extending N and S from pylons ───────────────
         const wallH        = 3.5;
         const wallThick    = 1.0;
-        const wallSpan     = b.id === 'backgate' ? b.w : b.d;
+        const wallSpan     = b.gateSpan ?? (b.id === 'backgate' ? b.w : b.d);
         const wallLength   = Math.max(0, (wallSpan - gArchHalfSpan * 2 - gPylonW * 2) / 2); // each side
         const wallOffset   = gArchHalfSpan + gPylonW + wallLength / 2;
 
@@ -3225,7 +3582,7 @@ export default function SuhruthDigitalTwin() {
 
         f1.geometry.dispose();
         f1.visible = false;
-        grp.rotation.y = -Math.PI / 2; // Rotate to face West towards the college
+        grp.rotation.y = b.rotY ?? -Math.PI / 2; // Front (local +z) faces the college
         grp.children.forEach(c => { if (c !== f1) c.visible = false; });
 
         const hFloors   = 6;
@@ -3522,6 +3879,9 @@ export default function SuhruthDigitalTwin() {
         grp.add(signLight);
         nightLightsRef.current.push({ light: signLight, onIntensity: 6 });
       }
+      // Lawn, planters and a shade tree in open courtyards (CSE has its own courtyard garden)
+      if (b.court && b.id !== 'cse') grp.add(createCourtyardGarden(b.court));
+
       const label = makeLabel(b.name, { scale: b.shape === 'oval' ? 1.05 : 1 });
       label.position.set(0, (floors * FLOOR_H) + 3.2, 0);
       grp.add(label);
@@ -3537,6 +3897,148 @@ export default function SuhruthDigitalTwin() {
         nightLightsRef.current.push({ light, onIntensity: 20 });
       }
     });
+
+    // Live-session markers for every building that can host classes
+    const liveMarkersGroup = new THREE.Group();
+    scene.add(liveMarkersGroup);
+    liveMarkersRef.current = {};
+    BUILDINGS.forEach((b) => {
+      if (['frontgate', 'backgate', 'security', 'boyshostel', 'girlshostel'].includes(b.id)) return;
+      const levels = ['sh', 'exam'].includes(b.id) ? 4 : (b.floors || 2);
+      const marker = createLiveMarker(footprintOf(b), 21, levels * FLOOR_H + 0.4);
+      liveMarkersGroup.add(marker.group);
+      marker.setCount(liveRef.current.sessions[b.id]?.length || 0); // in case the scene is rebuilt mid-session
+      liveMarkersRef.current[b.id] = marker;
+    });
+
+    // Students walking between buildings; how many depends on the campus clock
+    const crowd = createCrowd({ scene, poolSize: 40, makeStudent: createStudentMesh, nodes: NODES, adjacency: ADJACENCY });
+
+    // Document tokens: one glowing envelope per active request of the signed-in student
+    const tokenLayer = new THREE.Group();
+    scene.add(tokenLayer);
+    const docTokens = new Map();
+    const TOKEN_SHORT = {
+      bonafide: 'Bonafide', noc: 'NOC', tc: 'TC', conduct: 'Conduct', course_completion: 'Completion',
+      moi: 'MOI', provisional: 'PC', cmm: 'CMM', transcripts: 'Transcripts',
+    };
+    const RECENT_MS = 7 * 24 * 3600 * 1000; // issued documents stay on the map for a week
+    docTokenApiRef.current = {
+      sync(requests) {
+        const now = Date.now();
+        const active = requests.filter((r) => ['in_review', 'processing', 'awaiting_payment'].includes(r.status)
+          || (r.status === 'approved' && r.issued_at && now - new Date(`${r.issued_at}Z`).getTime() < RECENT_MS));
+        const byPlace = {};
+        active.forEach((r) => { (byPlace[r.location] ||= []).push(r); });
+        const keep = new Set();
+        Object.entries(byPlace).forEach(([place, list]) => {
+          const b = BUILDINGS.find((x) => x.id === place);
+          if (!b) return;
+          list.forEach((r, i) => {
+            keep.add(r.id);
+            let token = docTokens.get(r.id);
+            const isNew = !token;
+            if (isNew) {
+              token = createDocToken();
+              tokenLayer.add(token.group);
+              pickable.push(...token.pickables);
+              docTokens.set(r.id, token);
+            }
+            const x = b.x + (i - (list.length - 1) / 2) * 8;
+            token.moveTo(x, b.z, isNew);
+            const name = TOKEN_SHORT[r.doc_type] || r.doc_name;
+            if (r.status === 'approved') token.setInfo(`✅ ${name} ready · ${r.counter_name}`, 'ready');
+            else if (r.status === 'awaiting_payment') token.setInfo(`💳 ${name} · fee ₹${r.amount} due`, 'quest');
+            else if (r.status === 'processing') token.setInfo(`🖨 ${name} · being prepared`, 'review');
+            else if (r.overdue) token.setInfo(`⚠ ${name} · ${r.current_label} · ${fmtWaiting(r.waiting_hours)}`, 'overdue');
+            else token.setInfo(`📄 ${name} · with ${r.current_label}`, 'review');
+            token.setUserData({ building: {
+              id: `doc-${r.id}`, name: r.doc_name, type: 'Your request', requestId: r.id,
+              depts: [whereNow(r), r.ref_no], x, z: b.z,
+            } });
+          });
+        });
+        docTokens.forEach((token, id) => {
+          if (keep.has(id)) return;
+          tokenLayer.remove(token.group);
+          token.pickables.forEach((m) => { const k = pickable.indexOf(m); if (k >= 0) pickable.splice(k, 1); });
+          token.dispose();
+          docTokens.delete(id);
+        });
+      },
+    };
+
+    // Joining Day: one gold beacon over the joinee's next stop (a building or the Bank & ATM)
+    let questToken = null;
+    questApiRef.current = {
+      set(place, text) {
+        const spot = BUILDINGS.find((b) => b.id === place) || GROUNDS.find((g) => g.name === place);
+        if (!spot) return this.clear();
+        const isNew = !questToken;
+        if (isNew) {
+          questToken = createDocToken();
+          tokenLayer.add(questToken.group);
+          pickable.push(...questToken.pickables);
+        }
+        questToken.moveTo(spot.x, spot.z, isNew);
+        questToken.setInfo(text, 'quest');
+        questToken.setUserData({ building: {
+          id: 'joining-quest', name: 'Joining Day', type: 'Your next stop', depts: [text.replace(/^🎓\s*/, ''), PLACE_NAMES[place] || place],
+          x: spot.x, z: spot.z, quest: true,
+        } });
+      },
+      clear() {
+        if (!questToken) return;
+        tokenLayer.remove(questToken.group);
+        questToken.pickables.forEach((m) => { const k = pickable.indexOf(m); if (k >= 0) pickable.splice(k, 1); });
+        questToken.dispose();
+        questToken = null;
+      },
+    };
+
+    // Leaving the college: a pin on every no-dues section's building
+    const clearancePins = new Map();   // unit -> pin
+    const CLEARANCE_WORDS = { pending: 'waiting', dues: 'dues', cleared: 'cleared' };
+    clearanceApiRef.current = {
+      sync(exitRec) {
+        const items = exitRec ? exitRec.items : [];
+        const keep = new Set();
+        items.forEach((it) => {
+          const b = BUILDINGS.find((x) => x.id === it.place);
+          const g = b ? null : GROUNDS.find((x) => x.name === it.place);
+          if (!b && !g) return;
+          keep.add(it.unit);
+          let pin = clearancePins.get(it.unit);
+          if (!pin) {
+            const fp = b ? footprintOf(b) : { x: g.x, z: g.z, w: g.w, d: g.d };
+            const roof = b ? (['sh', 'exam'].includes(b.id) ? 4 : (b.floors || 2)) * FLOOR_H : 1;
+            pin = createClearancePin(fp, roof);
+            tokenLayer.add(pin.group);
+            pickable.push(...pin.pickables);
+            clearancePins.set(it.unit, pin);
+          }
+          const text = it.status === 'dues' ? `${it.label} · ₹${it.dues_amount} due` : `${it.label} · ${CLEARANCE_WORDS[it.status]}`;
+          pin.setState(it.status, text);
+          pin.setUserData({ building: {
+            id: `clearance-${it.unit}`, name: `${it.label} · no-dues`, type: 'Your clearance', clearance: true,
+            depts: [it.status === 'dues' ? `Dues ₹${it.dues_amount}: ${it.remarks}` : it.status === 'cleared' ? `Cleared by ${it.acted_by}` : 'Waiting for this section',
+              PLACE_NAMES[it.place] || it.place],
+            x: (b || g).x, z: (b || g).z,
+          } });
+        });
+        clearancePins.forEach((pin, unit) => {
+          if (keep.has(unit)) return;
+          tokenLayer.remove(pin.group);
+          pin.pickables.forEach((m) => { const k = pickable.indexOf(m); if (k >= 0) pickable.splice(k, 1); });
+          pin.dispose();
+          clearancePins.delete(unit);
+        });
+      },
+    };
+
+    // Arrival fly-in: ends exactly at the default orbit view
+    const introEnd = camera.position.clone();
+    const introPath = createIntroPath(introEnd, target.clone());
 
     floor1Ref.current = floor1List;
     floor2Ref.current = floor2List;
@@ -3592,11 +4094,13 @@ export default function SuhruthDigitalTwin() {
         let mat = new THREE.MeshStandardMaterial({ color: g.color, roughness: 1 });
         
         // --- INTERACTIVE GROUND UPGRADES ---
-        if (g.name === 'Basketball Court') {
+        if (g.name.startsWith('Basketball Court')) {
           const cvs = document.createElement('canvas');
           cvs.width = 512; cvs.height = 256;
           const ctx = cvs.getContext('2d');
-          ctx.fillStyle = '#CC5500'; ctx.fillRect(0, 0, 512, 256);
+          ctx.fillStyle = '#3A6EA5'; ctx.fillRect(0, 0, 512, 256); // blue surround
+          ctx.fillStyle = '#2F7D4F'; ctx.fillRect(10, 10, 492, 236);  // green court
+          ctx.fillStyle = '#C8693A'; ctx.fillRect(10, 80, 100, 96); ctx.fillRect(402, 80, 100, 96); // keys
           ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 6;
           // Court outline
           ctx.strokeRect(10, 10, 492, 236);
@@ -3611,48 +4115,44 @@ export default function SuhruthDigitalTwin() {
           ctx.beginPath(); ctx.arc(502, 128, 120, Math.PI - Math.PI/2.5, Math.PI + Math.PI/2.5); ctx.stroke();
           const tex = new THREE.CanvasTexture(cvs);
           tex.colorSpace = THREE.SRGBColorSpace;
+          if (g.d > g.w) { tex.center.set(0.5, 0.5); tex.rotation = Math.PI / 2; } // court runs north-south
           mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 });
-        } else if (g.name.includes('Parking')) {
-          const cvs = document.createElement('canvas');
-          cvs.width = 512; cvs.height = 512;
-          const ctx = cvs.getContext('2d');
-          ctx.fillStyle = '#555555'; ctx.fillRect(0, 0, 512, 512);
-          ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 8;
-          // Draw parking bays
-          for(let i=20; i<490; i+=60) {
-            ctx.beginPath(); ctx.moveTo(i, 20); ctx.lineTo(i, 180); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(i, 332); ctx.lineTo(i, 492); ctx.stroke();
-          }
-          // Parking label
-          ctx.fillStyle = '#FFFFFF'; ctx.font = "bold 60px monospace"; ctx.textAlign = "center";
-          ctx.fillText("P", 256, 276);
-          const tex = new THREE.CanvasTexture(cvs);
-          tex.colorSpace = THREE.SRGBColorSpace;
-          tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
-          if (g.name.includes('North')) tex.repeat.set(2, 1);
-          mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 });
-        } else if (g.name === 'Garden' || g.name === 'Ground') {
+        } else if (g.name.includes('Garden') || g.name === 'Ground') {
           // Add a procedural-looking grass pattern
           const cvs = document.createElement('canvas');
           cvs.width = 256; cvs.height = 256;
           const ctx = cvs.getContext('2d');
-          ctx.fillStyle = (g.name === 'Garden') ? '#6FA85A' : '#7C9A6B';
+          const isSand = g.name === 'Ground'; // the open ground is bare sand on the imagery
+          ctx.fillStyle = isSand ? '#D9C49A' : '#6FA85A';
           ctx.fillRect(0, 0, 256, 256);
           for(let i=0; i<150; i++) {
-            ctx.fillStyle = (Math.random()>0.5)? '#5b8e45' : '#8ab974';
+            if (isSand) ctx.fillStyle = (Math.random()>0.5)? '#C8B07F' : '#E6D6B0';
+            else ctx.fillStyle = (Math.random()>0.5)? '#5b8e45' : '#8ab974';
             ctx.beginPath(); ctx.arc(Math.random()*256, Math.random()*256, Math.random()*4+2, 0, 2*Math.PI); ctx.fill();
           }
           const tex = new THREE.CanvasTexture(cvs);
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
-          tex.repeat.set(g.w/4, g.d/4);
+          // Polygon UVs are in metres, box UVs span the whole face
+          if (g.shape === 'polygon') tex.repeat.set(1 / 4, 1 / 4);
+          else tex.repeat.set(g.w/4, g.d/4);
           mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 1.0 });
         }
         // ------------------------------------
         
-        mesh = new THREE.Mesh(new THREE.BoxGeometry(g.w, h, g.d), mat);
+        let geo;
+        if (g.shape === 'polygon') {
+          const outline = new THREE.Shape(g.points.map(([px, pz]) => new THREE.Vector2(px - g.x, -(pz - g.z))));
+          geo = new THREE.ExtrudeGeometry(outline, { depth: h, bevelEnabled: false });
+          geo.rotateX(-Math.PI / 2);
+          geo.translate(0, -h / 2, 0);
+        } else {
+          geo = new THREE.BoxGeometry(g.w, h, g.d);
+        }
+        mesh = new THREE.Mesh(geo, mat);
       }
       mesh.position.set(g.x, h / 2, g.z);
+      if (g.rotY) mesh.rotation.y = g.rotY;
       mesh.receiveShadow = true;
       
       // Make it pickable/interactive!
@@ -3693,8 +4193,9 @@ export default function SuhruthDigitalTwin() {
       }
 
       // Night mode area light
-      const groundNamesWithLights = ['Basketball Court', 'Garden', 'Ground', 'Parking (North)', 'Parking (South)'];
-      if (groundNamesWithLights.includes(g.name)) {
+      const hasAreaLight = g.name.startsWith('Basketball Court') || g.name.includes('Garden') ||
+        g.name === 'Ground' || g.name.includes('Parking');
+      if (hasAreaLight) {
         // use a warm or cool color based on the ground type
         const color = g.name.includes('Parking') ? 0xaaddff : 0xffeebb;
         const light = new THREE.PointLight(color, 0, 65, 1.2);
@@ -3721,7 +4222,16 @@ export default function SuhruthDigitalTwin() {
     let dragging = false, lastX = 0, lastY = 0, moved = false;
     let wasShuttle = false;
 
+    const skipIntro = () => {
+      if (!introRef.current.active) return;
+      introRef.current.active = false;
+      setLabelsVisible(true);
+      setIntroPlaying(false);
+      updateCamera();
+    };
+
     const onPointerDown = (e) => {
+      skipIntro();
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
@@ -3745,6 +4255,7 @@ export default function SuhruthDigitalTwin() {
 
     const onWheel = (e) => {
       e.preventDefault();
+      skipIntro();
       if (cameraModeRef.current === 'shuttle' || cameraModeRef.current === 'student') return;
       radius += e.deltaY * 0.14;
       updateCamera();
@@ -3803,43 +4314,27 @@ export default function SuhruthDigitalTwin() {
     scene.add(liveTransitGroup);
 
     // 1. Campus Shuttles (Strictly uses safe corridors to avoid ANY building clipping)
+    // Loop: boulevard north lane west -> west road south -> south road east ->
+    // EEE-CSE path north -> boulevard south lane east -> back-gate lane to the start.
     const shuttlePts = [
-      // 1. Westbound on Center Path (z = 1)
-      new THREE.Vector3(87, 0.6, 1),
-      new THREE.Vector3(66, 0.6, 1),
-      new THREE.Vector3(0, 0.6, 1),
-      new THREE.Vector3(-24.5, 0.6, 1),
-      
-      // 2. Northbound on CSE-Mech Path (x = -24.5)
-      new THREE.Vector3(-24.5, 0.6, -17),
-      new THREE.Vector3(-24.5, 0.6, -34),
-      
-      // 3. Eastbound on North Path (z = -34)
-      new THREE.Vector3(0, 0.6, -34),
-      new THREE.Vector3(66, 0.6, -34),
-      
-      // 4. Southbound on Far East Path (x = 66)
-      new THREE.Vector3(66, 0.6, 0),
-      new THREE.Vector3(66, 0.6, 34),
-      
-      // 5. Westbound on South Path (z = 34)
-      new THREE.Vector3(30, 0.6, 34),
-      new THREE.Vector3(0, 0.6, 34),
-      new THREE.Vector3(-44, 0.6, 34),
-      new THREE.Vector3(-75, 0.6, 34),
-      
-      // 6. Northbound on Far West Path (x = -75)
-      new THREE.Vector3(-75, 0.6, 17),
-      new THREE.Vector3(-75, 0.6, -1),
-      
-      // 7. Eastbound on Center Path (z = -1)
-      new THREE.Vector3(-44, 0.6, -1),
-      new THREE.Vector3(0, 0.6, -1),
-      new THREE.Vector3(40, 0.6, -1),
-      new THREE.Vector3(87, 0.6, -1),
-      
-      // 8. U-Turn at Front Gate
-      new THREE.Vector3(89, 0.6, 0)
+      new THREE.Vector3(18, 0.6, -30),
+      new THREE.Vector3(-60, 0.6, -30),
+      new THREE.Vector3(-140, 0.6, -30),
+      new THREE.Vector3(-187, 0.6, -30),
+      new THREE.Vector3(-189, 0.6, -28),
+      new THREE.Vector3(-189, 0.6, 10),
+      new THREE.Vector3(-189, 0.6, 45),
+      new THREE.Vector3(-187, 0.6, 47),
+      new THREE.Vector3(-130, 0.6, 47),
+      new THREE.Vector3(-75.5, 0.6, 47),
+      new THREE.Vector3(-73.5, 0.6, 45),
+      new THREE.Vector3(-73.5, 0.6, 10),
+      new THREE.Vector3(-73.5, 0.6, -18),
+      new THREE.Vector3(-71.5, 0.6, -20),
+      new THREE.Vector3(-20, 0.6, -20),
+      new THREE.Vector3(18, 0.6, -20),
+      new THREE.Vector3(20, 0.6, -22),
+      new THREE.Vector3(20, 0.6, -28),
     ];
     // Tension 0.1 makes the corners sharper so it stays on the paths better
     const shuttleCurve = new THREE.CatmullRomCurve3(shuttlePts, true, 'catmullrom', 0.1);
@@ -3858,16 +4353,72 @@ export default function SuhruthDigitalTwin() {
       });
       const shuttle = new THREE.Mesh(shuttleGeo, shuttleMat);
       shuttle.castShadow = true;
-      
-      // Add cyan glowing lights to shuttle
-      const light = new THREE.PointLight(0x00E5FF, 1.5, 15);
-      light.position.set(0, 1.5, 0);
-      shuttle.add(light);
-      
+      // (The emissive body supplies the cyan glow. A real PointLight per shuttle cost
+      //  every lit pixel in the scene an extra light evaluation, every frame.)
       liveTransitGroup.add(shuttle);
       // Slower speed for campus paths
       shuttles.push({ mesh: shuttle, offset: i * 0.25, speed: 0.02 });
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // PERFORMANCE: prepare the scene before the first frame
+    // ══════════════════════════════════════════════════════════════════════════
+    // 1. Night lights start hidden. three.js compiles every light into every shader
+    //    (even at intensity 0), and the first frame used to compile with ~100 point
+    //    lights — over a minute of shader compilation on Windows/Direct3D.
+    streetLightsRef.current.forEach(({ light1, light2 }) => { light1.visible = false; light2.visible = false; });
+    nightLightsRef.current.forEach(({ light }) => { light.visible = false; });
+
+    // 2. Fake the street-lamp light pools with one additive glow mesh instead of
+    //    ~40 real point lights (a single draw call; shown only at night).
+    glowPoolsRef.current = createLightPools(scene, streetLightsRef.current);
+
+    // 3. Merge static, non-interactive meshes per material (thousands of draw calls -> hundreds).
+    //    Anything that moves, toggles, is clickable or has per-object material changes is excluded.
+    const dynamicObjects = [
+      liveTransitGroup,
+      rainSystemRef.current, celestialSunRef.current, celestialMoonRef.current,
+      ...activeWalkers.map((w) => w.group),
+      ...studentList.map((s) => s.group),
+      ...smartParkingSpots.map((s) => s.group),
+      ...floor1Ref.current, ...floor2Ref.current,
+      ...pickable,
+      liveMarkersGroup, crowd.group, tokenLayer,
+    ];
+    // Many objects get their own copy of an identical material; share them first so they can merge.
+    // Street-lamp bulb materials are recoloured at night through refs, so they keep their identity.
+    dedupeMaterials(scene, {
+      exclude: dynamicObjects,
+      lockedMaterials: streetLightsRef.current.map((s) => s.bulbMat),
+    });
+    const mergeStats = mergeStaticMeshes(scene, { exclude: dynamicObjects });
+    if (import.meta.env.DEV) console.info(`[twin] merged ${mergeStats.before} static meshes into ${mergeStats.after}`);
+
+    // Real sun over Nadergul. At night the key light comes from a moon opposite the sun.
+    const warmLow = new THREE.Color(0xffb36b);
+    const noonWhite = new THREE.Color(0xfff4e0);
+    applySunRef.current = (date = new Date()) => {
+      const { azimuth, elevation } = solarPosition(date, CENTER_LAT, CENTER_LON);
+      const up = elevation > 0.03;
+      const sunDir = skyDirection(azimuth, Math.max(elevation, 0.06), GRID_ROTATION);
+      const moonDir = skyDirection(azimuth + Math.PI, 0.8, GRID_ROTATION);
+      sun.position.copy(up ? sunDir : moonDir).multiplyScalar(330);
+      celestialSun.position.copy(sunDir).multiplyScalar(650);
+      celestialMoon.position.copy(moonDir).multiplyScalar(650);
+      celestialSun.visible = !nightRef.current && up;
+      if (!nightRef.current) {
+        const k = THREE.MathUtils.clamp(Math.sin(elevation) / 0.5, 0, 1); // 0 at the horizon, 1 from ~30° up
+        sun.intensity = 0.45 + 0.6 * k;
+        sun.color.lerpColors(warmLow, noonWhite, k);
+      }
+      return { azimuth, elevation, up };
+    };
+    applySunRef.current();
+
+    // 4. Don't draw while the 3D view is scrolled out of sight.
+    let onScreen = true;
+    const visibilityObserver = new IntersectionObserver(([entry]) => { onScreen = entry.isIntersecting; });
+    visibilityObserver.observe(container);
 
     // Animation Loop
     let animId;
@@ -3886,20 +4437,37 @@ export default function SuhruthDigitalTwin() {
     const animate = () => {
       animId = requestAnimationFrame(animate);
       const dt = clock.getDelta();
+      if (!onScreen || room3DOpenRef.current) return;
+
+      // ── Arrival fly-in ──────────────────────────────────────────────────────
+      if (introRef.current.active) {
+        if (introRef.current.t === 0) setLabelsVisible(false);
+        introRef.current.t = Math.min(1, introRef.current.t + Math.min(dt, 0.05) / INTRO_SECONDS);
+        const shot = introPath(introRef.current.t);
+        camera.position.copy(shot.position);
+        camera.lookAt(shot.target);
+        if (introRef.current.t >= 1) {
+          introRef.current.active = false;
+          setLabelsVisible(true);
+          setIntroPlaying(false);
+          updateCamera();
+        }
+      }
 
       // ── Handle AI Drone Camera Panning ──────────────────────────────────────
       const flyTargetObj = useCampusStore.getState().aiFlyTarget;
       const currentFlyId = flyTargetObj ? flyTargetObj.id : null;
       const currentFlyTs = flyTargetObj ? flyTargetObj.ts : null;
       
-      if (currentFlyId && currentFlyTs !== currentDroneTarget) {
+      if (currentFlyId && currentFlyTs !== currentDroneTarget && !introRef.current.active) {
         // Start new drone flight!
         currentDroneTarget = currentFlyTs;
-                let b = BUILDINGS.find(b => {
-          const bName = b.name.toLowerCase();
-          const flyId = currentFlyId.toLowerCase();
-          return b.id === currentFlyId || bName === flyId || bName.includes(flyId) || flyId.includes(bName);
-        });
+        // Exact id, then exact name, then partial name (so 'mecheee' doesn't land on 'ECE')
+        const flyId = currentFlyId.toLowerCase();
+        let b = BUILDINGS.find((x) => x.id === currentFlyId)
+          || BUILDINGS.find((x) => x.name.toLowerCase() === flyId)
+          || BUILDINGS.find((x) => x.name.toLowerCase().includes(flyId))
+          || BUILDINGS.find((x) => flyId.includes(x.name.toLowerCase()) && x.name.length > 3);
         if (!b) b = GROUNDS.find(g => g.name.toLowerCase() === currentFlyId.toLowerCase());
         
         if (b) {
@@ -4026,6 +4594,13 @@ export default function SuhruthDigitalTwin() {
         }
       });
 
+      // ── Live campus: session markers and the crowd ─────────────────────────
+      Object.values(liveMarkersRef.current).forEach((m) => m.update(time, nightRef.current));
+      crowd.update(Math.min(dt, 0.1), time, liveRef.current.phase);
+      docTokens.forEach((t) => t.update(Math.min(dt, 0.1), time));
+      questToken?.update(Math.min(dt, 0.1), time);
+      clearancePins.forEach((pin) => pin.update(time));
+
       // ── Animate Live Transit ──────────────────────────────────────────────
       shuttles.forEach((s, idx) => {
         const t = (time * s.speed + s.offset) % 1;
@@ -4069,6 +4644,7 @@ export default function SuhruthDigitalTwin() {
       if (typeof unsubParking === 'function') unsubParking();
       cancelAnimationFrame(animId);
       resizeObserver.disconnect();
+      visibilityObserver.disconnect();
       window.removeEventListener('pointerup', onPointerUpWindow);
       window.removeEventListener('pointermove', onPointerMove);
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
@@ -4077,12 +4653,151 @@ export default function SuhruthDigitalTwin() {
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
-      renderer.dispose();
+      // Free GPU memory and the WebGL context; previously every visit leaked both
+      disposeObject(scene);
+      disposeRenderer(renderer);
+      sceneRef.current = null;
+      glowPoolsRef.current = null;
     };
   }, []);
 
+  // ── Arrival fly-in: once per browser session ───────────────────────────────
+  useEffect(() => {
+    let seen = false;
+    try { seen = sessionStorage.getItem(INTRO_SEEN_KEY) === '1'; sessionStorage.setItem(INTRO_SEEN_KEY, '1'); } catch { /* storage blocked */ }
+    if (!seen) {
+      introRef.current = { active: true, t: 0 };
+      setIntroPlaying(true);
+    }
+  }, []);
+
+  const playIntro = () => {
+    setCameraMode('orbit');
+    introRef.current = { active: true, t: 0 };
+    setIntroPlaying(true);
+  };
+  const skipIntroButton = () => {
+    introRef.current.t = 1; // the render loop finishes on the orbit view
+  };
+
+  // ── Live campus clock: timetable sessions, campus phase and the sun, every minute ──
+  useEffect(() => {
+    let cancelled = false;
+    let entries = [];
+    let classrooms = [];
+    let periods = DEFAULT_PERIODS;
+    let firstTick = true;
+
+    const tick = () => {
+      const now = istNow();
+      const sessions = liveSessionsByBuilding(entries, classrooms, now);
+      const phase = campusPhase(periods, now);
+      liveRef.current = { sessions, phase };
+      Object.entries(liveMarkersRef.current).forEach(([id, m]) => m.setCount(sessions[id]?.length || 0));
+      setLiveInfo({ sessions, phase });
+
+      const sunNow = applySunRef.current?.();
+      // Until the weather service answers, day/night follows the real sun
+      if (sunNow && firstTick && !useCampusStore.getState().weatherData) setIsNightMode(!sunNow.up);
+      firstTick = false;
+    };
+
+    Promise.all([timetableApi.list(), classroomsApi.list()])
+      .then(([tt, rooms]) => {
+        if (cancelled) return;
+        entries = Array.isArray(tt) ? tt : [];
+        classrooms = Array.isArray(rooms) ? rooms : [];
+        // Room counts per building from the room list (shown instead of the twin's own estimates)
+        const counts = {};
+        classrooms.forEach((r) => {
+          const c = (counts[r.building] ||= { classes: 0, labs: 0, rooms: 0 });
+          c.rooms += 1;
+          if (r.location_type === 'CLASSROOM') c.classes += 1;
+          if (r.location_type === 'LABORATORY') c.labs += 1;
+        });
+        setRoomCounts(counts);
+        setBuildingRooms(classrooms.reduce((m, r) => ({ ...m, [r.building]: [...(m[r.building] || []), r] }), {}));
+        if (entries.length) periods = periodsFrom(entries);
+        tick();
+      })
+      .catch(() => { /* no timetable: the clock still runs on DEFAULT_PERIODS */ });
+
+    tick();
+    const timer = setInterval(tick, 60000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, []);
+
+  // ── Student Services: keep the document tokens in step with my requests ───
+  const refreshDocTokens = React.useCallback(() => {
+    if (user?.role !== 'student') return;
+    servicesApi.myRequests()
+      .then((list) => docTokenApiRef.current?.sync(list))
+      .catch(() => { /* the map simply shows no tokens */ });
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (user?.role !== 'student') {
+      docTokenApiRef.current?.sync([]);
+      return undefined;
+    }
+    refreshDocTokens();
+    const timer = setInterval(refreshDocTokens, 20000);
+    return () => clearInterval(timer);
+  }, [user?.role, refreshDocTokens]);
+
+  // ── Joining Day: follow the new student's next stop ───────────────────────
+  useEffect(() => {
+    if (user?.role !== 'student') {
+      setJoining(null);
+      questApiRef.current?.clear();
+      return undefined;
+    }
+    const refresh = () => joiningApi.mine().then((app) => {
+      setJoining(app);
+      const next = app && app.status !== 'enrolled' ? app.progress.find((p) => !p.done) : null;
+      if (next) questApiRef.current?.set(next.place, `🎓 Next: ${next.label}`);
+      else questApiRef.current?.clear();
+    }).catch(() => { /* no quest shown */ });
+    refresh();
+    const timer = setInterval(refresh, 30000);
+    return () => clearInterval(timer);
+  }, [user?.role]);
+
+  // ── Leaving: keep the clearance pins in step with my no-dues clearance ────
+  useEffect(() => {
+    if (user?.role !== 'student') {
+      clearanceApiRef.current?.sync(null);
+      return undefined;
+    }
+    // Once everything is cleared the pins stay for a week, then the map goes quiet
+    const refresh = () => leavingApi.mine().then((ex) => {
+      const stale = ex?.cleared_at && Date.now() - new Date(`${ex.cleared_at}Z`).getTime() > 7 * 24 * 3600 * 1000;
+      clearanceApiRef.current?.sync(stale ? null : ex);
+    }).catch(() => { /* no pins shown */ });
+    refresh();
+    const timer = setInterval(refresh, 30000);
+    return () => clearInterval(timer);
+  }, [user?.role]);
+
+  const joiningNext = joining && joining.status !== 'enrolled' ? joining.progress.find((p) => !p.done) : null;
+
+  useEffect(() => {
+    const req = pendingRouteRef.current;
+    if (!req || fromBuilding !== req.from || toBuilding !== req.to) return undefined;
+    // The scene may still be building on first load; try until it's ready
+    const timer = setInterval(() => {
+      if (!sceneRef.current) return;
+      clearInterval(timer);
+      pendingRouteRef.current = null;
+      handleFindRoute();
+      useCampusStore.setState({ routeRequest: null });
+    }, 300);
+    return () => clearInterval(timer);
+  }, [fromBuilding, toBuilding, routeNonce]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Handle Day/Night Toggle ────────────────────────────────────────────────
   useEffect(() => {
+    nightRef.current = isNightMode;
     if (!sceneRef.current) return;
     if (isNightMode) {
       sceneRef.current.background = new THREE.Color(0x0a0f1d);
@@ -4097,16 +4812,20 @@ export default function SuhruthDigitalTwin() {
       if (celestialSunRef.current) celestialSunRef.current.visible = false;
       if (celestialMoonRef.current) celestialMoonRef.current.visible = true;
       
+      // Street lamps: glowing bulbs + the shared light-pool decal instead of real lights
       streetLightsRef.current.forEach((lightObj) => {
         lightObj.bulbMat.color.setHex(0xffaa55);
-        lightObj.light1.intensity = 25;
-        lightObj.light2.intensity = 25;
-        lightObj.light1.visible = true;
-        lightObj.light2.visible = true;
       });
-      nightLightsRef.current.forEach((obj) => {
-        obj.light.intensity = obj.onIntensity;
-        obj.light.visible = true;
+      if (glowPoolsRef.current) glowPoolsRef.current.visible = true;
+
+      // Only the most prominent accent lights (widest reach x brightness) become real lights
+      const ranked = [...nightLightsRef.current].sort(
+        (a, b) => b.onIntensity * b.light.distance - a.onIntensity * a.light.distance
+      );
+      ranked.forEach((obj, i) => {
+        const on = i < NIGHT_LIGHT_BUDGET;
+        obj.light.intensity = on ? obj.onIntensity : 0;
+        obj.light.visible = on;
       });
     } else {
       sceneRef.current.background = new THREE.Color(0xEDEAE0);
@@ -4123,16 +4842,15 @@ export default function SuhruthDigitalTwin() {
       
       streetLightsRef.current.forEach((lightObj) => {
         lightObj.bulbMat.color.setHex(0xffffff);
-        lightObj.light1.intensity = 0;
-        lightObj.light2.intensity = 0;
-        lightObj.light1.visible = false;
-        lightObj.light2.visible = false;
       });
+      if (glowPoolsRef.current) glowPoolsRef.current.visible = false;
       nightLightsRef.current.forEach((obj) => {
         obj.light.intensity = 0;
         obj.light.visible = false;
       });
     }
+    // Keep the light where the real sun (or moon) is
+    applySunRef.current?.();
   }, [isNightMode]);
 
   // ── Handle Weather Data Sync ───────────────────────────────────────────────
@@ -4165,6 +4883,16 @@ export default function SuhruthDigitalTwin() {
       m.castShadow = mode !== '1';
     });
   };
+
+  // ── A route asked for elsewhere (Navigation page): fill the panel, then draw it ──
+  useEffect(() => {
+    if (!routeRequest) return;
+    pendingRouteRef.current = routeRequest;
+    setRouteMode('walk');
+    setFromBuilding(routeRequest.from);
+    setToBuilding(routeRequest.to);
+    setRouteNonce((n) => n + 1);
+  }, [routeRequest]);
 
   // ── Handle Find Route ──────────────────────────────────────────────────────
   const handleFindRoute = async () => {
@@ -4232,10 +4960,27 @@ export default function SuhruthDigitalTwin() {
       {/* 3D WebGL Canvas Container */}
       <div ref={mountRef} className="absolute inset-0 h-full w-full cursor-grab active:cursor-grabbing" />
 
+      {introPlaying && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-end pb-28">
+          <p className="font-serif text-2xl font-bold tracking-wide text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] sm:text-3xl">
+            Welcome to MVSR Engineering College
+          </p>
+          <p className="mt-1 font-mono text-xs tracking-widest text-slate-200 drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]">
+            NADERGUL · HYDERABAD
+          </p>
+          <button
+            onClick={skipIntroButton}
+            className="pointer-events-auto mt-4 rounded-full border border-white/30 bg-black/50 px-4 py-1.5 font-mono text-xs text-white backdrop-blur transition hover:bg-black/70"
+          >
+            Skip intro ⏭
+          </button>
+        </div>
+      )}
+
       {/* ── Top HUD Header ─────────────────────────────────────────────────── */}
       <div className="pointer-events-none absolute top-4 left-4 right-4 flex items-start justify-between z-20">
         <div>
-          <h1 className="text-base sm:text-lg font-bold tracking-wider text-[#f4f2ea]">SUHRUTH UNIVERSITY</h1>
+          <h1 className="text-base sm:text-lg font-bold tracking-wider text-[#f4f2ea]">MVSR ENGINEERING COLLEGE</h1>
           <p className="font-mono text-[9px] sm:text-[10px] tracking-widest text-slate-400">DIGITAL TWIN · ANCHORED TO REAL CAMPUS GPS</p>
           
           {weatherData && (
@@ -4381,21 +5126,100 @@ export default function SuhruthDigitalTwin() {
         >
           {cameraMode === 'student' ? '👀 Orbit View' : '🚶 Student View'}
         </button>
+
+        <button
+          onClick={playIntro}
+          className="rounded-lg px-3 py-1 font-mono text-xs font-semibold transition flex items-center gap-1.5 bg-slate-800 text-amber-300 hover:bg-slate-700"
+        >
+          🎬 Fly-in
+        </button>
       </div>
+
+      {/* ── Joining Day card: Campus Passport stamps and the next stop ─────── */}
+      {joiningNext && (
+        <div className="pointer-events-auto absolute bottom-4 left-4 z-20 w-60 rounded-xl border border-amber-300/40 bg-[#141a22]/90 p-3 text-[#e8e6dd] backdrop-blur-md">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-amber-300">Joining Day · Campus Passport</p>
+          <div className="mt-2 flex gap-1">
+            {joining.progress.map((p, i) => (
+              <span key={p.key} title={p.label}
+                className={`grid h-7 flex-1 place-items-center rounded-md text-sm ${p.done ? 'bg-emerald-500/25' : p.key === joiningNext.key ? 'animate-pulse bg-amber-400/25' : 'bg-white/5 opacity-50'}`}>
+                {['🚪', '📄', '🔍', '🏦', '📜', '🎓'][i]}
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-slate-300">Next: <b className="text-white">{joiningNext.label}</b> · {PLACE_NAMES[joiningNext.place] || joiningNext.place}</p>
+          <div className="mt-2 flex gap-1.5">
+            <button onClick={() => useCampusStore.getState().setAIFlyTarget(joiningNext.place)}
+              className="flex-1 rounded-md border border-amber-300/50 py-1 text-xs font-bold text-amber-200 hover:bg-amber-400/15">Go there</button>
+            <Link to="/joining" className="flex-1 rounded-md bg-amber-400 py-1 text-center text-xs font-bold text-slate-900 hover:bg-amber-300">Open joining</Link>
+          </div>
+        </div>
+      )}
 
       {/* ── Info Panel (Selected Building + Real GPS) ───────────────────────── */}
       <div className="pointer-events-auto absolute bottom-4 right-4 z-20 w-56 sm:w-64 rounded-xl border border-white/10 bg-[#141a22]/90 p-3.5 text-[#e8e6dd] backdrop-blur-md">
         {selectedBuilding ? (
-          <div>
-            <h3 className="text-sm sm:text-base font-bold text-white mb-0.5">{selectedBuilding.name}</h3>
+          <div className="relative">
+            <button
+              onClick={() => setSelectedBuilding(null)}
+              aria-label="Close building details"
+              className="absolute -right-1.5 -top-1.5 rounded-full p-1 text-slate-400 transition hover:bg-white/10 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <h3 className="text-sm sm:text-base font-bold text-white mb-0.5 pr-6">{selectedBuilding.name}</h3>
             <p className="font-mono text-[10px] font-bold text-[#7fa8d6] uppercase tracking-wider mb-2">{selectedBuilding.type}</p>
+            {COUNTER_NAMES[selectedBuilding.id] && (
+              <button
+                onClick={() => setCounterOpen(selectedBuilding.id)}
+                className="mb-2 flex w-full items-center justify-center gap-2 rounded-md border border-amber-300/60 bg-amber-400/15 py-1.5 text-xs font-bold text-amber-200 transition hover:bg-amber-400/25"
+              >
+                🏛️ {COUNTER_NAMES[selectedBuilding.id]} · open the counter
+              </button>
+            )}
+            {user?.role === 'student' && (selectedBuilding.id === 'frontgate' || selectedBuilding.id === 'Bank & ATM' || selectedBuilding.quest) && (
+              <Link to="/joining" className="mb-2 block w-full rounded-md border border-amber-300/60 bg-amber-400/15 py-1.5 text-center text-xs font-bold text-amber-200 transition hover:bg-amber-400/25">
+                {selectedBuilding.id === 'Bank & ATM' ? '🏦 Pay college fees' : selectedBuilding.quest ? '🎓 Continue joining' : '🚪 Joining desk · new students'} →
+              </Link>
+            )}
+            {selectedBuilding.clearance && (
+              <Link to="/leaving" className="mb-2 block w-full rounded-md border border-amber-300/60 bg-amber-400/15 py-1.5 text-center text-xs font-bold text-amber-200 transition hover:bg-amber-400/25">
+                Open my no-dues clearance →
+              </Link>
+            )}
+            {selectedBuilding.requestId && (
+              <Link to="/services" className="mb-2 block w-full rounded-md border border-cyan-400/50 bg-cyan-500/10 py-1.5 text-center text-xs font-bold text-cyan-200 transition hover:bg-cyan-500/20">
+                Track in My Requests →
+              </Link>
+            )}
+            {liveInfo.sessions[selectedBuilding.id]?.length > 0 && (
+              <div className="mb-2 rounded-md border border-cyan-400/30 bg-cyan-500/10 p-2">
+                <p className="mb-1 flex items-center gap-1.5 font-mono text-[10px] font-bold text-cyan-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                  LIVE NOW · {liveInfo.sessions[selectedBuilding.id].length} classes in session
+                </p>
+                <ul className="space-y-0.5 text-[10px] text-slate-300">
+                  {liveInfo.sessions[selectedBuilding.id].slice(0, 4).map((c, i) => (
+                    <li key={i} className="truncate">{c.room} · {c.subject} ({c.section})</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {selectedBuilding.depts && selectedBuilding.depts.length > 0 && (
               <ul className="mb-2 pl-4 text-xs text-slate-300 list-disc space-y-0.5">
                 {selectedBuilding.depts.map((d) => <li key={d}>{d}</li>)}
               </ul>
             )}
-            {selectedBuilding?.stats && (
+            {roomCounts[selectedBuilding?.id] && (
+              <p className="mt-3 border-t border-white/10 pt-2 font-mono text-[10px] text-slate-400">
+                FROM THE ROOM LIST: <span className="text-white">{roomCounts[selectedBuilding.id].classes} classrooms · {roomCounts[selectedBuilding.id].labs} labs · {roomCounts[selectedBuilding.id].rooms} rooms in all</span>
+              </p>
+            )}
+            {selectedBuilding?.stats && (selectedBuilding.stats.layoutData
+              || (!roomCounts[selectedBuilding?.id] && Object.values(selectedBuilding.stats).some((v) => typeof v === 'number' && v > 0))) && (
               <div className="mt-3 border-t border-white/10 pt-2">
+                {/* The twin's own estimates only where the room list has nothing for this building, and never all-zero */}
+                {!roomCounts[selectedBuilding?.id] && Object.values(selectedBuilding.stats).some((v) => typeof v === 'number' && v > 0) && (
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[10px] text-slate-400">
                   <div className="flex justify-between"><span>FLOORS</span><span className="text-white font-semibold">{selectedBuilding.stats.floors > 1 ? `G + ${selectedBuilding.stats.floors - 1}` : 'G'}</span></div>
                   <div className="flex justify-between"><span>CLASSES</span><span className="text-white font-semibold">{selectedBuilding?.stats?.classes}</span></div>
@@ -4403,6 +5227,7 @@ export default function SuhruthDigitalTwin() {
                   <div className="flex justify-between"><span>CABINS</span><span className="text-white font-semibold">{selectedBuilding?.stats?.staffCabins}</span></div>
                   <div className="flex justify-between col-span-2"><span>WASHROOMS</span><span className="text-white font-semibold">{selectedBuilding?.stats?.washrooms}</span></div>
                 </div>
+                )}
                 {selectedBuilding?.stats?.layoutData && (
                   <div className="mt-3 flex flex-col gap-1.5">
                     <button 
@@ -4411,12 +5236,21 @@ export default function SuhruthDigitalTwin() {
                     >
                       👀 Floor Plan Layout
                     </button>
+                    {(() => {
+                      // A real classroom of this building (the walkthrough needs a room from the room list)
+                      const room = (buildingRooms[selectedBuilding.id] || []).find((r) => r.location_type === 'CLASSROOM')
+                        || (buildingRooms[selectedBuilding.id] || [])[0];
+                      if (!room) return null;
+                      const floorText = ['Ground Floor', 'First Floor', 'Second Floor', 'Third Floor'][room.floor] || `Floor ${room.floor}`;
+                      return (
                     <button 
-                      onClick={() => setRoom3DModal({ id: 'CE-IT-101', name: 'Classroom CE-IT-101', floor: 'First Floor', location_type: 'CLASSROOM' })}
+                      onClick={() => setRoom3DModal({ id: room.id, name: room.name, floor: floorText, location_type: room.location_type })}
                       className="w-full rounded-md bg-gradient-to-r from-cyan-500/30 to-blue-600/30 border border-cyan-400 py-1.5 text-xs font-bold text-white shadow-lg transition hover:from-cyan-500/50 hover:to-blue-600/50 flex items-center justify-center gap-2"
                     >
                       🚀 3D Room Walkthrough
                     </button>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -4433,7 +5267,9 @@ export default function SuhruthDigitalTwin() {
       </div>
 
       {/* ── Floor Plan Visualizer Modal ─────────────────────────────────────── */}
-      {isVisualizerOpen && selectedBuilding && selectedBuilding?.stats?.layoutData && (
+      {/* Modals are portalled to <body>: inside the page's <main> (z-10) they would sit
+          under the fixed app header (z-50) whatever their own z-index, hiding the close button. */}
+      {isVisualizerOpen && selectedBuilding && selectedBuilding?.stats?.layoutData && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm pointer-events-auto">
           <div className="w-full max-w-4xl bg-[#141a22] rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             {/* Header */}
@@ -4568,11 +5404,17 @@ export default function SuhruthDigitalTwin() {
               <span className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-yellow-900/30 border border-yellow-500/50"></div> Sports</span>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── Student Services counter (portals itself to <body>) ─────────────── */}
+      {counterOpen && (
+        <ServiceCounter counterId={counterOpen} onClose={() => setCounterOpen(null)} onCreated={refreshDocTokens} />
       )}
 
       {/* ── Live Timetable & Classroom Info Panel Modal ─────────────────────────────────── */}
-      {selectedRoom && (
+      {selectedRoom && createPortal(
         <ClassroomInfoPanel
           classroomId={selectedRoom.id || (selectedRoom.label?.includes('(') ? selectedRoom.label.split('(')[1]?.replace(')', '') : selectedRoom.label)}
           simulatedDateTime={simulatedDateTime}
@@ -4582,11 +5424,13 @@ export default function SuhruthDigitalTwin() {
             setRoom3DModal(r);
             setRoom3DModalTime(slot);
           }}
-        />
+        />,
+        document.body
       )}
 
       {/* ── Interactive 3D Room Interior Walkthrough Modal ──────────────────────────────── */}
-      {room3DModal && (
+      {room3DModal && createPortal(
+        <Suspense fallback={null}>
         <RoomInterior3DModal
           room={room3DModal}
           classroomId={room3DModal.id || (room3DModal.label?.includes('(') ? room3DModal.label.split('(')[1]?.replace(')', '') : room3DModal.label)}
@@ -4600,6 +5444,8 @@ export default function SuhruthDigitalTwin() {
             setRoom3DModal(null);
           }}
         />
+        </Suspense>,
+        document.body
       )}
     </div>
   );

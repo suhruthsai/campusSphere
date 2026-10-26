@@ -1,14 +1,11 @@
 // Shell.jsx — Role-aware nav with Monitoring dropdown (fixed position)
 import {
-  Bot, Brain, Building2, CalendarClock, CalendarDays, ChartNoAxesCombined, ChevronDown,
-  ClipboardList, Droplets, FlaskConical, GraduationCap, Home,
-  Layers, Lightbulb, LogOut, Map, Menu, MessageCircle, Radio, Users, BookOpen, X, Zap, Car, Wind,
+  Bot, Brain, Building2, CalendarClock, CalendarDays, ChartNoAxesCombined, ChevronDown, ClipboardList, FlaskConical, Gauge, GraduationCap, Home, Layers, Lightbulb, LogOut, Map, Menu, MessageCircle, Radio, Users, BookOpen, X, FileCheck, FileText, Settings, ClipboardCheck, Archive, IndianRupee, DoorOpen, DoorClosed, ListChecks, ScrollText,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import AIAssistant from '../AIAssistant.jsx';
-import Button from '../ui/Button.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { roleColors } from '../../utils/auth.js';
 
@@ -24,7 +21,11 @@ const AI_ITEMS = [
   { to: '/ai/predictions',     label: 'Predictions',      icon: Brain,         color: '#00E5FF' },
   { to: '/ai/assistant',       label: 'AI Assistant',     icon: MessageCircle, color: '#7B61FF' },
   { to: '/ai/recommendations', label: 'Recommendations',  icon: Lightbulb,     color: '#F59E0B' },
+  { to: '/ai/utilization',     label: 'Room Utilization', icon: Gauge,         color: '#00FFB3', roles: ['admin', 'faculty'] },
 ];
+
+// Menu items can be limited to certain roles
+const visibleFor = (items, role) => items.filter((i) => !i.roles || i.roles.includes(role));
 
 // ── Navigation submenu items ──────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -55,12 +56,32 @@ function getNavItems(role) {
         { to: '/classrooms',      label: 'Classrooms', icon: BookOpen,      color: '#00E5FF' },
         { to: '/labs',            label: 'Labs',       icon: FlaskConical,  color: '#818CF8' },
       ]
+    },
+    {
+      dropdown: true, label: 'Services', icon: FileText,
+      items: [
+        { to: '/services/approvals', label: 'Approvals', icon: FileCheck, color: '#00FFB3' },
+        { to: '/services/setup',     label: 'Setup',     icon: Settings,  color: '#F59E0B' },
+        { to: '/joining/desk',       label: 'Admissions desk', icon: ClipboardCheck, color: '#00E5FF' },
+        { to: '/joining/originals',  label: 'Originals register', icon: Archive, color: '#818CF8' },
+        { to: '/joining/fees',       label: 'Fee settings', icon: IndianRupee, color: '#F472B6' },
+        { to: '/leaving/desk',       label: 'No-dues clearance', icon: ListChecks, color: '#10B981' },
+        { to: '/leaving/exam-cell',  label: 'Exam Cell', icon: ScrollText, color: '#EC4899' },
+      ]
     }
   ];
   if (role === 'faculty') return [
     ...common,
     { to: '/faculty',    label: 'Faculty',    icon: Users },
     { to: '/analytics',  label: 'Analytics',  icon: ChartNoAxesCombined },
+    {
+      dropdown: true, label: 'Services', icon: FileCheck,
+      items: [
+        { to: '/services/approvals', label: 'Approvals', icon: FileCheck, color: '#00FFB3' },
+        { to: '/leaving/desk',       label: 'No-dues clearance', icon: ListChecks, color: '#10B981' },
+        { to: '/leaving/exam-cell',  label: 'Exam Cell (CoE)', icon: ScrollText, color: '#EC4899' },
+      ]
+    },
     {
       dropdown: true, label: 'Academics', icon: BookOpen,
       items: [
@@ -72,6 +93,9 @@ function getNavItems(role) {
   if (role === 'student') return [
     ...common,
     { to: '/student',    label: 'Dashboard',  icon: GraduationCap },
+    { to: '/services',   label: 'Services',   icon: FileText },
+    { to: '/joining',    label: 'Joining',    icon: DoorOpen },
+    { to: '/leaving',    label: 'Leaving',    icon: DoorClosed },
     {
       dropdown: true, label: 'Academics', icon: BookOpen,
       items: [
@@ -79,6 +103,13 @@ function getNavItems(role) {
         { to: '/labs',       label: 'Labs',       icon: FlaskConical, color: '#818CF8' },
       ]
     }
+  ];
+  if (role === 'staff') return [
+    ...common,
+    { to: '/joining/desk',       label: 'Admissions', icon: ClipboardCheck },
+    { to: '/joining/originals',  label: 'Originals',  icon: Archive },
+    { to: '/services/approvals', label: 'Approvals', icon: FileCheck },
+    { to: '/leaving/desk',       label: 'Clearance', icon: ListChecks },
   ];
   return common;
 }
@@ -111,14 +142,16 @@ function MonitoringDropdown({ isActive }) {
       <button
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-all select-none ${
+        title="Monitoring"
+        aria-label="Monitoring"
+        className={`flex items-center gap-1.5 rounded-xl px-2.5 2xl:px-3 py-2 text-xs font-medium transition-all select-none ${
           isActive || open
             ? 'bg-[rgba(0,229,255,0.12)] text-[#00E5FF]'
             : 'text-slate-400 hover:bg-white/8 hover:text-white'
         }`}
       >
         <Radio size={14} />
-        <span>Monitoring</span>
+        <span className="hidden 2xl:inline">Monitoring</span>
         <ChevronDown size={11} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -218,14 +251,16 @@ function NavDropdown({ label, icon: Icon, items, isActive }) {
       <button
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-all select-none ${
+        title={label}
+        aria-label={label}
+        className={`flex items-center gap-1.5 rounded-xl px-2.5 2xl:px-3 py-2 text-xs font-medium transition-all select-none ${
           isActive || open
             ? 'bg-[rgba(123,97,255,0.12)] text-[#7B61FF]'
             : 'text-slate-400 hover:bg-white/8 hover:text-white'
         }`}
       >
         <Icon size={14} />
-        <span>{label}</span>
+        <span className="hidden 2xl:inline">{label}</span>
         <ChevronDown size={11} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -352,7 +387,7 @@ export default function Shell({ children }) {
               item.dropdown ? (
                 <NavDropdown key={item.label} label={item.label} icon={item.icon} items={item.items} isActive={item.items.some(sub => location.pathname.startsWith(sub.to) && sub.to !== '/')} />
               ) : (
-                <NavItem key={item.to} {...item} />
+                <NavItem key={item.to} {...item} compact />
               )
             ))}
             {/* Navigation dropdown */}
@@ -360,7 +395,7 @@ export default function Shell({ children }) {
             {/* Monitoring dropdown */}
             <MonitoringDropdown isActive={isMonitorActive} />
             {/* AI dropdown */}
-            <NavDropdown label="AI" icon={Brain} items={AI_ITEMS} isActive={isAIActive} />
+            <NavDropdown label="AI" icon={Brain} items={visibleFor(AI_ITEMS, user?.role)} isActive={isAIActive} />
           </div>
 
           {/* Right controls */}
@@ -379,6 +414,7 @@ export default function Shell({ children }) {
             {/* User info */}
             {user && (
               <div className="hidden md:flex" style={{ alignItems: 'center', gap: 8 }}>
+                <NavLink to="/account" title="My account · change password" style={{ textDecoration: 'none' }}>
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)',
@@ -396,6 +432,7 @@ export default function Shell({ children }) {
                     <p style={{ fontSize: 10, color: rc?.text, margin: 0, textTransform: 'capitalize' }}>{user.role}</p>
                   </div>
                 </div>
+                </NavLink>
                 <button onClick={handleLogout} title="Logout" style={{
                   display: 'grid', placeItems: 'center', width: 32, height: 32,
                   borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)',
@@ -497,7 +534,7 @@ export default function Shell({ children }) {
                   AI Intelligence
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                  {AI_ITEMS.map((item) => (
+                  {visibleFor(AI_ITEMS, user?.role).map((item) => (
                     <NavLink
                       key={item.to}
                       to={item.to}
@@ -531,7 +568,8 @@ export default function Shell({ children }) {
                   borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 8, paddingTop: 12,
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <NavLink to="/account" onClick={() => setMobileOpen(false)} title="My account · change password"
+                           style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
                     <span style={{
                       display: 'grid', placeItems: 'center', width: 28, height: 28,
                       borderRadius: '50%', fontSize: 11, fontWeight: 700,
@@ -539,9 +577,9 @@ export default function Shell({ children }) {
                     }}>{user.avatar}</span>
                     <div>
                       <p style={{ fontSize: 12, fontWeight: 600, color: '#fff', margin: 0 }}>{user.name}</p>
-                      <p style={{ fontSize: 10, color: rc?.text, margin: 0, textTransform: 'capitalize' }}>{user.role}</p>
+                      <p style={{ fontSize: 10, color: rc?.text, margin: 0, textTransform: 'capitalize' }}>{user.role} · My account</p>
                     </div>
-                  </div>
+                  </NavLink>
                   <button onClick={handleLogout} style={{
                     display: 'flex', alignItems: 'center', gap: 6,
                     padding: '6px 12px', borderRadius: 10, fontSize: 12, fontWeight: 500,
@@ -562,25 +600,28 @@ export default function Shell({ children }) {
 
       <footer className="relative z-10 border-t border-white/[0.07] px-5 py-10 text-center">
         <p className="text-xs text-slate-500 tracking-wider uppercase">
-          CampusSphere — Suhruth University · Intelligent campus orchestration
+          CampusSphere — MVSR Engineering College · Intelligent campus orchestration
         </p>
       </footer>
     </div>
   );
 }
 
-function NavItem({ to, label, icon: Icon, onClick }) {
+/** compact: icon-only in the desktop bar below 2xl (the label stays as the tooltip). */
+function NavItem({ to, label, icon: Icon, onClick, compact = false }) {
   return (
     <NavLink
       to={to}
       end={to === '/'}
       onClick={onClick}
+      title={label}
+      aria-label={label}
       style={{ textDecoration: 'none' }}
     >
       {({ isActive }) => (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 500,
+          padding: compact ? '7px 10px' : '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 500,
           background: isActive ? 'rgba(0,229,255,0.10)' : 'transparent',
           color: isActive ? '#00E5FF' : '#94a3b8',
           cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
@@ -589,7 +630,7 @@ function NavItem({ to, label, icon: Icon, onClick }) {
           onMouseLeave={(e) => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}}
         >
           <Icon size={14} />
-          {label}
+          <span className={compact ? 'hidden 2xl:inline' : undefined}>{label}</span>
         </div>
       )}
     </NavLink>

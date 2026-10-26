@@ -1,14 +1,14 @@
 // AIPredictionEngine.jsx — Module 16
-import { Brain, RefreshCw, TrendingUp, History, Cpu, AlertTriangle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from 'recharts';
+import { Brain, RefreshCw, History, Cpu } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
-import MonitoringLayout, { AlertPill, MCard, HBar } from '../../components/monitoring/MonitoringLayout.jsx';
+import MonitoringLayout, { AlertPill, MCard } from '../../components/monitoring/MonitoringLayout.jsx';
 import { predictions } from '../../data/ai.js';
 
 const MODULE_COLORS = {
   parking: '#F59E0B', library: '#7B61FF', classroom: '#38BDF8',
-  energy: '#00FFB3', water: '#38BDF8', crowd: '#F472B6', equipment: '#ef4444',
+  crowd: '#F472B6', equipment: '#ef4444',
 };
 
 const TABS = ['Live Forecasts', 'Models', 'History', 'Training'];
@@ -18,11 +18,12 @@ export default function AIPredictionEngine() {
 
   return (
     <MonitoringLayout
+      simulated="No parking, library or crowd sensors feed these models. The real model is under AI → Room Utilization."
       title="AI Prediction Engine"
       subtitle="Machine learning models powering campus intelligence"
       icon={<Brain size={22} />}
       accentColor="#00E5FF"
-      liveLabel="7 Models Active"
+      liveLabel={`${predictions.models.length} Models`}
       kpis={[
         { label: 'Active Models',  value: predictions.models.filter(m => m.status === 'active').length, icon: '🤖', unit: '' },
         { label: 'Avg Accuracy',   value: (predictions.models.reduce((a, m) => a + m.accuracy, 0) / predictions.models.length).toFixed(1), icon: '🎯', unit: '%' },
@@ -57,8 +58,6 @@ function LiveForecasts() {
     { key: 'parking',   label: 'Parking Occupancy',   unit: 'slots', icon: '🅿️' },
     { key: 'library',   label: 'Library Seats',        unit: 'seats', icon: '📚' },
     { key: 'classroom', label: 'Classrooms Available',  unit: 'rooms', icon: '🏫' },
-    { key: 'energy',    label: 'Energy Demand',         unit: 'kW',    icon: '⚡' },
-    { key: 'water',     label: 'Water Usage',           unit: 'L/hr',  icon: '💧' },
     { key: 'crowd',     label: 'Crowd Count',           unit: 'people',icon: '👥' },
   ];
 

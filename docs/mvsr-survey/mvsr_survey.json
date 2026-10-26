@@ -1,0 +1,1024 @@
+{
+ "origin": {
+  "lat": 17.2814455,
+  "lon": 78.5396206,
+  "note": "x = metres east, z = metres south of this point (same axes as the twin toGPS)"
+ },
+ "twin_anchor_offset": {
+  "x": -189.1,
+  "z": -35.9,
+  "note": "Current twin CENTER_LAT/LON expressed in this frame"
+ },
+ "boundary": [
+  [
+   -235.9,
+   106.7
+  ],
+  [
+   -218.3,
+   -91.9
+  ],
+  [
+   24.7,
+   -78.6
+  ],
+  [
+   46.7,
+   -77.6
+  ],
+  [
+   107.4,
+   -65.8
+  ],
+  [
+   226.4,
+   -38.6
+  ],
+  [
+   226.4,
+   38.6
+  ],
+  [
+   162.0,
+   63.8
+  ],
+  [
+   162.7,
+   95.8
+  ],
+  [
+   125.4,
+   94.1
+  ],
+  [
+   48.8,
+   89.4
+  ],
+  [
+   -60.1,
+   81.5
+  ],
+  [
+   -67.1,
+   118.0
+  ],
+  [
+   -92.1,
+   116.0
+  ],
+  [
+   -105.2,
+   115.2
+  ],
+  [
+   -134.1,
+   113.3
+  ],
+  [
+   -235.9,
+   106.7
+  ]
+ ],
+ "roads": [
+  [
+   [
+    24.5,
+    -29.1
+   ],
+   [
+    11.3,
+    -29.4
+   ],
+   [
+    -186.9,
+    -41.2
+   ],
+   [
+    -227.1,
+    -43.6
+   ]
+  ],
+  [
+   [
+    -228.1,
+    -31.3
+   ],
+   [
+    -187.6,
+    -30.7
+   ],
+   [
+    11.1,
+    -21.3
+   ]
+  ],
+  [
+   [
+    -187.6,
+    -30.7
+   ],
+   [
+    -191.2,
+    36.6
+   ],
+   [
+    -189.5,
+    93.6
+   ]
+  ],
+  [
+   [
+    24.5,
+    -29.1
+   ],
+   [
+    26.0,
+    -90.6
+   ]
+  ],
+  [
+   [
+    -135.9,
+    40.8
+   ],
+   [
+    -139.6,
+    95.5
+   ]
+  ],
+  [
+   [
+    -135.9,
+    40.8
+   ],
+   [
+    -191.2,
+    36.6
+   ]
+  ],
+  [
+   [
+    14.6,
+    -90.4
+   ],
+   [
+    11.3,
+    -29.4
+   ],
+   [
+    11.1,
+    -21.3
+   ]
+  ],
+  [
+   [
+    8.6,
+    45.6
+   ],
+   [
+    -135.9,
+    40.8
+   ]
+  ],
+  [
+   [
+    8.6,
+    45.6
+   ],
+   [
+    15.9,
+    43.8
+   ],
+   [
+    19.5,
+    39.5
+   ],
+   [
+    21.4,
+    31.7
+   ],
+   [
+    24.1,
+    -21.3
+   ],
+   [
+    24.5,
+    -29.1
+   ]
+  ],
+  [
+   [
+    -187.6,
+    -30.7
+   ],
+   [
+    -186.9,
+    -41.2
+   ]
+  ],
+  [
+   [
+    11.1,
+    -21.3
+   ],
+   [
+    24.1,
+    -21.3
+   ]
+  ],
+  [
+   [
+    11.1,
+    -21.3
+   ],
+   [
+    10.5,
+    -7.4
+   ],
+   [
+    8.6,
+    43.9
+   ],
+   [
+    8.6,
+    45.6
+   ]
+  ]
+ ],
+ "features": [
+  {
+   "id": "admin",
+   "name": "Administration, Civil & MBA Block",
+   "kind": "academic",
+   "source": "OSM",
+   "confidence": "high",
+   "levels": 3,
+   "note": "Square block with central courtyard",
+   "cx": -158.8,
+   "cz": 10.3,
+   "w": 48.9,
+   "d": 49.2,
+   "poly": [
+    [
+     -180.2,
+     -14.6
+    ],
+    [
+     -134.4,
+     -11.5
+    ],
+    [
+     -137.4,
+     34.6
+    ],
+    [
+     -183.3,
+     32.6
+    ],
+    [
+     -180.2,
+     -14.6
+    ]
+   ]
+  },
+  {
+   "id": "eeemech",
+   "name": "EEE & Mech Block",
+   "kind": "academic",
+   "source": "OSM",
+   "confidence": "high",
+   "levels": 3,
+   "note": "Square block with central courtyard",
+   "cx": -102.8,
+   "cz": 12.4,
+   "w": 46.2,
+   "d": 52.0,
+   "poly": [
+    [
+     -80.0,
+     -11.2
+    ],
+    [
+     -82.6,
+     38.3
+    ],
+    [
+     -126.1,
+     35.9
+    ],
+    [
+     -122.7,
+     -13.7
+    ],
+    [
+     -80.0,
+     -11.2
+    ]
+   ]
+  },
+  {
+   "id": "cseit",
+   "name": "CSE & IT Block",
+   "kind": "academic",
+   "source": "OSM",
+   "confidence": "high",
+   "levels": 3,
+   "note": "Rooftop solar panels",
+   "cx": -49.6,
+   "cz": 16.4,
+   "w": 39.7,
+   "d": 47.2,
+   "poly": [
+    [
+     -66.6,
+     -7.1
+    ],
+    [
+     -69.4,
+     37.9
+    ],
+    [
+     -32.7,
+     40.0
+    ],
+    [
+     -29.6,
+     -5.4
+    ],
+    [
+     -66.6,
+     -7.1
+    ]
+   ]
+  },
+  {
+   "id": "ece",
+   "name": "ECE Block",
+   "kind": "academic",
+   "source": "OSM",
+   "confidence": "high",
+   "levels": 2,
+   "note": "",
+   "cx": -9.3,
+   "cz": 17.3,
+   "w": 40.4,
+   "d": 53.1,
+   "poly": [
+    [
+     10.5,
+     -7.4
+    ],
+    [
+     8.6,
+     43.9
+    ],
+    [
+     -29.9,
+     41.8
+    ],
+    [
+     -26.3,
+     -9.2
+    ],
+    [
+     10.5,
+     -7.4
+    ]
+   ]
+  },
+  {
+   "id": "sh",
+   "name": "Science & Humanities Block",
+   "kind": "academic",
+   "source": "OSM",
+   "confidence": "high",
+   "levels": 3,
+   "note": "Courtyard block",
+   "cx": -167.5,
+   "cz": 74.8,
+   "w": 43.2,
+   "d": 40.3,
+   "poly": [
+    [
+     -146.4,
+     57.4
+    ],
+    [
+     -149.4,
+     94.4
+    ],
+    [
+     -189.5,
+     93.6
+    ],
+    [
+     -184.5,
+     54.0
+    ],
+    [
+     -146.4,
+     57.4
+    ]
+   ]
+  },
+  {
+   "id": "exam",
+   "name": "Exam Cell (NSH / S&H-2 Block)",
+   "kind": "admin",
+   "source": "OSM",
+   "confidence": "high",
+   "levels": 3,
+   "note": "",
+   "cx": -112.1,
+   "cz": 103.3,
+   "w": 43.7,
+   "d": 25.8,
+   "poly": [
+    [
+     -131.8,
+     90.2
+    ],
+    [
+     -90.4,
+     93.6
+    ],
+    [
+     -92.1,
+     116.0
+    ],
+    [
+     -134.1,
+     113.3
+    ],
+    [
+     -131.8,
+     90.2
+    ]
+   ]
+  },
+  {
+   "id": "bank",
+   "name": "Andhra Bank + ATM",
+   "kind": "service",
+   "source": "OSM",
+   "confidence": "high",
+   "levels": 1,
+   "note": "",
+   "cx": -207.5,
+   "cz": -68.1,
+   "w": 16.6,
+   "d": 17.4,
+   "poly": [
+    [
+     -214.4,
+     -77.0
+    ],
+    [
+     -199.3,
+     -75.9
+    ],
+    [
+     -200.3,
+     -59.6
+    ],
+    [
+     -215.9,
+     -59.8
+    ],
+    [
+     -214.4,
+     -77.0
+    ]
+   ]
+  },
+  {
+   "id": "sportsarts",
+   "name": "Sports & Fine Arts Block / Canteen",
+   "kind": "amenity",
+   "source": "OSM",
+   "confidence": "medium",
+   "levels": null,
+   "note": "OSM tags this footprint as the canteen, but the Sports & Fine Arts pin sits on it; needs a local check",
+   "cx": -44.9,
+   "cz": 73.7,
+   "w": 31.2,
+   "d": 19.0,
+   "poly": [
+    [
+     -60.1,
+     64.2
+    ],
+    [
+     -60.1,
+     81.5
+    ],
+    [
+     -30.3,
+     83.1
+    ],
+    [
+     -29.0,
+     66.1
+    ],
+    [
+     -60.1,
+     64.2
+    ]
+   ]
+  },
+  {
+   "id": "lib",
+   "name": "MVSR Library",
+   "kind": "library",
+   "source": "satellite + OSM pin",
+   "confidence": "medium",
+   "levels": null,
+   "note": "Grey-roof hall north of the main drive",
+   "cx": -59.5,
+   "cz": -62.5,
+   "w": 31,
+   "d": 31,
+   "poly": [
+    [
+     -75,
+     -78
+    ],
+    [
+     -44,
+     -78
+    ],
+    [
+     -44,
+     -47
+    ],
+    [
+     -75,
+     -47
+    ],
+    [
+     -75,
+     -78
+    ]
+   ]
+  },
+  {
+   "id": "rnd",
+   "name": "R&D Mechanical",
+   "kind": "research",
+   "source": "satellite + OSM pin",
+   "confidence": "medium",
+   "levels": null,
+   "note": "",
+   "cx": -18.5,
+   "cz": 69.0,
+   "w": 21,
+   "d": 26,
+   "poly": [
+    [
+     -29,
+     56
+    ],
+    [
+     -8,
+     56
+    ],
+    [
+     -8,
+     82
+    ],
+    [
+     -29,
+     82
+    ],
+    [
+     -29,
+     56
+    ]
+   ]
+  },
+  {
+   "id": "nwblock",
+   "name": "North-west block (unnamed)",
+   "kind": "unknown",
+   "source": "satellite",
+   "confidence": "low",
+   "levels": null,
+   "note": "Multi-storey, next to the bank",
+   "cx": -188.5,
+   "cz": -71.5,
+   "w": 25,
+   "d": 39,
+   "poly": [
+    [
+     -201,
+     -91
+    ],
+    [
+     -176,
+     -91
+    ],
+    [
+     -176,
+     -52
+    ],
+    [
+     -201,
+     -52
+    ],
+    [
+     -201,
+     -91
+    ]
+   ]
+  },
+  {
+   "id": "wblock",
+   "name": "West block (unnamed)",
+   "kind": "unknown",
+   "source": "satellite",
+   "confidence": "low",
+   "levels": null,
+   "note": "Long multi-storey block on the west edge",
+   "cx": -209.0,
+   "cz": 64.5,
+   "w": 32,
+   "d": 69,
+   "poly": [
+    [
+     -225,
+     30
+    ],
+    [
+     -193,
+     30
+    ],
+    [
+     -193,
+     99
+    ],
+    [
+     -225,
+     99
+    ],
+    [
+     -225,
+     30
+    ]
+   ]
+  },
+  {
+   "id": "shannex",
+   "name": "S&H annex (unnamed)",
+   "kind": "unknown",
+   "source": "satellite",
+   "confidence": "low",
+   "levels": null,
+   "note": "Low strip south of S&H",
+   "cx": -170.0,
+   "cz": 98.5,
+   "w": 40,
+   "d": 13,
+   "poly": [
+    [
+     -190,
+     92
+    ],
+    [
+     -150,
+     92
+    ],
+    [
+     -150,
+     105
+    ],
+    [
+     -190,
+     105
+    ],
+    [
+     -190,
+     92
+    ]
+   ]
+  },
+  {
+   "id": "workshop",
+   "name": "Workshop hall (unnamed)",
+   "kind": "workshop",
+   "source": "satellite",
+   "confidence": "low",
+   "levels": null,
+   "note": "Dark-roof hall, likely a workshop",
+   "cx": -111.0,
+   "cz": 76.5,
+   "w": 32,
+   "d": 21,
+   "poly": [
+    [
+     -127,
+     66
+    ],
+    [
+     -95,
+     66
+    ],
+    [
+     -95,
+     87
+    ],
+    [
+     -127,
+     87
+    ],
+    [
+     -127,
+     66
+    ]
+   ]
+  },
+  {
+   "id": "shed",
+   "name": "Workshop shed (unnamed)",
+   "kind": "workshop",
+   "source": "satellite",
+   "confidence": "low",
+   "levels": null,
+   "note": "",
+   "cx": -81.5,
+   "cz": 83.0,
+   "w": 13,
+   "d": 48,
+   "poly": [
+    [
+     -88,
+     59
+    ],
+    [
+     -75,
+     59
+    ],
+    [
+     -75,
+     107
+    ],
+    [
+     -88,
+     107
+    ],
+    [
+     -88,
+     59
+    ]
+   ]
+  },
+  {
+   "id": "eastsheds",
+   "name": "East sheds (unnamed)",
+   "kind": "service",
+   "source": "satellite",
+   "confidence": "low",
+   "levels": null,
+   "note": "Long low sheds",
+   "cx": 182.5,
+   "cz": -3.5,
+   "w": 49,
+   "d": 51,
+   "poly": [
+    [
+     158,
+     -29
+    ],
+    [
+     207,
+     -29
+    ],
+    [
+     207,
+     22
+    ],
+    [
+     158,
+     22
+    ],
+    [
+     158,
+     -29
+    ]
+   ]
+  },
+  {
+   "id": "basket",
+   "name": "Basketball courts",
+   "kind": "sport",
+   "source": "satellite + OSM pin",
+   "confidence": "high",
+   "levels": null,
+   "note": "",
+   "cx": 4.0,
+   "cz": 67.5,
+   "w": 22,
+   "d": 33,
+   "poly": [
+    [
+     -7,
+     51
+    ],
+    [
+     15,
+     51
+    ],
+    [
+     15,
+     84
+    ],
+    [
+     -7,
+     84
+    ],
+    [
+     -7,
+     51
+    ]
+   ]
+  },
+  {
+   "id": "ground",
+   "name": "Cricket ground / open ground",
+   "kind": "sport",
+   "source": "satellite + OSM pin",
+   "confidence": "medium",
+   "levels": null,
+   "note": "Western part used as car and bus parking",
+   "cx": 88.0,
+   "cz": 22.0,
+   "w": 130,
+   "d": 144,
+   "poly": [
+    [
+     23,
+     -50
+    ],
+    [
+     153,
+     -50
+    ],
+    [
+     153,
+     94
+    ],
+    [
+     23,
+     94
+    ],
+    [
+     23,
+     -50
+    ]
+   ]
+  },
+  {
+   "id": "carpark",
+   "name": "Car parking (on ground)",
+   "kind": "parking",
+   "source": "satellite",
+   "confidence": "medium",
+   "levels": null,
+   "note": "",
+   "cx": 60.0,
+   "cz": 12.5,
+   "w": 60,
+   "d": 55,
+   "poly": [
+    [
+     30,
+     -15
+    ],
+    [
+     90,
+     -15
+    ],
+    [
+     90,
+     40
+    ],
+    [
+     30,
+     40
+    ],
+    [
+     30,
+     -15
+    ]
+   ]
+  },
+  {
+   "id": "buspark",
+   "name": "College bus parking",
+   "kind": "parking",
+   "source": "satellite",
+   "confidence": "medium",
+   "levels": null,
+   "note": "",
+   "cx": 85.0,
+   "cz": -20.0,
+   "w": 36,
+   "d": 44,
+   "poly": [
+    [
+     67,
+     -42
+    ],
+    [
+     103,
+     -42
+    ],
+    [
+     103,
+     2
+    ],
+    [
+     67,
+     2
+    ],
+    [
+     67,
+     -42
+    ]
+   ]
+  },
+  {
+   "id": "rock",
+   "name": "Rock Garden",
+   "kind": "garden",
+   "source": "OSM pin",
+   "confidence": "medium",
+   "levels": null,
+   "note": "",
+   "cx": -211.5,
+   "cz": 0.0,
+   "w": 33,
+   "d": 50,
+   "poly": [
+    [
+     -228,
+     -25
+    ],
+    [
+     -195,
+     -25
+    ],
+    [
+     -195,
+     25
+    ],
+    [
+     -228,
+     25
+    ],
+    [
+     -228,
+     -25
+    ]
+   ]
+  },
+  {
+   "id": "gate",
+   "name": "Main gate (north, Badangpet-Nadergul Rd)",
+   "kind": "entrance",
+   "source": "OSM roads",
+   "confidence": "medium",
+   "levels": null,
+   "note": "Two service roads meet the main road here",
+   "cx": 18.0,
+   "cz": -91.5,
+   "w": 20,
+   "d": 7,
+   "poly": [
+    [
+     8,
+     -95
+    ],
+    [
+     28,
+     -95
+    ],
+    [
+     28,
+     -88
+    ],
+    [
+     8,
+     -88
+    ],
+    [
+     8,
+     -95
+    ]
+   ]
+  }
+ ],
+ "sources": [
+  "OpenStreetMap contributors (ODbL): way 557838247 and contents",
+  "Esri World Imagery (visual check only)"
+ ]
+}
