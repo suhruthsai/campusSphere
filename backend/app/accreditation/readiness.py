@@ -29,7 +29,7 @@ def _f(severity, area, message, fix, metric=None):
     return {"severity": severity, "area": area, "message": message, "fix": fix, "metric": metric}
 
 
-def dvv_checks(db: Session, framework: str, programme: str = "") -> list:
+def dvv_checks(db: Session, framework: str, programme: str = "", g: dict = None) -> list:
     from backend.app.models.feedback import FeedbackATRModel, FeedbackFormModel
     from backend.app.models.institution import MeetingModel
     from backend.app.models.research import ResearchItemModel
@@ -39,7 +39,7 @@ def dvv_checks(db: Session, framework: str, programme: str = "") -> list:
     if gen:
         out.append(_f("blocker", "Data", f"Demonstration data is loaded ({', '.join(sorted(gen))}). Nothing resting on it may be filed.",
                       "Remove it with the generate_* --remove scripts before preparing the SSR / SAR."))
-    g = W.grid(db, framework, programme)
+    g = g or W.grid(db, framework, programme)
     rows = [r for c in g["criteria"] for r in c["metrics"]] + g["profile"]
     for r in rows:
         if r["kind"] != "QnM":
@@ -92,12 +92,12 @@ def dvv_checks(db: Session, framework: str, programme: str = "") -> list:
     return sorted(out, key=lambda x: order[x["severity"]])
 
 
-def estimate(db: Session, framework: str, programme: str = "") -> dict:
+def estimate(db: Session, framework: str, programme: str = "", g: dict = None, live: dict = None) -> dict:
     """Per criterion, the share of quantitative metrics covered (a ready / locked year in the workspace, or a live figure
     from CampusSphere's records) x its marks. Two readings: as recorded, and fileable now (demonstration data excluded)."""
-    g = W.grid(db, framework, programme)
+    g = g or W.grid(db, framework, programme)
     gen = W.generated_areas(db)
-    live = W.live_metrics(db, framework, programme)
+    live = live if live is not None else W.live_metrics(db, framework, programme)
     crits, tot_all, tot_file = [], 0.0, 0.0
     for c in g["criteria"]:
         qnm = [r for r in c["metrics"] if r["kind"] == "QnM"]

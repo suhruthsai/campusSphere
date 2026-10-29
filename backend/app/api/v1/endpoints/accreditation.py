@@ -378,7 +378,9 @@ def readiness(framework: Framework = Query("naac"), programme: str = Query("", m
     prog = _prog(framework, programme)
     if framework == "nba" and not prog:
         raise HTTPException(status_code=422, detail="NBA accredits each programme separately: choose one (e.g. IT)")
-    return {"estimate": RD.estimate(db, framework, prog), "checks": RD.dvv_checks(db, framework, prog)}
+    live = W.live_metrics(db, framework, prog)          # computed once for the grid, estimate and checks
+    g = W.grid(db, framework, prog, live)
+    return {"estimate": RD.estimate(db, framework, prog, g, live), "checks": RD.dvv_checks(db, framework, prog, g)}
 
 
 @router.get("/export/workbook", summary="The data workbook (Excel) in the shape of the data templates")

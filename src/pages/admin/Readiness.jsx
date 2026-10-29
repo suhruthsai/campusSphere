@@ -88,7 +88,7 @@ function MockVisit({ prog }) {
         {d.course && card('A course file', <>{d.course.code} · {d.course.name} ({d.course.year}) — {d.course.cos} COs, {d.course.assessments} assessments, CO average {d.course.average ?? '—'}</>)}
         {d.student && card('A student', <>{d.student.name} · {d.student.roll_no} · {d.student.class} — attendance {d.student.attendance ?? '—'}%, mentor {d.student.mentor ? 'assigned' : 'none'}</>)}
         {d.teacher && card('A teacher', <>{d.teacher.name} · {d.teacher.designation}, {d.teacher.qualification} — {d.teacher.verified_items} verified items, {d.teacher.with_evidence} with evidence</>)}
-        {d.meeting && card('A meeting', <>{d.meeting.body.replace('_', ' ')} on {d.meeting.held_on} — {d.meeting.done} / {d.meeting.decisions} decisions done, minutes {d.meeting.minutes ? 'attached' : 'missing'}</>)}
+        {d.meeting && card('A meeting', <>{d.meeting.body.replaceAll('_', ' ')} on {d.meeting.held_on} — {d.meeting.done} / {d.meeting.decisions} decisions done, minutes {d.meeting.minutes ? 'attached' : 'missing'}</>)}
       </div>
       <section className="glass rounded-2xl p-5">
         <h2 className="section-title mb-2">Spot checks</h2>

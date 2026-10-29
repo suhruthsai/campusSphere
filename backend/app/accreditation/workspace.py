@@ -144,7 +144,7 @@ class _Live:
         self.entered_at = None
 
 
-def grid(db: Session, framework: str, programme: str = "") -> dict:
+def grid(db: Session, framework: str, programme: str = "", live: dict = None) -> dict:
     fw = C.FRAMEWORKS[framework]
     current = academic_year()
     years = C.academic_years(fw["years"], current)
@@ -153,7 +153,7 @@ def grid(db: Session, framework: str, programme: str = "") -> dict:
     ev = Counter((e.code, e.year) for e in db.query(AccrEvidenceModel).filter(
         AccrEvidenceModel.framework == framework, AccrEvidenceModel.programme == programme,
         AccrEvidenceModel.removed == False))  # noqa: E712
-    live = live_metrics(db, framework, programme)
+    live = live if live is not None else live_metrics(db, framework, programme)
     gen = generated_areas(db)
 
     def cells(m):
