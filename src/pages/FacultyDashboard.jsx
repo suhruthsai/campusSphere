@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { CalendarClock, FileCheck, ListChecks, Repeat } from 'lucide-react';
 import PageTransition from '../components/PageTransition.jsx';
 import MetricCard from '../components/dashboard/MetricCard.jsx';
+import MorningBrief from '../components/dashboard/MorningBrief.jsx';
 import MyDay, { fmtIn, today } from '../components/dashboard/MyDay.jsx';
 import { DashboardHeading } from './StudentDashboard.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -33,6 +34,7 @@ export default function FacultyDashboard() {
   return (
     <PageTransition className="mx-auto min-h-screen max-w-7xl px-4 pb-20 pt-28 sm:px-6">
       <DashboardHeading eyebrow="Faculty home" title="Your classes and what's waiting for you." />
+      <MorningBrief />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={CalendarClock} label="My classes today"

@@ -40,13 +40,30 @@ def _assignment(db: Session, role: str, department=None, year=None, section=None
     return q.order_by(ApproverAssignmentModel.id.desc()).first()
 
 
+def _dept_wide(db: Session, role: str, department):
+    """A department-wide assignment (no section), so a section AHOD isn't picked for other sections."""
+    return db.query(ApproverAssignmentModel).filter(
+        ApproverAssignmentModel.role == role, ApproverAssignmentModel.section.is_(None),
+        func.upper(ApproverAssignmentModel.department) == (department or "").upper(),
+    ).order_by(ApproverAssignmentModel.id.desc()).first()
+
+
 def _approver_id(db: Session, profile: StudentProfileModel, role: str):
     if role == "mentor":
         return profile.mentor_id
     if role == "class_incharge":
         return getattr(_assignment(db, "class_incharge", profile.department, profile.year, profile.section), "user_id", None)
+    if role == "ahod" and profile.section:
+        # An Associate HOD may cover one section letter across the years (all A sections); else the whole department
+        a = db.query(ApproverAssignmentModel).filter(
+            ApproverAssignmentModel.role == "ahod", ApproverAssignmentModel.year.is_(None),
+            func.upper(ApproverAssignmentModel.department) == (profile.department or "").upper(),
+            func.upper(ApproverAssignmentModel.section) == profile.section.upper(),
+        ).order_by(ApproverAssignmentModel.id.desc()).first()
+        if a:
+            return a.user_id
     if role in ("ahod", "hod"):
-        return getattr(_assignment(db, role, profile.department), "user_id", None)
+        return getattr(_dept_wide(db, role, profile.department), "user_id", None)
     return getattr(_assignment(db, role), "user_id", None)   # principal, coe: college-wide
 
 

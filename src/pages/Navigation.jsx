@@ -8,6 +8,7 @@ import { btnPrimary, inputCls, labelCls } from '../components/services/requestUi
 import { buildingsApi, classroomsApi } from '../utils/api.js';
 import { useCampusStore } from '../store/useCampusStore.js';
 import { floorName } from '../utils/campus.js';
+import SectionTabs, { FIND_TABS } from '../components/layout/SectionTabs.jsx';
 
 // Places on the path network that aren't buildings in the database
 const EXTRA_PLACES = [
@@ -65,6 +66,7 @@ export default function Navigation() {
 
   return (
     <PageTransition className="mx-auto min-h-screen max-w-5xl px-4 pb-20 pt-28 sm:px-6">
+      <SectionTabs title="Find a place" tabs={FIND_TABS} />
       <div className="mb-8">
         <span className="glow-pill mb-4 inline-flex"><Navigation2 size={11} /> Route finder</span>
         <h1 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-white sm:text-5xl">Find any building or room and walk there.</h1>

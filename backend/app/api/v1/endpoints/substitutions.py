@@ -7,7 +7,8 @@ from typing import List, Optional
 from datetime import date, datetime
 
 from backend.app.db.session import get_db
-from backend.app.core.security import require_admin
+from backend.app.core.security import get_current_user
+from backend.app.core.roles import user_roles
 from backend.app.core.realtime import broadcast_timetable
 from backend.app.core.campus_time import campus_today
 from backend.app.models.campus import (
@@ -61,6 +62,23 @@ def _sub_to_snapshot(sub: SubstitutionModel) -> dict:
 
 def _broadcast(event_type: str, payload: dict):
     broadcast_timetable({"type": event_type, **payload})
+
+
+def section_department(db: Session, section: str) -> str:
+    """The department a timetable section belongs to ('IT-4A' -> IT, 'Civil-3' -> CIVIL)."""
+    e = db.query(TimetableEntryModel).filter(TimetableEntryModel.section == section).first()
+    return (e.department if e else (section or "").split("-")[0]).strip().upper()
+
+
+def _require_manager(db: Session, current: dict, section: str) -> None:
+    """Admins arrange substitutions for every department; an HOD for their own department's classes."""
+    if current.get("role") == "admin":
+        return
+    hod_of = user_roles(db, current)["hod_departments"]
+    if not hod_of:
+        raise HTTPException(status_code=403, detail="Only HODs and admins arrange substitutions")
+    if section_department(db, section) not in hod_of:
+        raise HTTPException(status_code=403, detail=f"You arrange substitutions for {', '.join(hod_of)} only")
 
 
 @router.post("/check-conflict", response_model=FacultyConflictResult)
@@ -163,7 +181,8 @@ def list_substitutions(
 
 
 @router.post("/", response_model=SubstitutionOut)
-def create_substitution(payload: SubstitutionCreate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
+def create_substitution(payload: SubstitutionCreate, db: Session = Depends(get_db), _admin: dict = Depends(get_current_user)):
+    _require_manager(db, _admin, payload.section)
     payload.created_by = _admin["name"]
     if not db.query(ClassroomModel).filter(ClassroomModel.id == payload.classroom_id).first():
         raise HTTPException(status_code=404, detail="Classroom not found")
@@ -247,11 +266,12 @@ def create_substitution(payload: SubstitutionCreate, db: Session = Depends(get_d
 
 
 @router.put("/{sub_id}", response_model=SubstitutionOut)
-def update_substitution(sub_id: int, payload: SubstitutionUpdate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
+def update_substitution(sub_id: int, payload: SubstitutionUpdate, db: Session = Depends(get_db), _admin: dict = Depends(get_current_user)):
     payload.updated_by = _admin["name"]
     sub = db.query(SubstitutionModel).filter(SubstitutionModel.id == sub_id).first()
     if not sub:
         raise HTTPException(status_code=404, detail="Substitution not found")
+    _require_manager(db, _admin, sub.section)
     if sub.status != "active":
         raise HTTPException(status_code=400, detail="Cannot edit a cancelled substitution")
 
@@ -308,12 +328,13 @@ def cancel_substitution(
     sub_id: int,
     payload: SubstitutionCancelRequest,
     db: Session = Depends(get_db),
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(get_current_user),
 ):
     payload.cancelled_by = _admin["name"]
     sub = db.query(SubstitutionModel).filter(SubstitutionModel.id == sub_id).first()
     if not sub:
         raise HTTPException(status_code=404, detail="Substitution not found")
+    _require_manager(db, _admin, sub.section)
     if sub.status == "cancelled":
         raise HTTPException(status_code=400, detail="Substitution is already cancelled")
 

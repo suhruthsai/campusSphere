@@ -56,9 +56,13 @@ def login(email, pw):
     return call("POST", "/auth/login", body={"email": email, "password": pw})[1]["access_token"]
 
 
+# Only an admin can create accounts (no public sign-up)
+admin_pw = next(l.split("=", 1)[1].strip() for l in (project / ".env").read_text(encoding="utf-8").splitlines()
+                if l.startswith("ADMIN_PASSWORD="))
+ADMIN = login("admin@suhruth.edu", admin_pw)
 email = f"tmp.joinee.{uuid.uuid4().hex[:6]}@example.com"
 pw = secrets.token_urlsafe(12)
-s, d, _ = call("POST", "/auth/register", body={"name": "Temp Joinee", "email": email, "password": pw, "role": "student", "department": "CSE"})
+s, d, _ = call("POST", "/auth/register", ADMIN, body={"name": "Temp Joinee", "email": email, "password": pw, "role": "student", "department": "CSE"})
 check("register temp student", s == 201, d)
 user_id = d["id"]
 admission_id = None

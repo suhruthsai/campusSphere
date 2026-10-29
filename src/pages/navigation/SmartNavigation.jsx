@@ -7,6 +7,7 @@ import PageTransition from '../../components/PageTransition.jsx';
 import { DashboardHeading } from '../StudentDashboard.jsx';
 import { buildingsApi, classroomsApi } from '../../utils/api.js';
 import { floorName } from '../../utils/campus.js';
+import SectionTabs, { FIND_TABS } from '../../components/layout/SectionTabs.jsx';
 
 const TABS = [['buildings', 'Buildings', Building2], ['classrooms', 'Classrooms', DoorOpen], ['labs', 'Labs', FlaskConical], ['offices', 'Offices', DoorOpen]];
 const kind = (r) => (r.location_type === 'LABORATORY' ? 'labs' : r.location_type === 'CLASSROOM' ? 'classrooms' : 'offices');
@@ -31,6 +32,7 @@ export default function SmartNavigation() {
 
   return (
     <PageTransition className="mx-auto min-h-screen max-w-6xl px-4 pb-20 pt-28 sm:px-6">
+      <SectionTabs title="Find a place" tabs={FIND_TABS} />
       <DashboardHeading eyebrow="Campus directory" title="Every building and room, one click from a route." />
       {error && <p className="mb-4 text-sm text-rose-300">{error}</p>}
       <div className="mb-4 flex flex-wrap items-center gap-2">

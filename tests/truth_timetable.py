@@ -53,7 +53,7 @@ print("  busiest slot:", max(grid.items(), key=lambda kv: kv[1]), "| slots/week:
 # A student's timetable: make a throwaway IT year-2 section-B student
 import secrets
 email, spw = f"tmp.tt.{secrets.token_hex(3)}@example.com", secrets.token_urlsafe(12)
-u = call("POST", "/auth/register", b={"name": "TT Probe", "email": email, "password": spw, "role": "student", "department": "IT"})
+u = call("POST", "/auth/register", tok, b={"name": "TT Probe", "email": email, "password": spw, "role": "student", "department": "IT"})
 try:
     st = call("POST", "/auth/login", b={"email": email, "password": spw})["access_token"]
     mine = call("GET", "/timetable/mine", st)
@@ -63,7 +63,8 @@ try:
     truth = sorted(r[0] for r in rows if r[4] == "IT-2B")
     check("IT year 2 section B -> exactly IT-2B entries", sorted(e["id"] for e in mine["entries"]) == truth, (len(mine["entries"]), len(truth)))
     check("entries carry room info", all(e["room"] for e in mine["entries"]))
-    call("PUT", "/services/me/profile", st, {"roll_no": "1602-24-737-001", "year": 3, "section": "A", "parent_name": "Probe Parent", "gender": "male"})
+    # Students can't change their own year/section once linked: the Admin Office does
+    call("PUT", f"/services/admin/students/{u['id']}/profile", tok, {"roll_no": "1602-24-737-001", "year": 3, "section": "A", "parent_name": "Probe Parent", "gender": "male"})
     mine = call("GET", "/timetable/mine", st)
     check("IT year 3 section A -> IT-3A", sorted(e["id"] for e in mine["entries"]) == sorted(r[0] for r in rows if r[4] == "IT-3A"))
 finally:

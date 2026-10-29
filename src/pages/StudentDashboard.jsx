@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { CalendarClock, ClipboardCheck, DoorOpen, FileText } from 'lucide-react';
 import PageTransition from '../components/PageTransition.jsx';
 import MetricCard from '../components/dashboard/MetricCard.jsx';
+import MorningBrief from '../components/dashboard/MorningBrief.jsx';
 import MyDay, { fmtIn, placeOf, today } from '../components/dashboard/MyDay.jsx';
 import { StatusBadge, whereNow } from '../components/services/requestUi.jsx';
 import { joiningApi, leavingApi, servicesApi, timetableApi } from '../utils/api.js';
@@ -28,6 +29,7 @@ export default function StudentDashboard() {
   return (
     <PageTransition className="mx-auto min-h-screen max-w-7xl px-4 pb-20 pt-28 sm:px-6">
       <DashboardHeading eyebrow="Student home" title="Your day, your requests, your campus." />
+      <MorningBrief />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={CalendarClock} label="Classes today"

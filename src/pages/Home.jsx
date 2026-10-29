@@ -3,7 +3,9 @@
 import { ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import SuhruthDigitalTwin from '../components/three/SuhruthDigitalTwin.jsx';
+import GuidePanel from '../components/GuidePanel.jsx';
 import PageTransition from '../components/PageTransition.jsx';
 import LinkButton from '../components/ui/LinkButton.jsx';
 import { buildingsApi, classroomsApi, timetableApi } from '../utils/api.js';
@@ -11,6 +13,7 @@ import { istNow, liveSessionsByBuilding } from '../components/three/twinExtras.j
 import { useCampusStore } from '../store/useCampusStore.js';
 
 export default function Home() {
+  const openMitra = Boolean(useLocation().state?.openMitra);   // "Ask Mitra" on the Morning Brief
   const [buildings, setBuildings] = useState([]);
   const [live, setLive] = useState({});
   const [selected, setSelected] = useState(null);
@@ -34,6 +37,7 @@ export default function Home() {
       <section className="pt-[76px] px-4 sm:px-6">
         <SuhruthDigitalTwin />
       </section>
+      <GuidePanel defaultOpen={openMitra} />
 
       {/* ── Building Selector Strip ────────────────────────────────────────── */}
       <section className="px-4 pb-20 pt-6 sm:px-6">

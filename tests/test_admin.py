@@ -83,6 +83,18 @@ try:
     check("all requests overview", s == 200 and len(allr) >= 4)
     s, inbox = call("GET", "/services/approvals/inbox", tok)
     check("admin inbox has 'others' queue", s == 200 and "others" in inbox)
+
+    # No public sign-up: only an admin creates accounts, and they start with a temporary password
+    probe = {"name": "Signup Probe", "email": f"signup.probe.{admin_id[-6:]}@example.com", "password": "Probe-pass-123", "role": "student", "department": "IT"}
+    s, d = call("POST", "/auth/register", None, probe)
+    check("public sign-up refused -> 403", s == 403, d)
+    s, d = call("POST", "/auth/register", None, {**probe, "role": "faculty"})
+    check("public faculty sign-up refused -> 403", s == 403, d)
+    s, d = call("POST", "/auth/register", tok, probe)
+    check("admin creates account -> 201, must change password", s == 201 and d.get("must_change_password") is True, d)
+    if s == 201:
+        con.execute("DELETE FROM users WHERE id = ?", (d["id"],))
+        con.commit()
 finally:
     con.execute("DELETE FROM users WHERE id = ?", (admin_id,))
     con.commit()

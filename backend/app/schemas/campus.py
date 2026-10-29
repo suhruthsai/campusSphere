@@ -8,7 +8,7 @@ class Token(BaseModel):
     token_type: str
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str = Field(..., min_length=3, max_length=254)   # an email, or a student's roll number
     password: str
 
 class UserCreate(BaseModel):
@@ -29,6 +29,7 @@ class UserOut(BaseModel):
     role: str
     department: str
     status: str
+    must_change_password: Optional[bool] = False
     joined_at: Optional[str] = None
     last_active: Optional[str] = None
 

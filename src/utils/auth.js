@@ -45,18 +45,6 @@ export async function attemptLogin(email, password) {
 }
 
 /**
- * Register a new user against the real backend.
- * Returns user object on success.
- */
-export async function registerUser(data) {
-  const user = await authApi.register(data);
-  // Accounts awaiting admin approval (e.g. faculty) can't log in yet
-  if (user.status !== 'active') return user;
-  // Auto-login after registration
-  return attemptLogin(data.email, data.password);
-}
-
-/**
  * Validate stored token against /auth/me.
  * Returns user or null if token is invalid/expired.
  */

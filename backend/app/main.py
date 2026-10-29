@@ -9,6 +9,14 @@ from backend.app.models import campus
 from backend.app.models import services as _services_models  # registers the student-services tables
 from backend.app.models import admissions as _admissions_models  # joining, fees, originals register
 from backend.app.models import leaving as _leaving_models  # no-dues clearance, leaving-document fees
+from backend.app.models import knowledge as _knowledge_models  # Mitra's knowledge base (crawled college website)
+from backend.app.models import attendance as _attendance_models  # class attendance by period, rules
+from backend.app.models import placements as _placement_models  # drives, registrations, batch summaries
+from backend.app.models import accreditation as _accreditation_models  # yearly values, evidence, roles, facts
+from backend.app.models import obe as _obe_models  # outcomes, COs, mapping, assessments, attainment rules
+from backend.app.models import feedback as _feedback_models  # feedback forms and responses, ATRs, exam results
+from backend.app.models import research as _research_models  # faculty records, research items, MoUs and extension
+from backend.app.models import institution as _institution_models  # progression, facility / finance figures, meetings
 from backend.app.core.state import global_state
 from backend.app.core.security import get_password_hash, verify_password
 from backend.app.core.realtime import timetable_manager
@@ -96,6 +104,10 @@ def warm_utilization_model():
     threading.Thread(target=run, daemon=True, name="utilization-warmup").start()
 
 warm_utilization_model()
+
+# Mitra's college knowledge base: load the search index, crawl mvsrec.edu.in on first run and weekly
+from backend.app.knowledge.service import start_background as start_knowledge
+start_knowledge()
 
 
 

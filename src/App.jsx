@@ -5,11 +5,11 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import Shell from './components/layout/Shell.jsx';
 import ProtectedRoute from './components/layout/ProtectedRoute.jsx';
+import { HOME_FOR } from './components/layout/navConfig.js';
 import PageErrorBoundary from './components/layout/PageErrorBoundary.jsx';
 
 // Auth pages
 import Login          from './pages/auth/Login.jsx';
-import Register       from './pages/auth/Register.jsx';
 import ForgotPassword from './pages/auth/ForgotPassword.jsx';
 
 // Pages are code-split: each loads on first visit, so the login screen and
@@ -17,6 +17,7 @@ import ForgotPassword from './pages/auth/ForgotPassword.jsx';
 // Core pages
 const Home = lazy(() => import('./pages/Home.jsx'));
 const Navigation = lazy(() => import('./pages/Navigation.jsx'));
+const Visit = lazy(() => import('./pages/Visit.jsx'));
 const StudentDashboard = lazy(() => import('./pages/StudentDashboard.jsx'));
 const FacultyDashboard = lazy(() => import('./pages/FacultyDashboard.jsx'));
 const Analytics = lazy(() => import('./pages/Analytics.jsx'));
@@ -30,15 +31,9 @@ const BuildingManagement = lazy(() => import('./pages/admin/BuildingManagement.j
 const FloorManagement = lazy(() => import('./pages/admin/FloorManagement.jsx'));
 const TimetableManagement = lazy(() => import('./pages/admin/TimetableManagement.jsx'));
 const SubstitutionManagement = lazy(() => import('./pages/admin/SubstitutionManagement.jsx'));
+const KnowledgeBase = lazy(() => import('./pages/admin/KnowledgeBase.jsx'));
 
-const LibraryAnalytics = lazy(() => import('./pages/monitoring/LibraryAnalytics.jsx'));
-const CrowdAnalytics = lazy(() => import('./pages/monitoring/CrowdAnalytics.jsx'));
-const AttendanceAnalytics = lazy(() => import('./pages/monitoring/AttendanceAnalytics.jsx'));
-
-// AI pages
-const AIPredictionEngine = lazy(() => import('./pages/ai/AIPredictionEngine.jsx'));
-const AICampusAssistant = lazy(() => import('./pages/ai/AICampusAssistant.jsx'));
-const RecommendationEngine = lazy(() => import('./pages/ai/RecommendationEngine.jsx'));
+// Room utilisation model (the sample-data Monitoring and AI pages are no longer routed; their links redirect home)
 const ClassroomUtilization = lazy(() => import('./pages/ai/ClassroomUtilization.jsx'));
 
 // Navigation pages
@@ -60,10 +55,32 @@ const LeavingJourney = lazy(() => import('./pages/leaving/LeavingJourney.jsx'));
 const ClearanceDesk = lazy(() => import('./pages/leaving/ClearanceDesk.jsx'));
 const ExamCellDesk = lazy(() => import('./pages/leaving/ExamCellDesk.jsx'));
 const IndoorNavigation = lazy(() => import('./pages/navigation/IndoorNavigation.jsx'));
-
+const Notices = lazy(() => import('./pages/Notices.jsx'));
+const Attendance = lazy(() => import('./pages/Attendance.jsx'));
+// Accreditation Autopilot
+const Accreditation = lazy(() => import('./pages/admin/Accreditation.jsx'));
+const DepartmentReport = lazy(() => import('./pages/admin/DepartmentReport.jsx'));
+const AccreditationWorkspace = lazy(() => import('./pages/admin/AccreditationWorkspace.jsx'));
+const Outcomes = lazy(() => import('./pages/admin/Outcomes.jsx'));
+const Results = lazy(() => import('./pages/admin/Results.jsx'));
+const FacultyResearch = lazy(() => import('./pages/research/FacultyResearch.jsx'));
+const MyResearch = lazy(() => import('./pages/research/MyResearch.jsx'));
+const InstitutionRecords = lazy(() => import('./pages/admin/InstitutionRecords.jsx'));
+const Readiness = lazy(() => import('./pages/admin/Readiness.jsx'));
+const Feedback = lazy(() => import('./pages/feedback/Feedback.jsx'));
+const PublicFeedback = lazy(() => import('./pages/feedback/PublicFeedback.jsx'));
+const Placements = lazy(() => import('./pages/placements/Placements.jsx'));
+const PlacementCell = lazy(() => import('./pages/placements/PlacementCell.jsx'));
+const DeskWall = lazy(() => import('./pages/admin/DeskWall.jsx'));
 const ADMIN = ['admin'];
 
-// Logged-in users don't need to see the login/register pages
+// Old links to pages that left the menus (sample data, the old assistant): go to the person's own home page
+function RoleHome() {
+  const { user } = useAuth();
+  return <Navigate to={HOME_FOR[user?.role] || '/'} replace />;
+}
+
+// Logged-in users don't need to see the login page
 function GuestOnly({ children }) {
   const { user, loading } = useAuth();
   if (loading) return null;
@@ -96,11 +113,16 @@ function AppRoutes() {
       <Routes>
         {/* Public */}
         <Route path="/login"           element={<GuestOnly><Login /></GuestOnly>} />
-        <Route path="/register"        element={<GuestOnly><Register /></GuestOnly>} />
+        {/* No public sign-up: the college creates accounts. Old links land on the login page. */}
+        <Route path="/register"        element={<Navigate to="/login" replace />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         {/* Public: anyone holding a certificate's QR code can check it, no account needed */}
         <Route path="/verify"       element={<Suspense fallback={<PageFallback />}><VerifyDocument /></Suspense>} />
         <Route path="/verify/:code" element={<Suspense fallback={<PageFallback />}><VerifyDocument /></Suspense>} />
+        {/* Public: parents and visitors explore the 3D campus with Mitra, the walking guide */}
+        {/* Public: alumni, employers and parents answer feedback forms by the IQAC's link */}
+        <Route path="/f/:code"      element={<Suspense fallback={<PageFallback />}><PublicFeedback /></Suspense>} />
+        <Route path="/visit"        element={<Suspense fallback={<PageFallback />}><Visit /></Suspense>} />
 
         <Route path="/*" element={
           <ProtectedRoute>
@@ -126,18 +148,37 @@ function AppRoutes() {
               <Route path="/admin/buildings"     element={<ProtectedRoute allowedRoles={ADMIN}><BuildingManagement /></ProtectedRoute>} />
               <Route path="/admin/floors"        element={<ProtectedRoute allowedRoles={ADMIN}><FloorManagement /></ProtectedRoute>} />
               <Route path="/admin/timetable"     element={<ProtectedRoute allowedRoles={ADMIN}><TimetableManagement /></ProtectedRoute>} />
-              <Route path="/admin/substitutions" element={<ProtectedRoute allowedRoles={ADMIN}><SubstitutionManagement /></ProtectedRoute>} />
+              {/* Substitutions: admins, and HODs for their department (the page and the API check the HOD role) */}
+              <Route path="/admin/substitutions" element={<ProtectedRoute allowedRoles={['admin', 'faculty']}><SubstitutionManagement /></ProtectedRoute>} />
+              <Route path="/admin/knowledge"     element={<ProtectedRoute allowedRoles={ADMIN}><KnowledgeBase /></ProtectedRoute>} />
+              {/* Accreditation: admins and the Principal (a faculty account; the API checks the assignment) */}
+              {/* Department report: HOD (own department), Principal, management, admins (the API checks) */}
+              {/* Placements: students apply; the Placement Cell, HODs and management see drives and the report (the API checks) */}
+              <Route path="/placements"          element={<ProtectedRoute allowedRoles={['student']}><Placements /></ProtectedRoute>} />
+              <Route path="/placements/cell"     element={<ProtectedRoute allowedRoles={['admin', 'faculty', 'staff']}><PlacementCell /></ProtectedRoute>} />
+              <Route path="/reports/department"  element={<ProtectedRoute allowedRoles={['admin', 'faculty']}><DepartmentReport /></ProtectedRoute>} />
+              <Route path="/accreditation"       element={<ProtectedRoute allowedRoles={['admin', 'faculty']}><Accreditation /></ProtectedRoute>} />
+              <Route path="/accreditation/faculty" element={<ProtectedRoute allowedRoles={['admin', 'faculty', 'staff']}><FacultyResearch /></ProtectedRoute>} />
+              <Route path="/accreditation/readiness" element={<ProtectedRoute allowedRoles={['admin', 'faculty', 'staff']}><Readiness /></ProtectedRoute>} />
+              <Route path="/accreditation/institution" element={<ProtectedRoute allowedRoles={['admin', 'faculty', 'staff']}><InstitutionRecords /></ProtectedRoute>} />
+              <Route path="/my-research"         element={<ProtectedRoute allowedRoles={['faculty']}><MyResearch /></ProtectedRoute>} />
+              <Route path="/accreditation/results" element={<ProtectedRoute allowedRoles={['admin', 'faculty', 'staff']}><Results /></ProtectedRoute>} />
+              <Route path="/feedback"            element={<Feedback />} />
+              <Route path="/accreditation/outcomes" element={<ProtectedRoute allowedRoles={['admin', 'faculty', 'staff']}><Outcomes /></ProtectedRoute>} />
+              <Route path="/accreditation/workspace" element={<ProtectedRoute allowedRoles={['admin', 'faculty', 'staff']}><AccreditationWorkspace /></ProtectedRoute>} />
+              <Route path="/accreditation/desks" element={<ProtectedRoute allowedRoles={['admin', 'faculty']}><DeskWall /></ProtectedRoute>} />
 
-              {/* Monitoring */}
-              <Route path="/monitoring/library"    element={<LibraryAnalytics />} />
-              <Route path="/monitoring/crowd"      element={<CrowdAnalytics />} />
-              <Route path="/monitoring/attendance" element={<AttendanceAnalytics />} />
-
-              {/* AI Modules */}
-              <Route path="/ai/predictions"    element={<AIPredictionEngine />} />
-              <Route path="/ai/assistant"      element={<AICampusAssistant />} />
-              <Route path="/ai/recommendations" element={<RecommendationEngine />} />
+              {/* Sample-data pages and the old assistant page: old links go home (Mitra is the assistant now) */}
+              <Route path="/monitoring/*"      element={<RoleHome />} />
+              <Route path="/ai/predictions"    element={<RoleHome />} />
+              <Route path="/ai/assistant"      element={<RoleHome />} />
+              <Route path="/ai/recommendations" element={<RoleHome />} />
               <Route path="/ai/utilization"    element={<ProtectedRoute allowedRoles={['admin', 'faculty']}><ClassroomUtilization /></ProtectedRoute>} />
+              {/* Short names for the merged pages */}
+              <Route path="/notices" element={<Notices />} />
+              <Route path="/attendance" element={<ProtectedRoute allowedRoles={['student', 'faculty', 'admin']}><Attendance /></ProtectedRoute>} />
+              <Route path="/find"  element={<Navigate to="/navigation" replace />} />
+              <Route path="/rooms" element={<Navigate to="/classrooms" replace />} />
 
               {/* Navigation Modules */}
               <Route path="/navigation/smart"  element={<SmartNavigation />} />

@@ -8,6 +8,7 @@ import { DashboardHeading } from '../StudentDashboard.jsx';
 import { buildingsApi, classroomsApi, timetableApi } from '../../utils/api.js';
 import { istNow, toMinutes } from '../../components/three/twinExtras.js';
 import { floorName } from '../../utils/campus.js';
+import SectionTabs, { FIND_TABS } from '../../components/layout/SectionTabs.jsx';
 
 
 export default function IndoorNavigation() {
@@ -40,6 +41,7 @@ export default function IndoorNavigation() {
 
   return (
     <PageTransition className="mx-auto min-h-screen max-w-6xl px-4 pb-20 pt-28 sm:px-6">
+      <SectionTabs title="Find a place" tabs={FIND_TABS} />
       <DashboardHeading eyebrow="Indoor navigation" title="Find a room inside a building." />
       {error && <p className="mb-4 text-sm text-rose-300">{error}</p>}
       {!rooms ? <p className="text-sm text-slate-400">Loading…</p> : (

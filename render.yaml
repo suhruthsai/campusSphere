@@ -31,6 +31,8 @@ services:
         sync: false   # set in the Render dashboard before the first deploy
       - key: GROQ_API_KEY
         sync: false   # set in the Render dashboard
+      - key: SARVAM_API_KEY
+        sync: false   # optional: Mitra's Telugu / Hindi voice (sarvam.ai)
       - key: CORS_ORIGINS
         sync: false   # e.g. https://campussphere.vercel.app (comma-separated, no trailing slash)
 

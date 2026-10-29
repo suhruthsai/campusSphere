@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from backend.app.ai import campus_tools
+from backend.app.ai import brief, campus_tools
 from backend.app.core.campus_time import campus_now
 from backend.app.core.config import settings
 from backend.app.db.session import get_db
@@ -132,32 +132,59 @@ class AIChatResponse(BaseModel):
     actions: List[AIAction] = []
 
 
-def _groq(messages: list, use_tools: bool) -> dict:
-    body = {"model": settings.GROQ_MODEL, "messages": messages, "temperature": 0.2}
-    if use_tools:
-        body["tools"] = TOOLS
-    for attempt in range(3):
-        try:
-            r = httpx.post(
-                GROQ_URL,
-                headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
-                json=body,
-                timeout=30,
-            )
-        except httpx.HTTPError:
-            raise HTTPException(status_code=502, detail="AI service is unreachable.")
-        if r.status_code != 429:
-            break
-        # Groq's free tier allows a few thousand tokens a minute: wait briefly and retry, else say when to try again
-        m = re.search(r"try again in ([\d.]+)s", r.text)
-        wait = float(r.headers.get("retry-after") or (m.group(1) if m else 10))
-        if attempt == 2 or wait > 15:
-            raise HTTPException(status_code=503, detail=f"The AI assistant is busy (free usage limit). Please try again in {max(1, round(wait))} seconds.")
-        time.sleep(wait + 0.5)
-    if r.status_code != 200:
-        print(f"[ai] Groq error {r.status_code}: {r.text[:300]}")
-        raise HTTPException(status_code=502, detail="AI service returned an error.")
-    return r.json()["choices"][0]["message"]
+# Groq's free limits are per model (8,000 tokens a minute, 200,000 a day): when the main model's quota runs
+# out, the fallback models answer instead, and a spent model is skipped until its quota resets
+_model_down_until: dict = {}
+
+
+def _wait_seconds(r: httpx.Response) -> float:
+    if r.headers.get("retry-after"):
+        return float(r.headers["retry-after"])
+    m = re.search(r"try again in (?:(\d+)m)?([\d.]+)s", r.text)      # "4m0.6s" or "12.5s"
+    return (int(m.group(1) or 0) * 60 + float(m.group(2))) if m else 10.0
+
+
+def _groq(messages: list, use_tools: bool, tools: Optional[list] = None, _retried: bool = False) -> dict:
+    models = [settings.GROQ_MODEL] + [m.strip() for m in settings.GROQ_FALLBACK_MODELS.split(",") if m.strip()]
+    live = [m for m in models if _model_down_until.get(m, 0) < time.monotonic()] or models[:1]
+    shortest = None
+    for model in live:
+        body = {"model": model, "messages": messages, "temperature": 0.2}
+        if use_tools:
+            body["tools"] = tools or TOOLS
+        for attempt in range(3):
+            try:
+                r = httpx.post(
+                    GROQ_URL,
+                    headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+                    json=body,
+                    timeout=30,
+                )
+            except httpx.HTTPError:
+                raise HTTPException(status_code=502, detail="AI service is unreachable.")
+            if r.status_code != 429:
+                break
+            # A per-minute limit clears in seconds: wait and retry. A longer wait (the daily quota): next model
+            wait = _wait_seconds(r)
+            if attempt == 2 or wait > 15:
+                _model_down_until[model] = time.monotonic() + wait
+                shortest = wait if shortest is None else min(shortest, wait)
+                print(f"[ai] {model} is out of quota for {round(wait)} s; trying the next model")
+                break
+            time.sleep(wait + 0.5)
+        if r.status_code == 429:
+            continue
+        if r.status_code != 200:
+            print(f"[ai] Groq error {r.status_code} ({model}): {r.text[:300]}")
+            raise HTTPException(status_code=502, detail="AI service returned an error.")
+        return r.json()["choices"][0]["message"]
+    if shortest is not None and shortest <= 30 and not _retried:   # every model only needs a moment: wait once
+        time.sleep(shortest + 0.5)
+        for m in models:
+            if _model_down_until.get(m, 0) <= time.monotonic() + 1:
+                _model_down_until.pop(m, None)
+        return _groq(messages, use_tools, tools, _retried=True)
+    raise HTTPException(status_code=503, detail=f"The AI assistant is busy (free usage limit). Please try again in {max(1, round(shortest or 10))} seconds.")
 
 
 def _run_tool(name: str, raw_args: str, actions: list, db: Session, current: dict) -> str:
@@ -181,6 +208,11 @@ def _run_tool(name: str, raw_args: str, actions: list, db: Session, current: dic
         actions.append(AIAction(name=name, args={"categories": cats}))
         return f"Successfully highlighted buildings of categories: {', '.join(cats)}."
     return f"Error: unknown tool '{name}'."
+
+
+@router.get("/brief", summary="Mitra's Morning Brief: today's classes, substitutes and requests (no AI call)")
+def morning_brief(db: Session = Depends(get_db), current: dict = Depends(get_current_user)):
+    return brief.build(db, current)
 
 
 @router.post("/chat", response_model=AIChatResponse, summary="Chat with the campus guide or a student persona")

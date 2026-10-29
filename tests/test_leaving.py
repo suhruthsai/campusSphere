@@ -66,9 +66,13 @@ def pay(payment_id, outcome="success"):
     return call("POST", f"/leaving/payments/{payment_id}/test-complete", T["student"], {"outcome": outcome})
 
 
+# Only an admin can create accounts (no public sign-up)
+admin_pw = next(l.split("=", 1)[1].strip() for l in (project / ".env").read_text(encoding="utf-8").splitlines()
+                if l.startswith("ADMIN_PASSWORD="))
+ADMIN = login("admin@suhruth.edu", admin_pw)
 email = f"tmp.alumni.{uuid.uuid4().hex[:6]}@example.com"
 pw = secrets.token_urlsafe(12)
-s, d = call("POST", "/auth/register", body={"name": "Temp Leaver", "email": email, "password": pw, "role": "student", "department": "CSE"})
+s, d = call("POST", "/auth/register", ADMIN, body={"name": "Temp Leaver", "email": email, "password": pw, "role": "student", "department": "CSE"})
 check("register temp student", s == 201, d)
 user_id = d["id"]
 try:

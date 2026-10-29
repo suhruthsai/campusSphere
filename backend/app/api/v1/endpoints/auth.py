@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
@@ -7,13 +8,14 @@ from typing import Literal, Optional
 from pydantic import BaseModel, EmailStr, Field
 
 from backend.app.db.session import get_db
-from backend.app.models.campus import UserModel
+from backend.app.models.campus import SignInEventModel, UserModel
 from backend.app.schemas.campus import UserLogin, UserCreate, UserOut, Token, PasswordChange
 from backend.app.core.security import (
     verify_password, get_password_hash, create_access_token,
     get_current_user, get_optional_user, require_admin
 )
 from backend.app.core.rate_limit import SlidingWindowLimiter, client_ip, too_many
+from backend.app.core.roles import user_roles
 
 router = APIRouter()
 
@@ -25,32 +27,27 @@ LOCKOUT_WINDOW = 15 * 60
 login_fail_ip_email = SlidingWindowLimiter(limit=5,  window=LOCKOUT_WINDOW)  # one account from one IP
 login_fail_ip       = SlidingWindowLimiter(limit=20, window=LOCKOUT_WINDOW)  # password spraying from one IP
 login_fail_email    = SlidingWindowLimiter(limit=50, window=LOCKOUT_WINDOW)  # distributed attack on one account
-register_ip         = SlidingWindowLimiter(limit=10, window=60 * 60)         # sign-up spam
 password_change_fail = SlidingWindowLimiter(limit=5, window=LOCKOUT_WINDOW)  # stolen-session guessing
 
 LOCKED_MSG = "Too many failed login attempts."
+NO_SIGNUP = "Accounts are created by the college. Contact the Admin Office for your login."
+ROLL_LOGIN = re.compile(r"^[0-9a-z]{4}-\d{2}-\d{3}-\d{3}$")
 
 # Verifying against a dummy hash when the email doesn't exist keeps response times
 # the same, so attackers can't discover which emails have accounts.
 _DUMMY_HASH = get_password_hash("timing-equaliser-not-a-real-password")
 
 # ── Register ───────────────────────────────────────────────────────────────────
-@router.post("/register", response_model=UserOut, status_code=201, summary="Register a new user")
+@router.post("/register", response_model=UserOut, status_code=201, summary="Create an account (admin only)")
 def register(
     payload: UserCreate,
-    request: Request,
     db: Session = Depends(get_db),
     current: Optional[dict] = Depends(get_optional_user),
 ):
-    is_admin = bool(current and current.get("role") == "admin")
-    if not is_admin:  # admins creating accounts aren't limited
-        register_ip.check_and_hit(client_ip(request), "Too many sign-ups from this network.")
-
-    # Public sign-up can only create students (active) or faculty (pending admin approval).
-    # Admin and staff accounts can only be created by an admin.
-    if payload.role in ("admin", "staff") and not is_admin:
-        raise HTTPException(status_code=403, detail="Only an admin can create admin or staff accounts.")
-    account_status = "pending" if payload.role == "faculty" and not is_admin else "active"
+    # There is no public sign-up: the college creates every account (roll lists, the faculty list, or an admin
+    # here), so nobody can make themselves a student or claim someone else's roll number.
+    if not (current and current.get("role") == "admin"):
+        raise HTTPException(status_code=403, detail=NO_SIGNUP)
 
     # Check duplicate email
     if db.query(UserModel).filter(UserModel.email == payload.email.lower()).first():
@@ -65,7 +62,8 @@ def register(
         department=payload.department,
         roll_no=getattr(payload, 'roll_no', None),
         staff_id=getattr(payload, 'staff_id', None),
-        status=account_status,
+        status="active",
+        must_change_password=True,          # the admin hands over a temporary password
         joined_at=datetime.utcnow().strftime("%Y-%m-%d"),
         last_active=datetime.utcnow().strftime("%Y-%m-%d"),
     )
@@ -89,11 +87,13 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
         raise too_many(LOCKED_MSG, max(waits))
 
     user = db.query(UserModel).filter(UserModel.email == email).first()
+    if not user and ROLL_LOGIN.match(email):   # students may sign in with their roll number
+        user = db.query(UserModel).filter(UserModel.roll_no == email.upper(), UserModel.role == "student").first()
     password_ok = verify_password(payload.password, user.hashed_password if user else _DUMMY_HASH)
     if not user or not password_ok:
         for limiter, key in keys:
             limiter.hit(key)
-        raise HTTPException(status_code=401, detail="Invalid email or password.")
+        raise HTTPException(status_code=401, detail="Invalid email / roll number or password.")
 
     login_fail_ip_email.reset(f"{ip}|{email}")
     if user.status == "pending":
@@ -101,8 +101,9 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     if user.status != "active":
         raise HTTPException(status_code=403, detail="Account is inactive. Contact admin.")
 
-    # Update last_active
+    # Update last_active, and log the sign-in (adoption reports)
     user.last_active = datetime.utcnow().strftime("%Y-%m-%d")
+    db.add(SignInEventModel(user_id=user.id))
     db.commit()
 
     token = create_access_token(
@@ -124,6 +125,11 @@ def get_me(current: dict = Depends(get_current_user), db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="User not found.")
     return user
 
+
+@router.get("/me/roles", summary="What I hold beyond my role (HOD, Principal, CoE, desks), for building my menus")
+def get_my_roles(current: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return user_roles(db, current)
+
 # ── Change own password ────────────────────────────────────────────────────────
 @router.post("/change-password", summary="Change the current user's password")
 def change_password(payload: PasswordChange, current: dict = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -135,7 +141,10 @@ def change_password(payload: PasswordChange, current: dict = Depends(get_current
         password_change_fail.hit(current["sub"])
         raise HTTPException(status_code=400, detail="Current password is incorrect.")
     password_change_fail.reset(current["sub"])
+    if verify_password(payload.new_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Choose a password different from the current one.")
     user.hashed_password = get_password_hash(payload.new_password)
+    user.must_change_password = False
     db.commit()
     return {"message": "Password updated."}
 
@@ -210,6 +219,7 @@ def reset_password(user_id: str, db: Session = Depends(get_db), _admin: dict = D
         raise HTTPException(status_code=404, detail="User not found.")
     temp = secrets.token_urlsafe(9)   # 12 characters; the user changes it under My account
     user.hashed_password = get_password_hash(temp)
+    user.must_change_password = True
     db.commit()
     return {"email": user.email, "temporary_password": temp}
 

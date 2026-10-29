@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Backend for the dev proxy (override with API_PROXY to run a second backend side by side)
+const API = process.env.API_PROXY || 'http://127.0.0.1:8000';
+
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -20,11 +23,11 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: API,
         changeOrigin: true
       },
       '/ws': {
-        target: 'ws://127.0.0.1:8000',
+        target: API.replace(/^http/, 'ws'),
         ws: true
       }
     }

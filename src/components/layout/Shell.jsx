@@ -1,233 +1,14 @@
-// Shell.jsx — Role-aware nav with Monitoring dropdown (fixed position)
-import {
-  Bot, Brain, Building2, CalendarClock, CalendarDays, ChartNoAxesCombined, ChevronDown, ClipboardList, FlaskConical, Gauge, GraduationCap, Home, Layers, Lightbulb, LogOut, Map, Menu, MessageCircle, Radio, Users, BookOpen, X, FileCheck, FileText, Settings, ClipboardCheck, Archive, IndianRupee, DoorOpen, DoorClosed, ListChecks, ScrollText,
-} from 'lucide-react';
+// Shell.jsx — the top bar: each role's menus (navConfig.js, built from GET /auth/me/roles), account and logout
+import { Bot, ChevronDown, LogOut, Menu, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
-import AIAssistant from '../AIAssistant.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { roleColors } from '../../utils/auth.js';
+import { authApi } from '../../utils/api.js';
+import { getNavItems } from './navConfig.js';
 
-// ── Monitoring submenu items ──────────────────────────────────────────────────
-const MONITORING_ITEMS = [
-  { to: '/monitoring/library',     label: 'Library',         icon: BookOpen,      color: '#7B61FF' },
-  { to: '/monitoring/crowd',       label: 'Crowd',           icon: Users,         color: '#F472B6' },
-  { to: '/monitoring/attendance',  label: 'Attendance',      icon: ClipboardList, color: '#818CF8' },
-];
-
-// ── AI submenu items ──────────────────────────────────────────────────────────
-const AI_ITEMS = [
-  { to: '/ai/predictions',     label: 'Predictions',      icon: Brain,         color: '#00E5FF' },
-  { to: '/ai/assistant',       label: 'AI Assistant',     icon: MessageCircle, color: '#7B61FF' },
-  { to: '/ai/recommendations', label: 'Recommendations',  icon: Lightbulb,     color: '#F59E0B' },
-  { to: '/ai/utilization',     label: 'Room Utilization', icon: Gauge,         color: '#00FFB3', roles: ['admin', 'faculty'] },
-];
-
-// Menu items can be limited to certain roles
-const visibleFor = (items, role) => items.filter((i) => !i.roles || i.roles.includes(role));
-
-// ── Navigation submenu items ──────────────────────────────────────────────────
-const NAV_ITEMS = [
-  { to: '/navigation/smart',   label: 'Smart Navigation',  icon: Map,    color: '#00E5FF' },
-  { to: '/navigation/indoor',  label: 'Indoor Navigation', icon: Layers, color: '#7B61FF' },
-];
-
-function getNavItems(role) {
-  const common = [
-    { to: '/', label: 'Twin', icon: Home },
-  ];
-  if (role === 'admin') return [
-    ...common,
-    { to: '/admin/dashboard', label: 'Dashboard', icon: ChartNoAxesCombined },
-    {
-      dropdown: true, label: 'Manage', icon: Building2,
-      items: [
-        { to: '/admin/users',     label: 'Users',      icon: Users,     color: '#7B61FF' },
-        { to: '/admin/buildings', label: 'Buildings',  icon: Building2, color: '#10B981' },
-        { to: '/admin/floors',    label: 'Floors',     icon: Layers,    color: '#00E5FF' },
-      ]
-    },
-    {
-      dropdown: true, label: 'Academics', icon: BookOpen,
-      items: [
-        { to: '/admin/timetable', label: 'Timetable',  icon: CalendarClock, color: '#F59E0B' },
-        { to: '/admin/substitutions', label: 'Substitutions', icon: CalendarDays, color: '#F472B6' },
-        { to: '/classrooms',      label: 'Classrooms', icon: BookOpen,      color: '#00E5FF' },
-        { to: '/labs',            label: 'Labs',       icon: FlaskConical,  color: '#818CF8' },
-      ]
-    },
-    {
-      dropdown: true, label: 'Services', icon: FileText,
-      items: [
-        { to: '/services/approvals', label: 'Approvals', icon: FileCheck, color: '#00FFB3' },
-        { to: '/services/setup',     label: 'Setup',     icon: Settings,  color: '#F59E0B' },
-        { to: '/services/roll-list', label: 'Roll list', icon: Users, color: '#38BDF8' },
-        { to: '/joining/desk',       label: 'Admissions desk', icon: ClipboardCheck, color: '#00E5FF' },
-        { to: '/joining/originals',  label: 'Originals register', icon: Archive, color: '#818CF8' },
-        { to: '/joining/fees',       label: 'Fee settings', icon: IndianRupee, color: '#F472B6' },
-        { to: '/leaving/desk',       label: 'No-dues clearance', icon: ListChecks, color: '#10B981' },
-        { to: '/leaving/exam-cell',  label: 'Exam Cell', icon: ScrollText, color: '#EC4899' },
-      ]
-    }
-  ];
-  if (role === 'faculty') return [
-    ...common,
-    { to: '/faculty',    label: 'Faculty',    icon: Users },
-    { to: '/analytics',  label: 'Analytics',  icon: ChartNoAxesCombined },
-    {
-      dropdown: true, label: 'Services', icon: FileCheck,
-      items: [
-        { to: '/services/approvals', label: 'Approvals', icon: FileCheck, color: '#00FFB3' },
-        { to: '/leaving/desk',       label: 'No-dues clearance', icon: ListChecks, color: '#10B981' },
-        { to: '/leaving/exam-cell',  label: 'Exam Cell (CoE)', icon: ScrollText, color: '#EC4899' },
-      ]
-    },
-    {
-      dropdown: true, label: 'Academics', icon: BookOpen,
-      items: [
-        { to: '/classrooms', label: 'Classrooms', icon: BookOpen,     color: '#00E5FF' },
-        { to: '/labs',       label: 'Labs',       icon: FlaskConical, color: '#818CF8' },
-      ]
-    }
-  ];
-  if (role === 'student') return [
-    ...common,
-    { to: '/student',    label: 'Dashboard',  icon: GraduationCap },
-    { to: '/services',   label: 'Services',   icon: FileText },
-    { to: '/joining',    label: 'Joining',    icon: DoorOpen },
-    { to: '/leaving',    label: 'Leaving',    icon: DoorClosed },
-    {
-      dropdown: true, label: 'Academics', icon: BookOpen,
-      items: [
-        { to: '/classrooms', label: 'Classrooms', icon: BookOpen,     color: '#00E5FF' },
-        { to: '/labs',       label: 'Labs',       icon: FlaskConical, color: '#818CF8' },
-      ]
-    }
-  ];
-  if (role === 'staff') return [
-    ...common,
-    { to: '/joining/desk',       label: 'Admissions', icon: ClipboardCheck },
-    { to: '/joining/originals',  label: 'Originals',  icon: Archive },
-    { to: '/services/roll-list', label: 'Roll list',  icon: Users },
-    { to: '/services/approvals', label: 'Approvals', icon: FileCheck },
-    { to: '/leaving/desk',       label: 'Clearance', icon: ListChecks },
-  ];
-  return common;
-}
-
-// ── Monitoring dropdown (self-contained with click-outside) ───────────────────
-function MonitoringDropdown({ isActive }) {
-  const [open, setOpen]   = useState(false);
-  const ref               = useRef(null);
-  const btnRef            = useRef(null);
-  const location          = useLocation();
-
-  // Close on route change
-  useEffect(() => { setOpen(false); }, [location.pathname]);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target) &&
-          btnRef.current && !btnRef.current.contains(e.target)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  return (
-    <div className="relative" style={{ position: 'relative', zIndex: 60 }}>
-      <button
-        ref={btnRef}
-        onClick={() => setOpen((v) => !v)}
-        title="Monitoring"
-        aria-label="Monitoring"
-        className={`flex items-center gap-1.5 rounded-xl px-2.5 2xl:px-3 py-2 text-xs font-medium transition-all select-none ${
-          isActive || open
-            ? 'bg-[rgba(0,229,255,0.12)] text-[#00E5FF]'
-            : 'text-slate-400 hover:bg-white/8 hover:text-white'
-        }`}
-      >
-        <Radio size={14} />
-        <span className="hidden 2xl:inline">Monitoring</span>
-        <ChevronDown size={11} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            ref={ref}
-            initial={{ opacity: 0, y: -6, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0,  scale: 1    }}
-            exit={{    opacity: 0, y: -6, scale: 0.97 }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-            style={{
-              position: 'absolute',
-              top: 'calc(100% + 10px)',
-              left: 0,
-              width: 220,
-              borderRadius: 16,
-              border: '1px solid rgba(255,255,255,0.12)',
-              background: 'rgba(4,9,26,0.97)',
-              backdropFilter: 'blur(32px)',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,229,255,0.06) inset',
-              padding: 8,
-              zIndex: 9999,
-            }}
-          >
-            {MONITORING_ITEMS.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={() => setOpen(false)}
-                style={{ display: 'block', textDecoration: 'none' }}
-              >
-                {({ isActive: ia }) => (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      padding: '8px 10px',
-                      borderRadius: 10,
-                      marginBottom: 2,
-                      fontSize: 12,
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      background: ia ? 'rgba(255,255,255,0.08)' : 'transparent',
-                      color: ia ? '#fff' : '#94a3b8',
-                      transition: 'all 0.15s',
-                    }}
-                    onMouseEnter={(e) => { if (!ia) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#fff'; }}}
-                    onMouseLeave={(e) => { if (!ia) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}}
-                  >
-                    <span style={{
-                      display: 'grid', placeItems: 'center',
-                      width: 26, height: 26, borderRadius: 8, flexShrink: 0,
-                      background: item.color + '1a', color: item.color,
-                    }}>
-                      <item.icon size={13} />
-                    </span>
-                    <span style={{ flex: 1 }}>{item.label}</span>
-                    {ia && (
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
-                    )}
-                  </div>
-                )}
-              </NavLink>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ── Generic Nav Dropdown (used for AI, etc.) ──────────────────────────────────
+// ── Dropdown menu (Office, Management, Campus, ...) ───────────────────────────
 function NavDropdown({ label, icon: Icon, items, isActive }) {
   const [open, setOpen]   = useState(false);
   const ref               = useRef(null);
@@ -335,10 +116,15 @@ export default function Shell({ children }) {
   const { user, logout }            = useAuth();
   const navigate                    = useNavigate();
   const location                    = useLocation();
-  const navItems                    = getNavItems(user?.role);
+  const [roles, setRoles]           = useState(null);   // HOD, Principal, CoE, desks... (null while loading)
+  const navItems                    = getNavItems(user?.role, roles);
   const rc                          = user ? (roleColors[user.role] ?? roleColors.student) : null;
-  const isMonitorActive             = location.pathname.startsWith('/monitoring');
-  const isAIActive                   = location.pathname.startsWith('/ai');
+
+  // What this person holds decides which desks appear; refreshed on each page change (a new desk shows at once)
+  useEffect(() => {
+    if (!user) { setRoles(null); return; }
+    authApi.roles().then(setRoles).catch(() => setRoles(null));
+  }, [user?.id, user?.role, location.pathname]);
 
   const handleLogout = () => { logout(); navigate('/login'); };
 
@@ -387,17 +173,12 @@ export default function Shell({ children }) {
           <div className="hidden lg:flex" style={{ alignItems: 'center', gap: 2, flexWrap: 'nowrap' }}>
             {navItems.map((item) => (
               item.dropdown ? (
-                <NavDropdown key={item.label} label={item.label} icon={item.icon} items={item.items} isActive={item.items.some(sub => location.pathname.startsWith(sub.to) && sub.to !== '/')} />
+                <NavDropdown key={item.label} label={item.label} icon={item.icon} items={item.items}
+                  isActive={item.items.some((sub) => (sub.to === '/' ? location.pathname === '/' : location.pathname.startsWith(sub.to)))} />
               ) : (
                 <NavItem key={item.to} {...item} compact />
               )
             ))}
-            {/* Navigation dropdown */}
-            <NavDropdown label="Navigation" icon={Map} items={NAV_ITEMS} isActive={location.pathname.startsWith('/navigation')} />
-            {/* Monitoring dropdown */}
-            <MonitoringDropdown isActive={isMonitorActive} />
-            {/* AI dropdown */}
-            <NavDropdown label="AI" icon={Brain} items={visibleFor(AI_ITEMS, user?.role)} isActive={isAIActive} />
           </div>
 
           {/* Right controls */}
@@ -496,74 +277,6 @@ export default function Shell({ children }) {
                 ))}
               </div>
 
-              {/* Monitoring section */}
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 8, marginTop: 4 }}>
-                <p style={{ padding: '4px 12px', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#475569', margin: '0 0 4px' }}>
-                  Monitoring &amp; IoT
-                </p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                  {MONITORING_ITEMS.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setMobileOpen(false)}
-                      style={{ textDecoration: 'none' }}
-                    >
-                      {({ isActive }) => (
-                        <div style={{
-                          display: 'flex', alignItems: 'center', gap: 8,
-                          padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 500,
-                          background: isActive ? 'rgba(255,255,255,0.08)' : 'transparent',
-                          color: isActive ? '#fff' : '#94a3b8',
-                        }}>
-                          <span style={{
-                            display: 'grid', placeItems: 'center', width: 20, height: 20,
-                            borderRadius: 6, background: item.color + '1a', color: item.color, flexShrink: 0,
-                          }}>
-                            <item.icon size={11} />
-                          </span>
-                          {item.label}
-                        </div>
-                      )}
-                    </NavLink>
-                  ))}
-                </div>
-              </div>
-
-              {/* AI section */}
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 8, marginTop: 4 }}>
-                <p style={{ padding: '4px 12px', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#475569', margin: '0 0 4px' }}>
-                  AI Intelligence
-                </p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                  {visibleFor(AI_ITEMS, user?.role).map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setMobileOpen(false)}
-                      style={{ textDecoration: 'none' }}
-                    >
-                      {({ isActive }) => (
-                        <div style={{
-                          display: 'flex', alignItems: 'center', gap: 8,
-                          padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 500,
-                          background: isActive ? 'rgba(255,255,255,0.08)' : 'transparent',
-                          color: isActive ? '#fff' : '#94a3b8',
-                        }}>
-                          <span style={{
-                            display: 'grid', placeItems: 'center', width: 20, height: 20,
-                            borderRadius: 6, background: item.color + '1a', color: item.color, flexShrink: 0,
-                          }}>
-                            <item.icon size={11} />
-                          </span>
-                          {item.label}
-                        </div>
-                      )}
-                    </NavLink>
-                  ))}
-                </div>
-              </div>
-
               {/* User / logout */}
               {user && (
                 <div style={{
@@ -598,7 +311,6 @@ export default function Shell({ children }) {
       </header>
 
       <main className="relative z-10">{children}</main>
-      <AIAssistant />
 
       <footer className="relative z-10 border-t border-white/[0.07] px-5 py-10 text-center">
         <p className="text-xs text-slate-500 tracking-wider uppercase">

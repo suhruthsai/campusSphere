@@ -18,6 +18,8 @@ import {
   createSignpost, createPlaque, createFlowerBed, createCourtyardGarden, createBollardLamp,
   createLiveMarker, createCrowd, createIntroPath, createDocToken, createClearancePin,
 } from './twinExtras.js';
+import { createGuide } from './guideAvatar.js';
+import NavPad, { useNavKeyboard } from './NavPad.jsx';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { dedupeMaterials, mergeStaticMeshes, disposeObject, disposeRenderer } from './sceneOptimizer.js';
 
@@ -539,7 +541,6 @@ export default function SuhruthDigitalTwin() {
   const mountRef = useRef(null);
   // Select only what this component needs — subscribing to the whole store re-rendered
   // this (very large) component on every telemetry message.
-  const openChatWithTarget = useCampusStore((state) => state.openChatWithTarget);
 
   // State
   const [selectedBuilding, setSelectedBuilding] = useState(null);
@@ -584,6 +585,11 @@ export default function SuhruthDigitalTwin() {
   const introRef        = useRef({ active: false, t: 0 });
 
   const cameraModeRef = useRef('orbit');
+  // Navigation pad / keyboard → camera: what is held right now, read every frame by the render loop
+  const navRef = useRef({ panX: 0, panZ: 0, rotate: 0, tilt: 0, zoom: 0, setZoom: null, reset: false, tween: null });
+  const zoomListenerRef = useRef(null);   // the render loop reports the zoom level (0-100) for the slider
+  const navBoxRef = useRef(null);         // the map container (the keyboard works while it is on screen)
+  useNavKeyboard(navRef, navBoxRef);
   useEffect(() => {
     cameraModeRef.current = cameraMode;
   }, [cameraMode]);
@@ -638,9 +644,10 @@ export default function SuhruthDigitalTwin() {
     const target = new THREE.Vector3(-10, 4, 15);
     let radius = 340, theta = Math.PI * 0.28, phi = Math.PI * 0.32;
 
+    let minRadius = 60;   // the guide's chase camera comes in closer
     function updateCamera() {
       phi = Math.max(0.15, Math.min(1.35, phi));
-      radius = Math.max(60, Math.min(650, radius));
+      radius = Math.max(minRadius, Math.min(650, radius));
       camera.position.set(
         target.x + radius * Math.sin(phi) * Math.sin(theta),
         target.y + radius * Math.cos(phi),
@@ -3914,6 +3921,12 @@ export default function SuhruthDigitalTwin() {
     // Students walking between buildings; how many depends on the campus clock
     const crowd = createCrowd({ scene, poolSize: 40, makeStudent: createStudentMesh, nodes: NODES, adjacency: ADJACENCY });
 
+    // Mitra, the walking AI guide (GuidePanel.jsx directs her through the store). The camera follows
+    // her until the user takes over by dragging or zooming.
+    const guide = createGuide({ scene, nodes: NODES, adjacency: ADJACENCY, buildings: BUILDINGS, start: useCampusStore.getState().guideAt });
+    let guideLegTs = null, guideBubbleShown = null, guideWasOpen = false, guideFollow = false, guideHidLabels = false, guideHurrySeen = 0;
+    const guideFocus = new THREE.Vector3();
+
     // Document tokens: one glowing envelope per active request of the signed-in student
     const tokenLayer = new THREE.Group();
     scene.add(tokenLayer);
@@ -4218,9 +4231,11 @@ export default function SuhruthDigitalTwin() {
       scene.add(line);
     });
 
-    // Orbit Drag Controls
-    let dragging = false, lastX = 0, lastY = 0, moved = false;
+    // Orbit Drag Controls (one finger / left button: orbit; right button or Shift: move; two fingers: pinch + move)
+    let dragging = false, lastX = 0, lastY = 0, moved = false, panning = false;
     let wasShuttle = false;
+    const pointers = new Map();          // active pointers, for the two-finger pinch
+    let pinchDist = 0, pinchMidX = 0, pinchMidY = 0;
 
     const skipIntro = () => {
       if (!introRef.current.active) return;
@@ -4230,32 +4245,124 @@ export default function SuhruthDigitalTwin() {
       updateCamera();
     };
 
+    // Move the orbit centre along the ground, relative to where the camera faces (right / forward)
+    const xs = BUILDINGS.map((b) => b.x), zs = BUILDINGS.map((b) => b.z);
+    const BOUNDS = { minX: Math.min(...xs) - 60, maxX: Math.max(...xs) + 60, minZ: Math.min(...zs) - 60, maxZ: Math.max(...zs) + 60 };
+    const panBy = (right, forward) => {
+      target.x = Math.max(BOUNDS.minX, Math.min(BOUNDS.maxX, target.x + Math.cos(theta) * right - Math.sin(theta) * forward));
+      target.z = Math.max(BOUNDS.minZ, Math.min(BOUNDS.maxZ, target.z - Math.sin(theta) * right - Math.cos(theta) * forward));
+    };
+    const pinchState = () => {
+      const [a, b] = [...pointers.values()];
+      return { dist: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    };
+
     const onPointerDown = (e) => {
       skipIntro();
+      guideFollow = false;
+      navBoxRef.current?.focus({ preventScroll: true });   // leaves any text box, so the movement keys apply to the map
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 2) {
+        ({ dist: pinchDist, x: pinchMidX, y: pinchMidY } = pinchState());
+      }
       dragging = true;
+      panning = e.button === 2 || e.shiftKey;
       lastX = e.clientX;
       lastY = e.clientY;
       moved = false;
     };
 
-    const onPointerUpWindow = () => { dragging = false; };
+    const onPointerUpWindow = (e) => {
+      pointers.delete(e.pointerId);
+      const left = [...pointers.values()][0];
+      if (left) { lastX = left.x; lastY = left.y; }   // lifting one finger of a pinch must not jump the view
+      dragging = pointers.size > 0;
+    };
 
     const onPointerMove = (e) => {
       if (!dragging) return;
+      if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (cameraModeRef.current === 'shuttle' || cameraModeRef.current === 'student') return;
+      if (pointers.size >= 2) {
+        const p = pinchState();
+        if (pinchDist > 0 && p.dist > 0) radius *= pinchDist / p.dist;
+        panBy(-(p.x - pinchMidX) * radius * 0.0016, (p.y - pinchMidY) * radius * 0.0016);
+        pinchDist = p.dist; pinchMidX = p.x; pinchMidY = p.y;
+        moved = true;
+        updateCamera();
+        return;
+      }
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
       lastX = e.clientX;
       lastY = e.clientY;
       if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
-      if (cameraModeRef.current === 'shuttle' || cameraModeRef.current === 'student') return;
-      theta -= dx * 0.0055;
-      phi -= dy * 0.0045;
+      if (panning) panBy(-dx * radius * 0.0016, dy * radius * 0.0016);
+      else {
+        theta -= dx * 0.0055;
+        phi -= dy * 0.0045;
+      }
       updateCamera();
+    };
+    const onContextMenu = (e) => e.preventDefault();   // right-drag moves the map
+
+    // Navigation pad and keyboard (navRef is set by the pad): smooth while held, applied every frame
+    const DEFAULT_VIEW = { target: new THREE.Vector3(-10, 4, 15), theta: Math.PI * 0.28, phi: Math.PI * 0.32, radius: 340 };
+    const ZOOM_FAR = 650, ZOOM_NEAR = 60;
+    let lastZoomPct = null;
+    const publishZoom = () => {
+      const pct = Math.round(100 * (Math.log(ZOOM_FAR) - Math.log(radius)) / (Math.log(ZOOM_FAR) - Math.log(ZOOM_NEAR)));
+      const clamped = Math.max(0, Math.min(100, pct));
+      if (clamped !== lastZoomPct) { lastZoomPct = clamped; zoomListenerRef.current?.(clamped); }
+    };
+    const applyNav = (dt) => {
+      const n = navRef.current;
+      if (cameraModeRef.current !== 'orbit') return;
+      const input = n.reset || n.panX || n.panZ || n.rotate || n.tilt || n.zoom || n.setZoom != null;
+      if (introRef.current.active && !input) return;   // the intro flies the camera itself until someone takes over
+      if (n.reset) {
+        n.reset = false;
+        skipIntro();
+        guideFollow = false;
+        droneProgress = 1;
+        const turn = Math.atan2(Math.sin(DEFAULT_VIEW.theta - theta), Math.cos(DEFAULT_VIEW.theta - theta));
+        n.tween = { t: 0, target: target.clone(), theta, phi, radius, toTheta: theta + turn };
+      }
+      if (n.tween) {
+        const tw = n.tween;
+        tw.t = Math.min(1, tw.t + Math.min(dt, 0.05) / 1.1);
+        const k = tw.t * tw.t * (3 - 2 * tw.t);
+        target.lerpVectors(tw.target, DEFAULT_VIEW.target, k);
+        theta = THREE.MathUtils.lerp(tw.theta, tw.toTheta, k);
+        phi = THREE.MathUtils.lerp(tw.phi, DEFAULT_VIEW.phi, k);
+        radius = THREE.MathUtils.lerp(tw.radius, DEFAULT_VIEW.radius, k);
+        if (tw.t >= 1) n.tween = null;
+        updateCamera();
+        publishZoom();
+        return;
+      }
+      if (input) {
+        skipIntro();
+        guideFollow = false;
+        droneProgress = 1;
+        const s = Math.min(dt, 0.05);
+        if (n.setZoom != null) {
+          radius = Math.exp(Math.log(ZOOM_FAR) - (n.setZoom / 100) * (Math.log(ZOOM_FAR) - Math.log(ZOOM_NEAR)));
+          n.setZoom = null;
+        }
+        panBy(n.panX * radius * 0.9 * s, n.panZ * radius * 0.9 * s);
+        theta += n.rotate * 1.3 * s;
+        phi += n.tilt * 0.9 * s;
+        radius *= Math.exp(n.zoom * 1.5 * s);
+        updateCamera();
+      }
+      publishZoom();
     };
 
     const onWheel = (e) => {
       e.preventDefault();
       skipIntro();
+      guideFollow = false;
       if (cameraModeRef.current === 'shuttle' || cameraModeRef.current === 'student') return;
       radius += e.deltaY * 0.14;
       updateCamera();
@@ -4280,15 +4387,15 @@ export default function SuhruthDigitalTwin() {
           // Trigger drone fly to the target
           useCampusStore.getState().setAIFlyTarget(ud.building.id || ud.building.name);
 
-          if (ud.building.type === 'Campus Student' || ud.building.type === 'Walking Student') {
-            openChatWithTarget(ud.building.id);
-          }
         }
       }
     };
 
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    renderer.domElement.addEventListener('contextmenu', onContextMenu);
+    renderer.domElement.style.touchAction = 'pan-y';   // one finger up/down still scrolls the page; pinch zooms the map
     window.addEventListener('pointerup', onPointerUpWindow);
+    window.addEventListener('pointercancel', onPointerUpWindow);
     window.addEventListener('pointermove', onPointerMove);
     renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
     renderer.domElement.addEventListener('pointerup', onClickRaycast);
@@ -4383,7 +4490,7 @@ export default function SuhruthDigitalTwin() {
       ...smartParkingSpots.map((s) => s.group),
       ...floor1Ref.current, ...floor2Ref.current,
       ...pickable,
-      liveMarkersGroup, crowd.group, tokenLayer,
+      liveMarkersGroup, crowd.group, tokenLayer, guide.group,
     ];
     // Many objects get their own copy of an identical material; share them first so they can merge.
     // Street-lamp bulb materials are recoloured at night through refs, so they keep their identity.
@@ -4453,6 +4560,9 @@ export default function SuhruthDigitalTwin() {
           updateCamera();
         }
       }
+
+      // ── Navigation pad / keyboard ───────────────────────────────────────────
+      applyNav(dt);
 
       // ── Handle AI Drone Camera Panning ──────────────────────────────────────
       const flyTargetObj = useCampusStore.getState().aiFlyTarget;
@@ -4597,6 +4707,43 @@ export default function SuhruthDigitalTwin() {
       // ── Live campus: session markers and the crowd ─────────────────────────
       Object.values(liveMarkersRef.current).forEach((m) => m.update(time, nightRef.current));
       crowd.update(Math.min(dt, 0.1), time, liveRef.current.phase);
+
+      // ── Mitra, the walking guide ────────────────────────────────────────────
+      const g = useCampusStore.getState();
+      guide.show(g.guideOpen);
+      if (g.guideOpen && !guideWasOpen) guideFollow = true;   // opening the guide flies to her
+      if (!g.guideOpen && guideWasOpen) minRadius = 60;
+      guideWasOpen = g.guideOpen;
+      if (g.guideLeg && g.guideLeg.ts !== guideLegTs) {
+        const leg = g.guideLeg;
+        guideLegTs = leg.ts;
+        guideFollow = true;
+        // A replaced leg resolves too: only the current one reports the arrival
+        guide.walkTo(leg.node, leg.look).then(() => { if (guideLegTs === leg.ts) useCampusStore.getState().guideArrived(leg.place); });
+      } else if (!g.guideLeg && guide.walking) {
+        guide.halt();
+      }
+      if (g.guideHurry !== guideHurrySeen) { guideHurrySeen = g.guideHurry; guide.hurry(); }
+      if (g.guideBubble !== guideBubbleShown) { guideBubbleShown = g.guideBubble; guide.say(g.guideBubble); }
+      guide.update(Math.min(dt, 0.5), time);   // real time even on slow machines, so tours don't crawl
+      const chasing = guideFollow && g.guideOpen && droneProgress >= 1 && !introRef.current.active && cameraModeRef.current === 'orbit';
+      if (chasing) {
+        // Chase camera: behind her as she walks, so the building she presents is in front of both
+        minRadius = 24;
+        const k = 1 - Math.exp(-Math.min(dt, 0.1) * 2.2);
+        target.lerp(guideFocus.copy(guide.position).setY(4), k);
+        const behind = Math.atan2(-guide.heading.x, -guide.heading.z);
+        const turn = Math.atan2(Math.sin(behind - theta), Math.cos(behind - theta));
+        theta += turn * (1 - Math.exp(-Math.min(dt, 0.1) * 1.1));
+        radius += ((guide.walking ? 34 : 48) - radius) * k;
+        phi += ((guide.walking ? 1.08 : 0.98) - phi) * k;
+        updateCamera();
+      }
+      // The big building labels crowd a close-up of her: hide them while the camera follows
+      if (chasing !== guideHidLabels && !introRef.current.active) {
+        guideHidLabels = chasing;
+        setLabelsVisible(!chasing);
+      }
       docTokens.forEach((t) => t.update(Math.min(dt, 0.1), time));
       questToken?.update(Math.min(dt, 0.1), time);
       clearancePins.forEach((pin) => pin.update(time));
@@ -4646,8 +4793,10 @@ export default function SuhruthDigitalTwin() {
       resizeObserver.disconnect();
       visibilityObserver.disconnect();
       window.removeEventListener('pointerup', onPointerUpWindow);
+      window.removeEventListener('pointercancel', onPointerUpWindow);
       window.removeEventListener('pointermove', onPointerMove);
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+      renderer.domElement.removeEventListener('contextmenu', onContextMenu);
       renderer.domElement.removeEventListener('wheel', onWheel);
       renderer.domElement.removeEventListener('pointerup', onClickRaycast);
       if (container.contains(renderer.domElement)) {
@@ -4954,7 +5103,10 @@ export default function SuhruthDigitalTwin() {
 
   return (
     <div
-      className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-[#11151b]"
+      ref={navBoxRef}
+      tabIndex={0}
+      aria-label="3D campus map. Arrow keys or W A S D move, Q and E rotate, R and F tilt, plus and minus zoom, 0 resets the view."
+      className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-[#11151b] outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50"
       style={{ height: 'calc(100vh - 120px)', minHeight: 540 }}
     >
       {/* 3D WebGL Canvas Container */}
@@ -5013,8 +5165,11 @@ export default function SuhruthDigitalTwin() {
       </div>
 
       <div className="pointer-events-none absolute top-4 right-4 z-20 hidden font-mono text-[10px] tracking-wider text-slate-400 text-right leading-relaxed md:block">
-        DRAG TO ORBIT · SCROLL TO ZOOM<br />CLICK A BLOCK FOR DETAILS &amp; GPS
+        DRAG TO ORBIT · RIGHT-DRAG TO MOVE · SCROLL TO ZOOM<br />KEYS: ARROWS / WASD MOVE · Q E TURN · + − ZOOM<br />CLICK A BLOCK FOR DETAILS &amp; GPS
       </div>
+
+      {/* ── Map controls: move, rotate, tilt, zoom, reset ───────────────────── */}
+      <NavPad navRef={navRef} zoomListenerRef={zoomListenerRef} crowded={Boolean(selectedBuilding)} />
 
       {/* ── Navigation / Routing Panel ──────────────────────────────────────── */}
       <div className="pointer-events-auto absolute top-4 left-4 z-20 w-48 sm:w-56 rounded-xl border border-white/10 bg-[#141a22]/90 p-3.5 backdrop-blur-md">

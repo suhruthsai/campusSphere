@@ -24,6 +24,7 @@ backend/app/**/__pycache__/
 
 # Environment Variables & Secrets
 *.local.txt
+*.local/
 .env
 .env.local
 .env.*.local

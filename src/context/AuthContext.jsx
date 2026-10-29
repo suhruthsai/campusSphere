@@ -1,6 +1,6 @@
 // ── AuthContext — real backend auth (JWT via /api/v1/auth) ────────────────────
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { attemptLogin, clearAuth, getStoredUser, registerUser, validateStoredToken } from '../utils/auth.js';
+import { attemptLogin, clearAuth, getStoredUser, validateStoredToken } from '../utils/auth.js';
 
 const AuthContext = createContext(null);
 
@@ -23,10 +23,10 @@ export function AuthProvider({ children }) {
     return u;
   }, []);
 
-  // Returns the created user. Accounts that need admin approval are not logged in.
-  const register = useCallback(async (data) => {
-    const u = await registerUser(data);
-    if (u.status === 'active') setUser(u);
+  // After a change on the server (e.g. a new password), reload who I am
+  const refreshUser = useCallback(async () => {
+    const u = await validateStoredToken();
+    if (u) setUser(u);
     return u;
   }, []);
 
@@ -40,12 +40,12 @@ export function AuthProvider({ children }) {
     loading,
     login,
     logout,
-    register,
+    refreshUser,
     isAdmin:   user?.role === 'admin',
     isFaculty: user?.role === 'faculty',
     isStudent: user?.role === 'student',
     isStaff:   user?.role === 'staff',
-  }), [user, loading, login, logout, register]);
+  }), [user, loading, login, logout, refreshUser]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

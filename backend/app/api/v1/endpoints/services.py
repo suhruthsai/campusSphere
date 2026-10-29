@@ -29,8 +29,8 @@ router = APIRouter()          # mounted under /services, login required
 public_router = APIRouter()   # mounted under /services, no login (verification)
 
 APPROVER_ROLES = ("faculty", "admin", "staff")
-ASSIGNABLE_ROLES = ("class_incharge", "ahod", "hod", "coe", "principal")
-COLLEGE_WIDE_ROLES = ("principal", "coe")
+ASSIGNABLE_ROLES = ("class_incharge", "ahod", "hod", "coe", "principal", "placement_officer", "placement_director")
+COLLEGE_WIDE_ROLES = ("principal", "coe", "placement_officer", "placement_director")
 YEAR_WORDS = {1: "I", 2: "II", 3: "III", 4: "IV"}
 
 
@@ -41,6 +41,7 @@ class ProfileIn(BaseModel):
     section: str = Field(..., min_length=1, max_length=10)
     parent_name: str = Field(..., min_length=2, max_length=100)
     gender: Literal["male", "female", "other"]
+    preferred_name: Optional[str] = Field(None, max_length=40)
 
 
 class AdminProfileIn(ProfileIn):
@@ -64,7 +65,7 @@ class DispatchIn(BaseModel):
 
 
 class AssignmentIn(BaseModel):
-    role: Literal["class_incharge", "ahod", "hod", "coe", "principal"]
+    role: Literal["class_incharge", "ahod", "hod", "coe", "principal", "placement_officer", "placement_director"]
     user_id: str
     department: Optional[str] = Field(None, max_length=30)
     year: Optional[int] = Field(None, ge=1, le=4)
@@ -85,6 +86,8 @@ def _profile_out(db: Session, profile: Optional[StudentProfileModel], user: User
         "section": profile.section if profile else None,
         "parent_name": profile.parent_name if profile else None,
         "gender": profile.gender if profile else None,
+        "preferred_name": profile.preferred_name if profile else None,
+        "locked": bool(profile and (profile.roll_no or user.roll_no) and profile.year and profile.section),
         "mentor_id": mentor.id if mentor else None,
         "mentor_name": mentor.name if mentor else None,
         "complete": bool(profile and profile.year and profile.section and profile.parent_name and profile.gender
@@ -225,11 +228,18 @@ def update_my_profile(body: ProfileIn, db: Session = Depends(get_db), current: d
     if not profile:
         profile = StudentProfileModel(user_id=user.id, department=(user.department or "CSE").upper())
         db.add(profile)
-    profile.roll_no = (body.roll_no or "").strip().upper() or profile.roll_no or user.roll_no
-    profile.year = body.year
-    profile.section = body.section.strip().upper()
+    linked = profile.roll_no or user.roll_no
+    if linked and profile.year and profile.section:
+        # Roll number, year and section come from the college roll list once the account is linked: a student
+        # can't change them (or take a classmate's roll number). The Admin Office corrects them if wrong.
+        profile.roll_no = linked
+    else:
+        profile.roll_no = (body.roll_no or "").strip().upper() or linked
+        profile.year = body.year
+        profile.section = body.section.strip().upper()
     profile.parent_name = body.parent_name.strip()
     profile.gender = body.gender
+    profile.preferred_name = (body.preferred_name or "").strip() or None
     _apply_roster(db, profile, profile.roll_no, strict=True)
     db.commit()
     db.refresh(profile)
@@ -478,7 +488,9 @@ def create_assignment(body: AssignmentIn, db: Session = Depends(get_db), _admin:
     elif body.role in ("ahod", "hod"):
         if not dept:
             raise HTTPException(status_code=422, detail="Department is required")
-        year, section = None, None
+        year = None
+        if body.role == "hod":
+            section = None   # an Associate HOD may cover one section letter (all A sections), or the department
     else:  # class_incharge
         if not (dept and body.year and section):
             raise HTTPException(status_code=422, detail="Department, year and section are required")
@@ -595,7 +607,7 @@ def all_requests(status: Optional[str] = Query(None), db: Session = Depends(get_
 @public_router.get("/verify/{code}", summary="Verify a document by its QR code (public)")
 def verify(code: str, db: Session = Depends(get_db)):
     req = db.query(DocumentRequestModel).filter(DocumentRequestModel.verify_code == code.strip().upper()).first()
-    if not req or req.status != "approved":
+    if not req or req.status != "approved" or req.pilot_run:   # generated pilot requests are never valid documents
         return {"valid": False}
     s = req.student or {}
     return {

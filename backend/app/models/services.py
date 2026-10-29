@@ -20,6 +20,7 @@ class StudentProfileModel(Base):
     section     = Column(String, nullable=True)                  # "A", "B", ...
     parent_name = Column(String, nullable=True)                  # for "S/o" / "D/o" on certificates
     gender      = Column(String, nullable=True)                  # "male" | "female" | "other"
+    preferred_name = Column(String, nullable=True)               # "Call me ..." for greetings; never on certificates
     mentor_id   = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -72,6 +73,7 @@ class DocumentRequestModel(Base):
     fulfilment   = Column(String, nullable=True)       # generated | upload
     issued_file  = Column(String, nullable=True)       # uploaded final document (Exam Cell)
     dispatch     = Column(JSON, nullable=True)         # {"mode", "tracking", "at", "by"}
+    pilot_run    = Column(String, nullable=True, index=True)   # generated pilot data: never a valid certificate
 
 
 class RosterEntryModel(Base):

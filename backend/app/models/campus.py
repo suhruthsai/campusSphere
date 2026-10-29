@@ -17,6 +17,7 @@ class UserModel(Base):
     roll_no = Column(String, nullable=True)
     staff_id = Column(String, nullable=True)
     status = Column(String, default="active")
+    must_change_password = Column(Boolean, default=False)   # a temporary password was handed out: ask for a new one
     joined_at = Column(String, default=lambda: datetime.utcnow().strftime("%Y-%m-%d"))
     last_active = Column(String, default=lambda: datetime.utcnow().strftime("%Y-%m-%d"))
 
@@ -158,6 +159,16 @@ class CampusEventModel(Base):
     building = relationship("BuildingModel", back_populates="events")
 
 
+class SignInEventModel(Base):
+    """One successful sign-in: how many people actually use the portal (adoption, per section)."""
+    __tablename__ = "sign_in_events"
+
+    id        = Column(Integer, primary_key=True, autoincrement=True)
+    user_id   = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    at        = Column(DateTime, default=datetime.utcnow, index=True)
+    pilot_run = Column(String, nullable=True, index=True)
+
+
 class AnnouncementModel(Base):
     """Faculty/admin announcements."""
     __tablename__ = "announcements"
@@ -171,6 +182,12 @@ class AnnouncementModel(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=True)
+    # Who it is for (added by db/migrations.py): everyone, students or staff; optionally one year / section
+    audience = Column(String, default="all")             # "all" | "students" | "staff"
+    year = Column(Integer, nullable=True)                # students of this year only (1-4)
+    section = Column(String, nullable=True)              # ... and this section only
+    author_name = Column(String, nullable=True)          # shown on the notice even if the account goes
+    pilot_run = Column(String, nullable=True, index=True)   # set on generated pilot data: one command removes it
 
     author = relationship("UserModel", back_populates="announcements")
 
@@ -350,6 +367,7 @@ class SubstitutionModel(Base):
     updated_at               = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     cancelled_by             = Column(String, nullable=True)
     cancelled_at             = Column(DateTime, nullable=True)
+    pilot_run                = Column(String, nullable=True, index=True)
 
     # ── Relationships ─────────────────────────────────────────────────────────
     classroom_rel            = relationship("ClassroomModel", foreign_keys=[classroom_id])

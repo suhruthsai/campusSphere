@@ -16,6 +16,19 @@ interface CampusState {
   
   weatherData: { temp: number, isDay: boolean, condition: string, code: number } | null;
   isRaining: boolean;
+
+  // Mitra, the walking guide: the panel (GuidePanel.jsx) directs, the 3D twin performs
+  guideOpen: boolean;
+  guideLeg: { place: string, node: string, look: { x: number, z: number } | null, ts: number } | null;  // where the twin walks her now
+  guideHurry: number;                               // bumps when the visitor presses Next (fast-forward the walk)
+  guideAt: string;                                  // where she's standing
+  guideBubble: string | null;                       // what her speech bubble shows
+  setGuideOpen: (open: boolean) => void;
+  walkGuideTo: (place: string, node?: string, look?: { x: number, z: number } | null) => Promise<void>;  // resolves on arrival
+  hurryGuide: () => void;
+  guideArrived: (place: string) => void;            // called by the twin
+  stopGuide: () => void;
+  setGuideBubble: (text: string | null) => void;
   
   setCameraMode: (mode: 'orbit' | 'fpv' | 'topdown') => void;
 
@@ -48,6 +61,35 @@ export const useCampusStore = create<CampusState>((set, get) => ({
   routeRequest: null,
   weatherData: null,
   isRaining: false,
+
+  guideOpen: false,
+  guideLeg: null,
+  guideHurry: 0,
+  guideAt: 'frontgate',
+  guideBubble: null,
+  setGuideOpen: (open) => {
+    if (!open) get().stopGuide();
+    set({ guideOpen: open });
+  },
+  walkGuideTo: (place, node, look = null) => new Promise<void>((resolve) => {
+    pendingArrival?.();
+    pendingArrival = resolve;
+    set({ guideLeg: { place, node: node || place, look, ts: Date.now() } });
+  }),
+  hurryGuide: () => set((state) => ({ guideHurry: state.guideHurry + 1 })),
+  guideArrived: (place) => {
+    set({ guideAt: place, guideLeg: null });
+    const done = pendingArrival;
+    pendingArrival = null;
+    done?.();
+  },
+  stopGuide: () => {
+    const done = pendingArrival;
+    pendingArrival = null;
+    set({ guideLeg: null, guideBubble: null });
+    done?.();
+  },
+  setGuideBubble: (text) => set({ guideBubble: text }),
 
   parkingData: {
     total: 60,
@@ -130,5 +172,6 @@ export const useCampusStore = create<CampusState>((set, get) => ({
 }));
 
 let telemetrySocket: WebSocket | null = null;
+let pendingArrival: (() => void) | null = null;   // resolves the current walkGuideTo()
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 3000;

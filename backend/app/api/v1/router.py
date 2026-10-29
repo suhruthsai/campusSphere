@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from backend.app.core.security import get_current_user
-from backend.app.api.v1.endpoints import auth, ai, utilization, buildings, monitoring, routing, media, attendance, events, announcements, classrooms, timetable, subjects, faculty_profiles, substitutions, services, joining, leaving
+from backend.app.api.v1.endpoints import accreditation, auth, ai, guide, knowledge, utilization, buildings, monitoring, routing, media, attendance, events, announcements, classrooms, timetable, subjects, faculty_profiles, substitutions, services, joining, leaving, reports, placements, obe, feedback, results, research, institution
 
 api_router = APIRouter()
 
@@ -8,10 +8,13 @@ api_router = APIRouter()
 api_router.include_router(auth.router,             prefix="/auth",             tags=["Authentication"])
 # Certificate verification is public: banks/employers scan the QR without an account.
 api_router.include_router(services.public_router,  prefix="/services",         tags=["Student Services"])
+# Mitra, the talking 3D guide, is public so visiting parents can use it (visitors get public data only).
+api_router.include_router(guide.router,            prefix="/ai/guide",         tags=["AI Guide (Mitra)"])
 
 # Everything else requires a logged-in user; write routes add role checks on top.
 authed = [Depends(get_current_user)]
 api_router.include_router(ai.router,               prefix="/ai",               tags=["AI Assistant"],          dependencies=authed)
+api_router.include_router(knowledge.router,         prefix="/knowledge",        tags=["Knowledge Base (Mitra)"], dependencies=authed)
 api_router.include_router(utilization.router,      prefix="/ai/utilization",   tags=["Classroom Utilization"], dependencies=authed)
 api_router.include_router(buildings.router,        prefix="/buildings",        tags=["Campus Buildings"],      dependencies=authed)
 api_router.include_router(routing.router,          prefix="/buildings",        tags=["Navigation & Routing"],  dependencies=authed)
@@ -28,3 +31,12 @@ api_router.include_router(substitutions.router,    prefix="/substitutions",    t
 api_router.include_router(services.router,         prefix="/services",         tags=["Student Services"],      dependencies=authed)
 api_router.include_router(joining.router,          prefix="/joining",          tags=["Joining & Fees"],        dependencies=authed)
 api_router.include_router(leaving.router,          prefix="/leaving",          tags=["Leaving & No-dues"],     dependencies=authed)
+api_router.include_router(feedback.public_router,  prefix="/feedback",         tags=["Feedback"])
+api_router.include_router(feedback.router,         prefix="/feedback",         tags=["Feedback"],              dependencies=authed)
+api_router.include_router(institution.router,      prefix="/institution",      tags=["Institution records"],   dependencies=authed)
+api_router.include_router(research.router,         prefix="/research",         tags=["Faculty & research"],    dependencies=authed)
+api_router.include_router(results.router,          prefix="/results",          tags=["Examination results"],   dependencies=authed)
+api_router.include_router(obe.router,              prefix="/obe",              tags=["Outcome-based education"], dependencies=authed)
+api_router.include_router(placements.router,       prefix="/placements",       tags=["Placements"],            dependencies=authed)
+api_router.include_router(reports.router,          prefix="/reports",          tags=["Department report"],     dependencies=authed)
+api_router.include_router(accreditation.router,    prefix="/accreditation",    tags=["Accreditation"],         dependencies=authed)

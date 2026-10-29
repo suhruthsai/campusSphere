@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     # Server-side only — never expose this to the frontend bundle
     GROQ_API_KEY: Optional[str] = None
     GROQ_MODEL: str = "openai/gpt-oss-120b"   # llama-3.3-70b-versatile was retired by Groq
+    # Used when GROQ_MODEL's free quota runs out (Groq's limits are per model): comma-separated, in order
+    GROQ_FALLBACK_MODELS: str = "openai/gpt-oss-20b"
+
+    # Mitra's voice (Sarvam AI: Telugu / Hindi / English speech). Without a key, or when Sarvam fails,
+    # she falls back to Microsoft neural voices (edge-tts) and Groq Whisper, then the browser's voices.
+    SARVAM_API_KEY: Optional[str] = None
+    SARVAM_TTS_MODEL: str = "bulbul:v3"
+    SARVAM_SPEAKER: str = "priya"             # a bulbul:v3 voice; it speaks all three languages
+    SARVAM_STT_MODEL: str = "saaras:v4"
 
     @property
     def cors_origins(self) -> List[str]:

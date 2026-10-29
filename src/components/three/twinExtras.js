@@ -666,7 +666,8 @@ export function createClearancePin(fp, roof) {
 // Crowds
 // ══════════════════════════════════════════════════════════════════════════════
 
-function shortestPath(adjacency, from, to) {
+/** Dijkstra over the walking graph: node ids from `from` to `to`, or null. */
+export function shortestPath(adjacency, from, to) {
   const dist = { [from]: 0 };
   const prev = {};
   const open = new Set([from]);

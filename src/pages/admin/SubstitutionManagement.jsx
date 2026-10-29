@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertTriangle, CalendarDays, CheckCircle2, ChevronRight, ClipboardList, History, Plus, RefreshCw, X,
 } from 'lucide-react';
-import { substitutionsApi, timetableApi, classroomsApi, facultyApi } from '../../utils/api.js';
+import { authApi, substitutionsApi, timetableApi, classroomsApi, facultyApi } from '../../utils/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import PageTransition from '../../components/PageTransition.jsx';
 
@@ -821,6 +821,12 @@ export default function SubstitutionManagement() {
   const { user } = useAuth();
   const [tab, setTab] = useState('today');
   const [todayCount, setTodayCount] = useState(null);
+  // HODs arrange substitutions for their own department's classes; admins for every department
+  const [hodOf, setHodOf] = useState(null);
+  useEffect(() => {
+    if (user?.role === 'admin') setHodOf([]);
+    else authApi.roles().then((r) => setHodOf(r.hod_departments || [])).catch(() => setHodOf([]));
+  }, [user?.role]);
 
   const refreshTodayCount = useCallback(async () => {
     try {
@@ -830,6 +836,14 @@ export default function SubstitutionManagement() {
   }, []);
 
   useEffect(() => { refreshTodayCount(); }, [refreshTodayCount]);
+
+  if (user?.role !== 'admin' && hodOf && hodOf.length === 0) {
+    return (
+      <PageTransition className="mx-auto max-w-xl px-4 pt-32 text-center">
+        <p className="text-slate-300">Substitutions are arranged by HODs (for their department) and admins.</p>
+      </PageTransition>
+    );
+  }
 
   return (
     <PageTransition className="min-h-screen px-4 pb-20 pt-28 sm:px-6">
@@ -848,6 +862,7 @@ export default function SubstitutionManagement() {
               </h1>
               <p style={{ color: '#94A3B8', fontSize: 13, margin: '6px 0 0' }}>
                 Temporarily assign replacement faculty without modifying the official timetable.
+                {hodOf?.length > 0 && <> You arrange substitutions for <b style={{ color: '#F59E0B' }}>{hodOf.join(', ')}</b> classes.</>}
               </p>
             </div>
             <div style={{ textAlign: 'center' }}>

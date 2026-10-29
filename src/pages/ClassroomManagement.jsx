@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { classroomsApi } from '../utils/api';
 import ClassroomInfoPanel from '../components/timetable/ClassroomInfoPanel';
 import TimeMachineBar from '../components/timetable/TimeMachineBar';
+import SectionTabs, { ROOM_TABS } from '../components/layout/SectionTabs.jsx';
 
 const STATUS_COLORS = { occupied:'#EF4444', available:'#10B981', maintenance:'#F59E0B' };
 const TYPE_ICONS    = { 'Lecture Hall':'🏫', 'Lab':'🔬', 'Seminar Hall':'🎙️', 'Conference Room':'💼' };
@@ -30,6 +31,7 @@ export default function ClassroomManagement() {
 
   return (
     <div style={s.page}>
+      <div style={{ padding: '28px 32px 0' }}><SectionTabs title="Rooms" tabs={ROOM_TABS} /></div>
       {/* Header */}
       <div style={s.header}>
         <div>

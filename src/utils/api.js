@@ -13,7 +13,7 @@ export function wsUrl(path) {
 }
 
 const TOKEN_KEY = 'campussphere_token';
-const AUTH_PAGES = ['/login', '/register', '/forgot-password'];
+const AUTH_PAGES = ['/login', '/forgot-password'];
 
 function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -32,8 +32,9 @@ async function request(path, options = {}) {
     headers,
   });
 
-  // 401 on any route except login/register means the session is gone
-  if (res.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/register')) {
+  // 401 with a token on any route except login/register means the session is gone. Without one
+  // it's a visitor (the public /visit page) calling a members-only route: just fail that call.
+  if (res.status === 401 && token && !path.startsWith('/auth/login') && !path.startsWith('/auth/register')) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem('campussphere_user');
     if (!AUTH_PAGES.includes(window.location.pathname)) {
@@ -58,6 +59,8 @@ export const authApi = {
   login:    (email, password)  => request('/auth/login',    { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (data)             => request('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
   me:       ()                 => request('/auth/me'),
+  /** What I hold beyond my role (HOD of..., Principal, CoE, no-dues desks), for my menus. */
+  roles:    ()                 => request('/auth/me/roles'),
   stats:    ()                 => request('/auth/stats'),
   users:    (params = {})      => request('/auth/users?' + new URLSearchParams(params)),
   getUser:  (id)               => request(`/auth/users/${id}`),
@@ -92,11 +95,70 @@ export const aiApi = {
   // messages: [{ role: 'user' | 'assistant', content }], target: null | student persona id
   chat: (messages, target = null) =>
     request('/ai/chat', { method: 'POST', body: JSON.stringify({ messages, target }) }),
+  /** Mitra's Morning Brief for the signed-in user (built from the timetable and requests, no AI call). */
+  brief: () => request('/ai/brief'),
+};
+
+// ── Mitra, the walking 3D guide (public: visitors and parents use it without an account) ─
+async function guideFetch(path, options = {}) {
+  const res = await fetch(`${BASE_URL}/ai/guide${path}`, {
+    ...options,
+    headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}), ...(options.headers || {}) },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+  return res;
+}
+
+export const guideApi = {
+  // lang: 'auto' | 'en-IN' | 'hi-IN' | 'te-IN'; at: the place id Mitra is standing at
+  chat: (messages, lang, at) => guideFetch('/chat', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages, lang, at }),
+  }).then((r) => r.json()),
+  voice: () => guideFetch('/voice').then((r) => r.json()),
+  /** Submit a request Mitra prepared, after the student taps Confirm (signed-in students only). */
+  confirm: (token) => request('/ai/guide/confirm', { method: 'POST', body: JSON.stringify({ token }) }),
+  speak: (text, lang) => guideFetch('/speak', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, lang }),
+  }).then((r) => r.blob()),
+  listen: (audio, lang = 'unknown') => {
+    const fd = new FormData();
+    fd.append('file', audio, 'speech.webm');
+    return guideFetch(`/listen?lang=${encodeURIComponent(lang)}`, { method: 'POST', body: fd }).then((r) => r.json());
+  },
+};
+
+// ── Mitra's knowledge base (admin): the crawled college website ─────────────────
+export const knowledgeApi = {
+  status:    ()            => request('/knowledge/status'),
+  refresh:   ()            => request('/knowledge/refresh', { method: 'POST' }),
+  search:    (q)           => request('/knowledge/search?' + new URLSearchParams({ q })),
+  documents: (params = {}) => request('/knowledge/documents?' + new URLSearchParams(params)),
+  remove:    (id)          => request(`/knowledge/documents/${id}`, { method: 'DELETE' }),
+  asked:     (unanswered)  => request('/knowledge/asked?' + new URLSearchParams({ unanswered: !!unanswered })),
+  questions: ()            => request('/knowledge/questions'),
+  upload: async (file, title, link) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('title', title || '');
+    fd.append('link', link || '');
+    const res = await fetch(`${BASE_URL}/knowledge/upload`, {
+      method: 'POST', headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {}, body: fd,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+    return body;
+  },
 };
 
 // ── Announcements ──────────────────────────────────────────────────────────────
 export const announcementsApi = {
   list:       (params = {}) => request('/announcements/?' + new URLSearchParams(params)),
+  mine:       ()            => request('/announcements/mine'),      // notices meant for me
+  canPost:    ()            => request('/announcements/can-post'),  // where I may post
+  posted:     ()            => request('/announcements/posted'),    // what I posted
   create:     (data)        => request('/announcements/', { method: 'POST', body: JSON.stringify(data) }),
   deactivate: (id)          => request(`/announcements/${id}/deactivate`, { method: 'PATCH' }),
   delete:     (id)          => request(`/announcements/${id}`, { method: 'DELETE' }),
@@ -253,6 +315,162 @@ export function saveBlob(blob, filename) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
+
+// ── Class attendance (marking by period, the 75% / 65% analysis) ──────────────────
+export const attendanceApi = {
+  rules:       ()                 => request('/attendance/rules'),
+  saveRules:   (data)             => request('/attendance/rules', { method: 'PUT', body: JSON.stringify(data) }),
+  classes:     (date, scope = 'mine') => request(`/attendance/classes?date=${date}&scope=${scope}`),
+  session:     (entryId, date)    => request(`/attendance/session?entry_id=${entryId}&date=${date}`),
+  save:        (data)             => request('/attendance/session', { method: 'PUT', body: JSON.stringify(data) }),
+  setGroup:    (data)             => request('/attendance/group', { method: 'PUT', body: JSON.stringify(data) }),
+  me:          ()                 => request('/attendance/me'),
+  mySections:  ()                 => request('/attendance/my-sections'),
+  section:     (section)          => request(`/attendance/section?section=${encodeURIComponent(section)}`),
+  overview:    ()                 => request('/attendance/overview'),
+};
+
+// ── Accreditation Autopilot (admins and the Principal) ─────────────────────────
+export const institutionApi = {
+  achievements: (f = {}) => request(`/institution/achievements?${new URLSearchParams(Object.fromEntries(Object.entries(f).filter(([, v]) => v)))}`),
+  addAchievement: (data) => request('/institution/achievements', { method: 'POST', body: JSON.stringify(data) }),
+  removeAchievement: (id) => request(`/institution/achievements/${id}`, { method: 'DELETE' }),
+  stats:      ()         => request('/institution/stats'),
+  setStat:    (data)     => request('/institution/stats', { method: 'PUT', body: JSON.stringify(data) }),
+  meetings:   (body, year) => request(`/institution/meetings?${new URLSearchParams(Object.fromEntries(Object.entries({ body, year }).filter(([, v]) => v)))}`),
+  addMeeting: (data)     => request('/institution/meetings', { method: 'POST', body: JSON.stringify(data) }),
+  setDecision: (id, index, status) => request(`/institution/meetings/${id}`, { method: 'PATCH', body: JSON.stringify({ index, status }) }),
+};
+
+export const researchApi = {
+  access:     ()                        => request('/research/access'),
+  faculty:    (prog = 'IT', former = false) => request(`/research/faculty?programme=${prog}&include_former=${former}`),
+  saveRecord: (data)                    => request('/research/faculty', { method: 'PUT', body: JSON.stringify(data) }),
+  items:      (prog = 'IT', filters = {}) => request(`/research/items?${new URLSearchParams({ programme: prog, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== '' && v !== null && v !== undefined)) })}`),
+  mine:       ()                        => request('/research/mine'),
+  addItem:    (data)                    => request('/research/items', { method: 'POST', body: JSON.stringify(data) }),
+  removeItem: (id)                      => request(`/research/items/${id}`, { method: 'DELETE' }),
+  verify:     (id, verified)            => request(`/research/items/${id}/verify`, { method: 'POST', body: JSON.stringify({ verified }) }),
+  evidence:   (id, name)                => requestBlob(`/research/items/${id}/evidence`).then((b) => saveBlob(b, name || `evidence-${id}`)),
+  upload:     (id, file)                => uploadFile(`/research/items/${id}/evidence`, file),
+  activities: (prog = 'IT', year)       => request(`/research/activities?programme=${prog}${year ? `&year=${year}` : ''}`),
+  addActivity: (data)                   => request('/research/activities', { method: 'POST', body: JSON.stringify(data) }),
+  removeActivity: (id)                  => request(`/research/activities/${id}`, { method: 'DELETE' }),
+  summary:    (prog = 'IT')             => request(`/research/summary?programme=${prog}`),
+};
+
+export const feedbackApi = {
+  access:    ()                 => request('/feedback/access'),
+  templates: ()                 => request('/feedback/templates'),
+  forms:     (year, programme)  => request(`/feedback/forms?${new URLSearchParams({ ...(year ? { year } : {}), ...(programme ? { programme } : {}) })}`),
+  create:    (data)             => request('/feedback/forms', { method: 'POST', body: JSON.stringify(data) }),
+  setStatus: (id, status)       => request(`/feedback/forms/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  remove:    (id)               => request(`/feedback/forms/${id}`, { method: 'DELETE' }),
+  mine:      ()                 => request('/feedback/mine'),
+  respond:   (id, answers)      => request(`/feedback/forms/${id}/respond`, { method: 'POST', body: JSON.stringify({ answers }) }),
+  results:   (id)               => request(`/feedback/forms/${id}/results`),
+  saveAtr:   (id, data)         => request(`/feedback/forms/${id}/atr`, { method: 'PUT', body: JSON.stringify(data) }),
+  approveAtr: (id, approved)    => request(`/feedback/forms/${id}/atr/approve`, { method: 'POST', body: JSON.stringify({ approved }) }),
+  publishAtr: (id, published)   => request(`/feedback/forms/${id}/atr/publish`, { method: 'POST', body: JSON.stringify({ published }) }),
+  publicForm: (code)            => request(`/feedback/public/${encodeURIComponent(code)}`),
+  publicRespond: (code, role, answers) => request(`/feedback/public/${encodeURIComponent(code)}`, { method: 'POST', body: JSON.stringify({ role, answers }) }),
+};
+
+export const resultsApi = {
+  overview:    (prog = 'IT') => request(`/results/overview?programme=${prog}`),
+  saveSummary: (data)        => request('/results/summaries', { method: 'PUT', body: JSON.stringify(data) }),
+  saveBatch:   (data)        => request('/results/batches', { method: 'PUT', body: JSON.stringify(data) }),
+};
+
+export const obeApi = {
+  access:     (prog = 'IT')          => request(`/obe/access?programme=${prog}`),
+  outcomes:   (prog = 'IT')          => request(`/obe/outcomes?programme=${prog}`),
+  saveOutcome: (data)                => request('/obe/outcomes', { method: 'PUT', body: JSON.stringify(data) }),
+  years:      (prog = 'IT')          => request(`/obe/years?programme=${prog}`),
+  courses:    (prog = 'IT', year)    => request(`/obe/courses?programme=${prog}${year ? `&year=${year}` : ''}`),
+  course:     (id)                   => request(`/obe/courses/${id}`),
+  saveCos:    (id, cos)              => request(`/obe/courses/${id}/cos`, { method: 'PUT', body: JSON.stringify(cos) }),
+  saveMapping: (id, cells)           => request(`/obe/courses/${id}/mapping`, { method: 'PUT', body: JSON.stringify(cells) }),
+  saveSurvey: (id, rows)             => request(`/obe/courses/${id}/survey`, { method: 'PUT', body: JSON.stringify(rows) }),
+  removeAssessment: (id)             => request(`/obe/assessments/${id}`, { method: 'DELETE' }),
+  template:   (id, name)             => requestBlob(`/obe/courses/${id}/template`).then((b) => saveBlob(b, name)),
+  importSheet: async (id, { name, kind, held_on, file }) => {
+    const fd = new FormData();
+    fd.append('name', name); fd.append('kind', kind);
+    if (held_on) fd.append('held_on', held_on);
+    fd.append('file', file);
+    const res = await fetch(`${BASE_URL}/obe/courses/${id}/assessments`, {
+      method: 'POST', headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {}, body: fd,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((Array.isArray(body.detail) ? body.detail.map((d) => d.msg).join('; ') : body.detail) || `HTTP ${res.status}`);
+    return body;
+  },
+  attainment: (prog = 'IT', year)    => request(`/obe/attainment?programme=${prog}${year ? `&year=${year}` : ''}`),
+  saveSettings: (data)               => request('/obe/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  actions:    (prog = 'IT')          => request(`/obe/actions?programme=${prog}`),
+  addAction:  (data)                 => request('/obe/actions', { method: 'POST', body: JSON.stringify(data) }),
+  updateAction: (id, data)           => request(`/obe/actions/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+};
+
+export const placementsApi = {
+  access:   ()                     => request('/placements/access'),
+  me:       ()                     => request('/placements/me'),
+  register: (id)                   => request(`/placements/drives/${id}/register`, { method: 'POST' }),
+  withdraw: (id)                   => request(`/placements/drives/${id}/withdraw`, { method: 'POST' }),
+  drives:   (batch)                => request(`/placements/drives${batch ? `?batch=${batch}` : ''}`),
+  drive:    (id)                   => request(`/placements/drives/${id}`),
+  create:   (data)                 => request('/placements/drives', { method: 'POST', body: JSON.stringify(data) }),
+  results:  (id, results, declare) => request(`/placements/drives/${id}/results`, { method: 'PUT', body: JSON.stringify({ results, declare }) }),
+  report:   (dept = 'IT', batch)   => request(`/placements/report?department=${encodeURIComponent(dept)}${batch ? `&batch=${batch}` : ''}`),
+};
+
+export const reportsApi = {
+  departments: ()             => request('/reports/departments'),
+  department:  (dept = 'IT')  => request(`/reports/department?department=${encodeURIComponent(dept)}`),
+};
+
+export const accreditationApi = {
+  access:   ()                   => request('/accreditation/access'),
+  // scope: 'both' (the Civil & IT Block pilot) | 'civil' | 'it'; NBA needs 'civil' or 'it'
+  report:   (framework = 'naac', scope = 'both') => request(`/accreditation/report?framework=${framework}&scope=${scope}`),
+  desks:    (scope = 'both')     => request(`/accreditation/desks?scope=${scope}`),
+  evidencePack: (framework = 'naac', scope = 'both') => requestBlob(`/accreditation/report.pdf?framework=${framework}&scope=${scope}`)
+    .then((b) => saveBlob(b, `MVSR-${framework.toUpperCase()}-${scope === 'both' ? 'Civil-IT' : scope === 'it' ? 'IT' : 'Civil'}-evidence-pack.pdf`)),
+  // Workspace: yearly values, evidence, team, college facts
+  wsAccess:  ()                                => request('/accreditation/workspace/access'),
+  wsGrid:    (framework, programme = '')       => request(`/accreditation/workspace?framework=${framework}&programme=${encodeURIComponent(programme)}`),
+  wsMetric:  (framework, code, programme = '') => request(`/accreditation/workspace/metric?framework=${framework}&code=${encodeURIComponent(code)}&programme=${encodeURIComponent(programme)}`),
+  wsValue:   (data)                            => request('/accreditation/workspace/value', { method: 'PUT', body: JSON.stringify(data) }),
+  wsLock:    (data)                            => request('/accreditation/workspace/lock', { method: 'POST', body: JSON.stringify(data) }),
+  wsSnapshot: (framework, programme = '')      => request(`/accreditation/workspace/snapshot?framework=${framework}&programme=${encodeURIComponent(programme)}`, { method: 'POST' }),
+  wsLink:    (data)                            => request('/accreditation/workspace/evidence/link', { method: 'POST', body: JSON.stringify(data) }),
+  wsRemoveEvidence: (id)                       => request(`/accreditation/workspace/evidence/${id}`, { method: 'DELETE' }),
+  wsEvidenceFile: (id, name)                   => requestBlob(`/accreditation/workspace/evidence/${id}/file`).then((b) => saveBlob(b, name || `evidence-${id}`)),
+  wsUpload: async ({ framework, code, programme = '', year, title, signed = false, file }) => {
+    const fd = new FormData();
+    Object.entries({ framework, code, programme, year, title, signed }).forEach(([k, v]) => fd.append(k, String(v)));
+    fd.append('file', file);
+    const res = await fetch(`${BASE_URL}/accreditation/workspace/evidence`, {
+      method: 'POST', headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {}, body: fd,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((Array.isArray(body.detail) ? body.detail.map((d) => d.msg).join('; ') : body.detail) || `HTTP ${res.status}`);
+    return body;
+  },
+  wsTeam:    ()                                => request('/accreditation/workspace/team'),
+  wsPeople:  ()                                => request('/accreditation/workspace/people'),
+  wsTeamAdd: (data)                            => request('/accreditation/workspace/team', { method: 'POST', body: JSON.stringify(data) }),
+  wsTeamRemove: (id)                           => request(`/accreditation/workspace/team/${id}`, { method: 'DELETE' }),
+  wsFacts:   ()                                => request('/accreditation/workspace/facts'),
+  wsFactSet: (data)                            => request('/accreditation/workspace/facts', { method: 'PUT', body: JSON.stringify(data) }),
+  readiness: (framework, programme = '')       => request(`/accreditation/readiness?framework=${framework}&programme=${programme}`),
+  exportWorkbook: (framework, programme = '')  => requestBlob(`/accreditation/export/workbook?framework=${framework}&programme=${programme}`)
+    .then((b) => saveBlob(b, `MVSR-${framework.toUpperCase()}${programme ? '-' + programme : ''}-data.xlsx`)),
+  exportEvidence: (framework, programme = '')  => requestBlob(`/accreditation/export/evidence.zip?framework=${framework}&programme=${programme}`)
+    .then((b) => saveBlob(b, `MVSR-${framework.toUpperCase()}-evidence.zip`)),
+  mockVisit: (programme = 'IT')                => request(`/accreditation/mock-visit?programme=${programme}`),
+};
 
 // ── Joining after TGEAPCET counselling, college fees, originals register ──────
 const put = (path, data) => request(path, { method: 'PUT', body: JSON.stringify(data || {}) });

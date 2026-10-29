@@ -9,6 +9,7 @@ import TimeMachineBar from '../../components/timetable/TimeMachineBar.jsx';
 import { buildingsApi, classroomsApi, timetableApi } from '../../utils/api.js';
 import { istNow, toMinutes } from '../../components/three/twinExtras.js';
 import { floorName } from '../../utils/campus.js';
+import SectionTabs, { ROOM_TABS } from '../../components/layout/SectionTabs.jsx';
 
 // Colour and icon per room type
 const roomTypes = {
@@ -70,6 +71,7 @@ export default function FloorManagement() {
   return (
     <PageTransition className="min-h-screen px-4 pb-20 pt-28 sm:px-6">
       <div className="mx-auto max-w-7xl">
+      <SectionTabs title="Rooms" tabs={ROOM_TABS} />
 
         {/* Header */}
         <div className="mb-6">

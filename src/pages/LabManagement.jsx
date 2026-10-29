@@ -7,6 +7,7 @@ import { DashboardHeading } from './StudentDashboard.jsx';
 import { classroomsApi, timetableApi } from '../utils/api.js';
 import { istNow, toMinutes } from '../components/three/twinExtras.js';
 import { BUILDING_NAMES, DAY_SHORT as DAYS, floorName } from '../utils/campus.js';
+import SectionTabs, { ROOM_TABS } from '../components/layout/SectionTabs.jsx';
 
 
 export default function LabManagement() {
@@ -40,6 +41,7 @@ export default function LabManagement() {
 
   return (
     <PageTransition className="mx-auto min-h-screen max-w-6xl px-4 pb-20 pt-28 sm:px-6">
+      <SectionTabs title="Rooms" tabs={ROOM_TABS} />
       <DashboardHeading eyebrow="Laboratories" title="Every lab, and what's running in it now." />
       {error && <p className="mb-4 text-sm text-rose-300">{error}</p>}
       {!labs ? <p className="text-sm text-slate-400">Loading…</p> : (

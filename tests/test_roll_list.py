@@ -49,7 +49,12 @@ def login(email, pw):
 
 # ── The roster table itself ──────────────────────────────────────────────────
 c = sqlite3.connect(db_path)
-rows = c.execute("select roll_no, name, department, year, section, email, academic_year from student_roster").fetchall()
+# Generated placeholder lists (generate_placeholder_roster.py) use GEN- roll numbers on purpose: they can't match a real student
+rows = c.execute("select roll_no, name, department, year, section, email, academic_year from student_roster "
+                 "where coalesce(source, '') not like 'GENERATED placeholder%'").fetchall()
+placeholders = c.execute("select roll_no from student_roster where source like 'GENERATED placeholder%'").fetchall()
+n_all = len(rows) + len(placeholders)   # what the API lists: official and placeholder rows
+check("placeholder roll numbers can never match a real one", all(r[0].startswith("GEN-") and not ROLL.match(r[0]) for r in placeholders))
 check("roster has students", len(rows) > 0, len(rows))
 check("every roll number well-formed", all(ROLL.match(r[0]) for r in rows), [r[0] for r in rows if not ROLL.match(r[0])][:3])
 check("every student has a name", all(r[1] and r[1].strip() for r in rows))
@@ -66,8 +71,8 @@ office = login(emails["office"], demo_pw)
 student = login(emails["student"], demo_pw)
 s, d = call("GET", "/services/admin/roll-list?limit=2000", admin)
 check("admin: roll list 200", s == 200, d)
-check("total matches the database", d["total"] == len(rows), (d["total"], len(rows)))
-check("group counts add up", sum(g["students"] for g in d["groups"]) == len(rows))
+check("total matches the database", d["total"] == n_all, (d["total"], n_all))
+check("group counts add up", sum(g["students"] for g in d["groups"]) == n_all)
 check("section counts add up", all(sum(g["sections"].values()) == g["students"] for g in d["groups"]))
 db_groups = {(dep, y): n for dep, y, n in c.execute("select department, year, count(*) from student_roster group by 1, 2")}
 check("groups match the database", {(g["department"], g["year"]): g["students"] for g in d["groups"]} == db_groups)
@@ -85,7 +90,7 @@ check("section filter", s == 200 and d3["total"] == n_sec)
 s, d4 = call("GET", f"/services/admin/roll-list?q={sample[0]}", admin)
 check("search by roll number", s == 200 and d4["total"] == 1 and d4["items"][0]["name"] == sample[1])
 s, d5 = call("GET", "/services/admin/roll-list?limit=5", admin)
-check("limit respected", s == 200 and len(d5["items"]) == 5 and d5["total"] == len(rows))
+check("limit respected", s == 200 and len(d5["items"]) == 5 and d5["total"] == n_all)
 
 # ── Profile checks against the roll list (two temporary students) ────────────
 registered = {r[0] for r in c.execute("select roll_no from student_profiles where roll_no is not null")}
@@ -112,6 +117,10 @@ try:
     check("branch taken from the roll list", d.get("department") == target[2], (d.get("department"), target[2]))
     check("roll number stored upper-case", d.get("roll_no") == target[0], d.get("roll_no"))
     check("profile shows the roll-list entry", (d.get("roll_list") or {}).get("name") == target[1], d.get("roll_list"))
+    check("linked profile is locked", d.get("locked") is True, d)
+    s, d = call("PUT", "/services/me/profile", t1, {**base, "roll_no": "9999-99-999-998", "year": target[3] % 4 + 1, "section": wrong_sec})
+    check("student can't change own roll / year / section once linked", s == 200 and d.get("roll_no") == target[0]
+          and d.get("year") == target[3] and d.get("section") == target[4], d)
     s, d = call("PUT", "/services/me/profile", t2, {**base, "year": target[3], "section": target[4]})
     check("same roll on a second account -> 409", s == 409, d)
     s, d = call("PUT", f"/services/admin/students/{temp[1]}/profile", admin, {**base, "year": target[3], "section": target[4]})

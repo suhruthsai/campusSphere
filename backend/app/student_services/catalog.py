@@ -12,6 +12,8 @@ ROLE_LABELS = {
     "hod": "HOD",
     "coe": "Controller of Examinations",
     "principal": "Principal",
+    "placement_officer": "Training & Placement Officer",   # assignments, not steps in any document's chain
+    "placement_director": "Director (Placements & Projects)",
 }
 
 # Hours an approver has before a request counts as overdue at their desk.

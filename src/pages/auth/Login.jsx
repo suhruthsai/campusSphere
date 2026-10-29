@@ -119,15 +119,16 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email */}
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-400">Email address</label>
+              <label className="mb-1.5 block text-xs font-medium text-slate-400">Email or roll number</label>
               <div className="relative">
                 <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
-                  type="email"
+                  type="text"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  placeholder="you@suhruth.edu"
+                  placeholder="you@suhruth.edu or 2451-24-737-001"
                   className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-9 pr-4 text-sm text-white placeholder-slate-600 outline-none transition focus:border-[#00E5FF]/40 focus:bg-white/8"
                 />
               </div>
@@ -193,11 +194,14 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Register link */}
+          {/* No public sign-up: the college creates every account */}
           <p className="mt-5 text-center text-xs text-slate-500">
-            New to CampusSphere?{' '}
-            <Link to="/register" className="font-medium text-[#00E5FF] hover:underline">
-              Create account
+            No login yet? Students get a login slip from their class in-charge; staff, from the Admin Office.
+          </p>
+          <p className="mt-2 text-center text-xs text-slate-500">
+            Visiting as a parent?{' '}
+            <Link to="/visit" className="font-medium text-[#00E5FF] hover:underline">
+              Explore the campus with Mitra
             </Link>
           </p>
         </div>

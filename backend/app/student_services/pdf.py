@@ -281,6 +281,15 @@ def render_pdf(req: DocumentRequestModel) -> bytes:
 
     draw_footer(c, "This document is digitally approved and does not require a physical signature.", f"Verify at {url}")
 
+    if req.pilot_run:
+        # Generated pilot request: never a valid document, whatever the screens show
+        c.saveState()
+        c.setFillColor(colors.Color(0.8, 0.1, 0.1, alpha=0.18))
+        c.setFont("Helvetica-Bold", 54)
+        c.translate(W / 2, H / 2)
+        c.rotate(40)
+        c.drawCentredString(0, 0, "SAMPLE - NOT VALID")
+        c.restoreState()
     c.showPage()
     c.save()
     return buf.getvalue()

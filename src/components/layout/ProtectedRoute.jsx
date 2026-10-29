@@ -16,6 +16,11 @@ export default function ProtectedRoute({ children, allowedRoles }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // A temporary password (new account, admin reset): choose your own before anything else
+  if (user.must_change_password && location.pathname !== '/account') {
+    return <Navigate to="/account" replace />;
+  }
+
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to="/" replace />;
   }

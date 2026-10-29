@@ -95,8 +95,8 @@ export default function AdminDashboard() {
         setBuildingList(bldgsData);
         setAlerts(annsData.map((a, i) => ({
           id: a.id,
-          type: a.priority === 'high' ? 'error' : a.priority === 'medium' ? 'warning' : 'info',
-          msg: a.title + ' - ' + a.content,
+          type: a.priority === 'urgent' ? 'error' : a.priority === 'info' ? 'info' : 'warning',
+          msg: `${a.title} — ${a.body} (${a.for})`,
           time: new Date(a.created_at).toLocaleDateString()
         })));
         setTodaySubs(subsData || []);

@@ -10,10 +10,13 @@ export default function ProfileForm({ profile, onSaved }) {
     section: profile?.section || '',
     parent_name: profile?.parent_name || '',
     gender: profile?.gender || '',
+    preferred_name: profile?.preferred_name || '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const locked = !!profile?.locked;   // roll number, year and section come from the college roll list
+  const lockedCls = locked ? ' opacity-60' : '';
 
   const submit = async (e) => {
     e.preventDefault();
@@ -34,10 +37,15 @@ export default function ProfileForm({ profile, onSaved }) {
       <p className="text-sm text-slate-300">
         Certificates are printed from these details, so enter them exactly as in your college records.
       </p>
+      {locked && (
+        <p className="text-xs text-slate-400">
+          Roll number, year and section come from the college roll list. If any is wrong, contact the Admin Office.
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className={labelCls}>Roll number</label>
-          <input className={inputCls} value={form.roll_no} onChange={set('roll_no')} required placeholder="1602-23-733-001" />
+          <input className={inputCls + lockedCls} value={form.roll_no} onChange={set('roll_no')} required disabled={locked} placeholder="1602-23-733-001" />
         </div>
         <div>
           <label className={labelCls}>Department</label>
@@ -45,14 +53,14 @@ export default function ProfileForm({ profile, onSaved }) {
         </div>
         <div>
           <label className={labelCls}>Year</label>
-          <select className={inputCls} value={form.year} onChange={set('year')} required>
+          <select className={inputCls + lockedCls} value={form.year} onChange={set('year')} required disabled={locked}>
             <option value="">Select</option>
             {[1, 2, 3, 4].map((y) => <option key={y} value={y}>{['I', 'II', 'III', 'IV'][y - 1]} Year</option>)}
           </select>
         </div>
         <div>
           <label className={labelCls}>Section</label>
-          <input className={inputCls} value={form.section} onChange={set('section')} required maxLength={10} placeholder="A" />
+          <input className={inputCls + lockedCls} value={form.section} onChange={set('section')} required disabled={locked} maxLength={10} placeholder="A" />
         </div>
         <div>
           <label className={labelCls}>Father's / mother's name</label>
@@ -66,6 +74,10 @@ export default function ProfileForm({ profile, onSaved }) {
             <option value="female">Female</option>
             <option value="other">Other</option>
           </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label className={labelCls}>Call me (optional; for greetings, never on certificates)</label>
+          <input className={inputCls} value={form.preferred_name} onChange={set('preferred_name')} maxLength={40} placeholder="e.g. Manish" />
         </div>
       </div>
       {error && <p className="text-sm text-rose-300">{error}</p>}

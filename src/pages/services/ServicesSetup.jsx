@@ -15,6 +15,8 @@ const ROLES = [
   { id: 'hod', label: 'HOD', scope: 'department' },
   { id: 'principal', label: 'Principal', scope: 'college' },
   { id: 'coe', label: 'Controller of Examinations', scope: 'college' },
+  { id: 'placement_officer', label: 'Training & Placement Officer', scope: 'college' },
+  { id: 'placement_director', label: 'Director (Placements & Projects)', scope: 'college' },
 ];
 
 function Assignments({ people }) {
@@ -34,7 +36,7 @@ function Assignments({ people }) {
         role: form.role, user_id: form.user_id,
         department: scope === 'college' ? null : form.department,
         year: scope === 'section' ? Number(form.year) : null,
-        section: scope === 'section' ? form.section : null,
+        section: scope === 'section' || form.role === 'ahod' ? (form.section || null) : null,
       });
       setMsg(res.message);
       load();
@@ -68,6 +70,12 @@ function Assignments({ people }) {
             </select>
           </div>
         )}
+        {form.role === 'ahod' && (
+          <div className="sm:col-span-2">
+            <label className={labelCls}>Section (optional)</label>
+            <input className={inputCls} value={form.section} onChange={set('section')} maxLength={10} placeholder="All sections" />
+          </div>
+        )}
         {scope === 'section' && (
           <>
             <div className="sm:col-span-2">
@@ -98,7 +106,7 @@ function Assignments({ people }) {
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-white/5 text-slate-200">
                 <td className="py-2">{r.role_label}</td>
-                <td>{r.department == null ? 'College' : r.role === 'class_incharge' ? `${r.department} · Year ${r.year} · Sec ${r.section}` : r.department}</td>
+                <td>{r.department == null ? 'College' : r.role === 'class_incharge' ? `${r.department} · Year ${r.year} · Sec ${r.section}` : r.section ? `${r.department} · all ${r.section} sections` : r.department}</td>
                 <td>{r.user_name}</td>
                 <td className="text-right"><button onClick={() => remove(r.id)} aria-label="Remove" className="rounded p-1 text-slate-500 hover:text-rose-300"><Trash2 size={15} /></button></td>
               </tr>
