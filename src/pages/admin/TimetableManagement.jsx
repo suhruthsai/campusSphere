@@ -86,11 +86,11 @@ function EditEntryModal({ entry, classrooms, subjects, faculty, onSave, onClose,
   };
 
   const inp = {
-    background:"#1E293B",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,
-    color:"#F1F5F9",padding:"8px 12px",fontSize:13,outline:"none",
+    background:"var(--surface-solid)",border:"1px solid var(--border)",borderRadius:8,
+    color:"var(--text)",padding:"8px 12px",fontSize:13,outline:"none",
     fontFamily:"inherit",width:"100%",boxSizing:"border-box",
   };
-  const lbl = { display:"flex",flexDirection:"column",gap:6,fontSize:12,color:"#94A3B8",fontWeight:600 };
+  const lbl = { display:"flex",flexDirection:"column",gap:6,fontSize:12,color:"var(--text-2)",fontWeight:600 };
 
   return (
     <div style={{
@@ -98,20 +98,20 @@ function EditEntryModal({ entry, classrooms, subjects, faculty, onSave, onClose,
       display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:24,
     }}>
       <div style={{
-        background:"#0F172A",border:"1px solid rgba(0,229,255,0.3)",borderRadius:16,
+        background:"var(--surface-solid)",border:"1px solid rgba(0,229,255,0.3)",borderRadius:16,
         padding:28,width:"100%",maxWidth:640,maxHeight:"90vh",overflowY:"auto",
       }}>
         {/* Header */}
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
           <div>
-            <h2 style={{ color:"#fff",fontSize:18,fontWeight:900,margin:0 }}>
+            <h2 style={{ color:"var(--text)",fontSize:18,fontWeight:900,margin:0 }}>
               ✏️ Edit Timetable Entry
             </h2>
             <p style={{ color:"#F59E0B",fontSize:11,margin:"4px 0 0" }}>
               ⚠️ This permanently modifies the official timetable and is logged in the audit trail.
             </p>
           </div>
-          <button onClick={onClose} style={{ background:"none",border:"none",color:"#64748B",cursor:"pointer",fontSize:20 }}>✕</button>
+          <button onClick={onClose} style={{ background:"none",border:"none",color:"var(--text-3)",cursor:"pointer",fontSize:20 }}>✕</button>
         </div>
 
         {/* Before / After reference */}
@@ -119,7 +119,7 @@ function EditEntryModal({ entry, classrooms, subjects, faculty, onSave, onClose,
           background:"rgba(0,229,255,0.05)",border:"1px solid rgba(0,229,255,0.15)",
           borderRadius:10,padding:"10px 14px",marginBottom:20,fontSize:12,
         }}>
-          <span style={{ color:"#94A3B8" }}>Editing: </span>
+          <span style={{ color:"var(--text-2)" }}>Editing: </span>
           <span style={{ color:"#00E5FF",fontWeight:700 }}>
             {DAY_NAMES[entry.day_of_week]} · P{entry.period_number} · {entry.start_time}–{entry.end_time} · {entry.classroom_id} · {entry.section}
           </span>
@@ -211,7 +211,7 @@ function EditEntryModal({ entry, classrooms, subjects, faculty, onSave, onClose,
         </div>
 
         <div style={{ display:"flex",justifyContent:"space-between",marginTop:24,gap:12 }}>
-          <button onClick={onClose} style={{ background:"transparent",border:"1px solid rgba(255,255,255,0.15)",color:"#94A3B8",padding:"9px 20px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13 }}>
+          <button onClick={onClose} style={{ background:"transparent",border:"1px solid var(--border)",color:"var(--text-2)",padding:"9px 20px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13 }}>
             Cancel
           </button>
           <button
@@ -410,7 +410,7 @@ export default function TimetableManagement() {
         <div style={s.gridWrap}>
           <div style={s.gridTable}>
             <div style={s.gridCell("header")}>
-              <span style={{ fontSize: 11, color: "#94A3B8" }}>PERIODS \ DAYS</span>
+              <span style={{ fontSize: 11, color: "var(--text-2)" }}>PERIODS \ DAYS</span>
             </div>
             {DAY_NAMES.map(d => (
               <div key={d} style={s.gridCell("dayhead")}>
@@ -421,7 +421,7 @@ export default function TimetableManagement() {
               <div key={p} style={{ display: "contents" }}>
                 <div style={s.gridCell("periodlabel")}>
                   <div style={{ fontWeight: 800, color: "#00E5FF", fontSize: 13 }}>P{p}</div>
-                  <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 2 }}>{PERIOD_TIMES[p][0]} - {PERIOD_TIMES[p][1]}</div>
+                  <div style={{ fontSize: 10, color: "var(--text-2)", marginTop: 2 }}>{PERIOD_TIMES[p][0]} - {PERIOD_TIMES[p][1]}</div>
                 </div>
                 {DAY_NAMES.map(day => {
                   const cell = grid[day][p];
@@ -441,10 +441,10 @@ export default function TimetableManagement() {
                                 <span style={{ color: col, fontWeight: 700, fontSize: 12 }}>{e.subject_name}</span>
                                 {e.batch && <span style={s.batchBadge}>Batch {e.batch}</span>}
                               </div>
-                              <div style={{ color: "#F1F5F9", fontSize: 11, marginTop: 3, fontWeight: 600 }}>
+                              <div style={{ color: "var(--text)", fontSize: 11, marginTop: 3, fontWeight: 600 }}>
                                 👩‍🏫 {e.faculty_name}
                               </div>
-                              <div style={{ display: "flex", justifyContent: "space-between", color: "#94A3B8", fontSize: 10, marginTop: 4 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text-2)", fontSize: 10, marginTop: 4 }}>
                                 <span>🏛️ {e.classroom_id}</span>
                                 <span>👥 {e.section}</span>
                               </div>
@@ -464,7 +464,7 @@ export default function TimetableManagement() {
 
       {!loading && tab === "entries" && (
         <div style={s.tableWrap}>
-          <div style={{ padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.08)",fontSize:12,color:"#64748B" }}>
+          <div style={{ padding:"12px 16px",borderBottom:"1px solid var(--border)",fontSize:12,color:"var(--text-3)" }}>
             💡 Click <strong style={{color:"#F59E0B"}}>Edit</strong> on any row to permanently change it in the official timetable. Changes are logged in the audit trail.
           </div>
           <table style={s.table}>
@@ -507,7 +507,7 @@ export default function TimetableManagement() {
 
       {!loading && tab === "conflicts" && (
         <div style={s.conflictsWrap}>
-          <h2 style={{ fontSize: 18, color: "#fff", marginBottom: 12 }}>Timetable Room &amp; Faculty Conflicts</h2>
+          <h2 style={{ fontSize: 18, color: "var(--text)", marginBottom: 12 }}>Timetable Room &amp; Faculty Conflicts</h2>
           {conflicts?.total_conflicts === 0 ? (
             <div style={s.noConflict}>✅ 0 Conflicts Found. All classrooms, teachers, and student sections are 100% clash-free!</div>
           ) : (
@@ -518,8 +518,8 @@ export default function TimetableManagement() {
 
       {!loading && tab === "overrides" && (
         <div style={s.tableWrap}>
-          <div style={{display: "flex", justifyContent: "space-between", padding:"12px 16px", borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
-            <h2 style={{ fontSize: 18, color: "#fff", margin:0 }}>Active Overrides</h2>
+          <div style={{display: "flex", justifyContent: "space-between", padding:"12px 16px", borderBottom:"1px solid var(--border)"}}>
+            <h2 style={{ fontSize: 18, color: "var(--text)", margin:0 }}>Active Overrides</h2>
             <button style={s.btnPrimary} onClick={() => alert("Use Faculty Substitutions (/admin/substitutions) for date-specific overrides.")}>+ Add Override</button>
           </div>
           <table style={s.table}>
@@ -557,7 +557,7 @@ export default function TimetableManagement() {
 
       {!loading && tab === "import" && (
         <div style={s.conflictsWrap}>
-          <h2 style={{ fontSize: 18, color: "#fff", marginBottom: 12 }}>CSV Import</h2>
+          <h2 style={{ fontSize: 18, color: "var(--text)", marginBottom: 12 }}>CSV Import</h2>
           <input type="file" accept=".csv" ref={fileRef} style={{display:"none"}} onChange={e => setCsvFile(e.target.files[0])} />
           <div style={{ display:"flex",gap:12,flexWrap:"wrap",marginBottom:16 }}>
             <button style={s.btnPrimary} onClick={() => fileRef.current.click()}>
@@ -570,9 +570,9 @@ export default function TimetableManagement() {
               </>
             )}
           </div>
-          {csvLoading && <p style={{color:"#94A3B8"}}>Processing…</p>}
+          {csvLoading && <p style={{color:"var(--text-2)"}}>Processing…</p>}
           {csvResult && (
-            <pre style={{ background:"#1E293B",padding:14,borderRadius:8,color:"#F1F5F9",fontSize:12,overflowX:"auto" }}>
+            <pre style={{ background:"var(--surface-solid)",padding:14,borderRadius:8,color:"var(--text)",fontSize:12,overflowX:"auto" }}>
               {JSON.stringify(csvResult, null, 2)}
             </pre>
           )}
@@ -584,44 +584,44 @@ export default function TimetableManagement() {
 }
 
 const s = {
-  page: { padding: "0", maxWidth: "1400px", margin: "0 auto", color: "#E2E8F0", fontFamily: "system-ui, sans-serif" },
+  page: { padding: "0", maxWidth: "1400px", margin: "0 auto", color: "var(--text)", fontFamily: "system-ui, sans-serif" },
   topBar: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px", marginBottom: "24px" },
-  title: { fontSize: "24px", fontWeight: 800, color: "#FFFFFF", margin: 0 },
-  subtitle: { fontSize: "13px", color: "#94A3B8", marginTop: "4px" },
+  title: { fontSize: "24px", fontWeight: 800, color: "var(--text)", margin: 0 },
+  subtitle: { fontSize: "13px", color: "var(--text-2)", marginTop: "4px" },
   topActions: { display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" },
-  toggleGroup: { display: "flex", background: "#1E293B", borderRadius: "8px", padding: "3px", border: "1px solid rgba(255,255,255,0.1)" },
-  toggleBtn: { background: "transparent", border: "none", color: "#94A3B8", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: 600 },
+  toggleGroup: { display: "flex", background: "var(--surface-solid)", borderRadius: "8px", padding: "3px", border: "1px solid var(--border)" },
+  toggleBtn: { background: "transparent", border: "none", color: "var(--text-2)", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: 600 },
   toggleActive: { background: "#00E5FF", color: "#0F172A", fontWeight: 700 },
-  select: { background: "#1E293B", color: "#F1F5F9", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "8px 14px", fontSize: "13px", fontWeight: 600, outline: "none" },
+  select: { background: "var(--surface-solid)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "8px", padding: "8px 14px", fontSize: "13px", fontWeight: 600, outline: "none" },
   btnPrimary: { background: "linear-gradient(135deg, #00E5FF, #3B82F6)", border: "none", color: "#0F172A", padding: "8px 16px", borderRadius: "8px", fontWeight: 700, fontSize: "13px", cursor: "pointer" },
   btnEdit: { background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.4)", color: "#FBBF24", padding: "4px 10px", borderRadius: "6px", fontSize: "12px", cursor: "pointer", fontWeight: 700 },
-  tabRow: { display: "flex", gap: "8px", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "12px", marginBottom: "20px" },
-  tabBtn: { background: "transparent", border: "none", color: "#94A3B8", padding: "8px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 600 },
+  tabRow: { display: "flex", gap: "8px", borderBottom: "1px solid var(--border)", paddingBottom: "12px", marginBottom: "20px" },
+  tabBtn: { background: "transparent", border: "none", color: "var(--text-2)", padding: "8px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 600 },
   tabActive: { background: "rgba(0, 229, 255, 0.15)", color: "#00E5FF", border: "1px solid rgba(0, 229, 255, 0.3)" },
-  gridWrap: { overflowX: "auto", background: "#0F172A", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", padding: "16px" },
+  gridWrap: { overflowX: "auto", background: "var(--surface-solid)", border: "1px solid var(--border)", borderRadius: "12px", padding: "16px" },
   gridTable: { display: "grid", gridTemplateColumns: "130px repeat(6, minmax(180px, 1fr))", gap: "8px" },
   gridCell: (type) => ({
-    background: type === "header" || type === "dayhead" ? "#1E293B" : type === "periodlabel" ? "#141E33" : "#111827",
+    background: type === "header" || type === "dayhead" ? "var(--surface-2)" : type === "periodlabel" ? "var(--surface-2)" : "var(--surface-solid)",
     padding: type === "cell" ? "8px" : "12px 8px",
     borderRadius: "8px",
-    border: "1px solid rgba(255,255,255,0.06)",
+    border: "1px solid var(--surface-2)",
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
     textAlign: type === "dayhead" || type === "periodlabel" ? "center" : "left",
     minHeight: type === "cell" ? "90px" : "auto",
   }),
-  freeSlot: { color: "#475569", fontSize: "11px", textAlign: "center", margin: "auto 0" },
+  freeSlot: { color: "var(--text-3)", fontSize: "11px", textAlign: "center", margin: "auto 0" },
   entryChip: { borderRadius: "6px", padding: "6px 8px", marginBottom: "6px" },
   batchBadge: { fontSize: "9px", background: "#3B82F633", color: "#60A5FA", padding: "2px 5px", borderRadius: "4px", border: "1px solid #3B82F655" },
-  tableWrap: { overflowX: "auto", background: "#0F172A", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.1)" },
+  tableWrap: { overflowX: "auto", background: "var(--surface-solid)", borderRadius: "12px", border: "1px solid var(--border)" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: "13px" },
-  th: { textAlign: "left", padding: "12px 16px", background: "#1E293B", color: "#94A3B8", borderBottom: "1px solid rgba(255,255,255,0.1)" },
-  tr: { borderBottom: "1px solid rgba(255,255,255,0.05)" },
+  th: { textAlign: "left", padding: "12px 16px", background: "var(--surface-solid)", color: "var(--text-2)", borderBottom: "1px solid var(--border)" },
+  tr: { borderBottom: "1px solid var(--surface-2)" },
   td: { padding: "12px 16px" },
-  code: { background: "#1E293B", padding: "3px 6px", borderRadius: "4px", color: "#38BDF8", fontSize: "12px" },
+  code: { background: "var(--surface-solid)", padding: "3px 6px", borderRadius: "4px", color: "#38BDF8", fontSize: "12px" },
   btnDanger: { background: "#EF444422", border: "1px solid #EF444455", color: "#F87171", padding: "4px 8px", borderRadius: "6px", fontSize: "11px", cursor: "pointer" },
-  conflictsWrap: { background: "#0F172A", padding: "24px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.1)" },
+  conflictsWrap: { background: "var(--surface-solid)", padding: "24px", borderRadius: "12px", border: "1px solid var(--border)" },
   noConflict: { background: "#10B98118", border: "1px solid #10B98144", color: "#34D399", padding: "16px", borderRadius: "8px", fontWeight: 600 },
-  center: { textAlign: "center", padding: "48px", color: "#94A3B8" },
+  center: { textAlign: "center", padding: "48px", color: "var(--text-2)" },
 };

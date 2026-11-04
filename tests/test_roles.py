@@ -68,6 +68,10 @@ r, uid = roles("joinee")
 adm = con.execute("SELECT status FROM admissions WHERE user_id = ?", (uid,)).fetchone()
 check("joinee: Joining open only while the application is in progress",
       r["joining_open"] == (adm is not None and adm[0] != "enrolled") or (adm is None and r["joining_open"]), (r, adm))
+jyear = (con.execute("SELECT year FROM student_profiles WHERE user_id = ?", (uid,)).fetchone() or [None])[0]
+jexit = con.execute("SELECT 1 FROM exits WHERE user_id = ?", (uid,)).fetchone() is not None
+check("joinee: an enrolled first-year can reach Leaving (withdrawal)",
+      r["leaving_open"] == (jexit or jyear == 4 or bool(adm and adm[0] == "enrolled" and jyear in (None, 1))), (r, adm, jyear, jexit))
 con.close()
 
 print(f"\n{len(failures)} failure(s)" if failures else "\nAll roles checks passed")

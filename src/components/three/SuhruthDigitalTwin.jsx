@@ -599,12 +599,6 @@ export default function SuhruthDigitalTwin() {
   const weatherData  = useCampusStore((state) => state.weatherData);
   const isRaining    = useCampusStore((state) => state.isRaining);
   const toggleRain   = useCampusStore((state) => state.toggleRain);
-  const initWebSocket = useCampusStore((state) => state.initWebSocket);
-
-  useEffect(() => {
-    initWebSocket();
-  }, [initWebSocket]);
-
   // Three.js Refs
   const sceneRef        = useRef(null);
   const ambientLightRef = useRef(null);
@@ -1389,9 +1383,10 @@ export default function SuhruthDigitalTwin() {
       for (let i = 0; i <= 6; i++) paint(69.7 + i * 4.6, -38, 0.12, 12);
       paint(69.7 + 13.8, -44, 27.6, 0.12);
 
-      // Initialize Zustand state with smartParkingSpots
-      const initialStoreSpots = smartParkingSpots.map(s => ({ id: s.id, occupied: Math.random() > 0.3 }));
-      useCampusStore.getState().initParkingSpots(initialStoreSpots);
+      // The college has no parking sensors, so the bays are a fixed arrangement (the same one the API
+      // uses for driving directions, backend/app/core/state.py): one bay in three is free. Nothing here
+      // pretends to be a live reading, so no car moves on its own.
+      const initialStoreSpots = smartParkingSpots.map((s, i) => ({ id: s.id, occupied: i % 3 !== 0 }));
 
       // Create geometry for each spot (bay tint + car)
       smartParkingSpots = smartParkingSpots.map((s, idx) => {
@@ -1422,23 +1417,6 @@ export default function SuhruthDigitalTwin() {
     }
 
     createParkingLotFeatures();
-
-    // Subscribe to parking changes in Zustand to update 3D scene.
-    // (The plain zustand store only supports subscribe(listener), so compare manually.)
-    const spotsById = new Map(smartParkingSpots.map((s) => [s.id, s]));
-    const unsubParking = useCampusStore.subscribe((state, prev) => {
-      const parkingData = state.parkingData;
-      if (parkingData === prev.parkingData || !parkingData || !parkingData.spots) return;
-
-      parkingData.spots.forEach(storeSpot => {
-        const meshSpot = spotsById.get(storeSpot.id);
-        if (meshSpot) {
-          meshSpot.vehicle.visible = storeSpot.occupied;
-          meshSpot.indicator.material.opacity = storeSpot.occupied ? 0 : 0.35;
-        }
-      });
-    });
-
 
     // ══════════════════════════════════════════════════════════════════════════
     // REALISTIC 3D STUDENTS & ANIMATION SYSTEM
@@ -4788,7 +4766,6 @@ export default function SuhruthDigitalTwin() {
 
     // Cleanup
     return () => {
-      if (typeof unsubParking === 'function') unsubParking();
       cancelAnimationFrame(animId);
       resizeObserver.disconnect();
       visibilityObserver.disconnect();

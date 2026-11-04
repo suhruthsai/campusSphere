@@ -20,6 +20,15 @@ export function getStoredUser() {
   }
 }
 
+/** True when a sign-in token is stored (a guest has none, so there is nothing to wait for) */
+export function hasStoredToken() {
+  try {
+    return Boolean(localStorage.getItem(TOKEN_KEY));
+  } catch {
+    return false;
+  }
+}
+
 /** Clear all auth data */
 export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY);

@@ -169,6 +169,22 @@ def enrolment(c: Ctx) -> dict:
     }
 
 
+def _nba_sfr(c: Ctx) -> list:
+    """The same ratio on NBA's basis (years 2-4 against service records), so the two figures on this page
+    don't look like a contradiction: they answer different questions and the detail says which."""
+    from backend.app.models.research import FacultyRecordModel
+    from backend.app.research.summary import year_summary
+    out = []
+    progs = sorted({dept_key(p) for (p,) in c.db.query(FacultyRecordModel.department).distinct() if c.scope.has(p)})
+    y0 = int(academic_year(c.now)[:4])
+    last = f"{y0 - 1}-{y0 % 100:02d}"          # the last completed academic year
+    for p in progs:
+        s = year_summary(c.db, p, last)
+        if s["sfr"]:
+            out.append(f"{p} {s['sfr']}:1")
+    return out
+
+
 def student_faculty_ratio(c: Ctx) -> dict:
     students = Counter(dept_key(r.department) for r in c.roster)
     faculty = Counter(dept_key(f.department) for f in c.faculty if f.is_active is not False)
@@ -188,7 +204,10 @@ def student_faculty_ratio(c: Ctx) -> dict:
     return {
         "title": "Student – full-time faculty ratio",
         "value": f"{total_s / total_f:.1f} : 1" if total_f else "Not computable yet",
-        "detail": (f"For {', '.join(d for d, _ in matched)} (students on the roll ÷ faculty profiles)."
+        "detail": (f"For {', '.join(d for d, _ in matched)}: every year on the roll ÷ faculty profiles, as NAAC 2.2.2 "
+                   "counts it."
+                   + (f" NBA 5.1 counts only years II-IV against service records, which gives "
+                      f"{', '.join(nba)} for the last completed year." if (nba := _nba_sfr(c)) else "")
                    if matched else "Needs both the roll list and the faculty profiles.")
                   + (f" Add faculty profiles for {', '.join(without)} to cover every department." if without else "")
                   + (f" Import the {', '.join(c.missing_roster())} roll list to include it." if c.missing_roster() else "")
@@ -344,12 +363,16 @@ def room_utilisation(c: Ctx) -> dict:
         booked[e.classroom_id].add((e.day_of_week, e.period_number))
     rows = sorted(([c.rooms[rid].name if rid in c.rooms else rid, len(s), f"{round(100 * len(s) / slots)}%"]
                    for rid, s in booked.items()), key=lambda r: -r[1])
-    unused = [r.name for r in c.rooms.values() if r.location_type in TEACHING_ROOMS and r.id not in booked]
+    teaching_rooms = [r for r in c.rooms.values() if r.location_type in TEACHING_ROOMS]
+    teaching = len(teaching_rooms)
+    unused = [r.name for r in teaching_rooms if r.id not in booked]
     avg = round(mean(100 * len(s) / slots for s in booked.values())) if booked else 0
     return {
         "title": "Room utilisation (periods booked per week)",
         "value": f"{avg}% average across {len(booked)} rooms",
-        "detail": f"Out of {slots} teaching slots a week." + (f" Not timetabled: {', '.join(unused)}." if unused else ""),
+        "detail": f"Out of {slots} teaching slots a week; {teaching} classrooms and laboratories in scope"
+                  + (f", of which {len(unused)} are not timetabled at all ({', '.join(unused)})." if unused
+                     else ", every one of them timetabled."),
         "status": "live" if c.entries else "missing",
         "source": _src("timetable_entries", len(c.entries)),
         "table": _table(["Room", "Periods booked", "Utilisation"], rows),

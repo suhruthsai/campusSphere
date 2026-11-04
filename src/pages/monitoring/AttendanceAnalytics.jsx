@@ -37,7 +37,7 @@ export default function AttendanceAnalytics() {
             <BarChart data={attendance.departmentWise} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
               <XAxis dataKey="dept" tick={{ fontSize: 10, fill: '#64748b' }} />
               <YAxis domain={[70, 100]} tick={{ fontSize: 9, fill: '#64748b' }} />
-              <Tooltip contentStyle={{ background: '#04091a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 }} />
+              <Tooltip contentStyle={{ background: 'var(--surface-solid)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 11 }} />
               <Bar dataKey="students" name="Students %" radius={[4, 4, 0, 0]}>
                 {attendance.departmentWise.map((d) => (
                   <rect key={d.dept} fill={d.color} />
@@ -56,10 +56,10 @@ export default function AttendanceAnalytics() {
             <LineChart data={attendance.weeklyStudents.map((w, i) => ({
               day: w.day, students: w.percentage, faculty: attendance.weeklyFaculty[i]?.percentage ?? 0,
             }))} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-2)" />
               <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#64748b' }} />
               <YAxis domain={[50, 100]} tick={{ fontSize: 9, fill: '#64748b' }} />
-              <Tooltip contentStyle={{ background: '#04091a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 }} />
+              <Tooltip contentStyle={{ background: 'var(--surface-solid)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 11 }} />
               <Line type="monotone" dataKey="students" stroke="#818CF8" strokeWidth={2} dot={{ r: 3, fill: '#818CF8' }} name="Students %" />
               <Line type="monotone" dataKey="faculty"  stroke="#00FFB3" strokeWidth={2} dot={{ r: 3, fill: '#00FFB3' }} name="Faculty %"  />
             </LineChart>

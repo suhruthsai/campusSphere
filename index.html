@@ -8,6 +8,9 @@
     content="A futuristic 3D Smart Campus Digital Twin platform for university navigation, analytics, events, students, and faculty." />
   <meta name="theme-color" content="#050816" />
   <title>Campus Sphere - Smart Campus Digital Twin</title>
+  <!-- The saved theme is applied before the first paint, so neither theme flashes the other while the campus loads -->
+  <script>try{if(localStorage.getItem('campussphere_theme')==='light')document.documentElement.dataset.theme='light'}catch(e){}</script>
+  <style>html,body{background:#050a1c;margin:0}html[data-theme=light],html[data-theme=light] body{background:#f2f5fc}</style>
 </head>
 
 <body>

@@ -66,6 +66,10 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# Test mode lets students mark their own fees as paid, so it must never reach real students.
+if settings.ENVIRONMENT == "production" and settings.PAYMENT_MODE == "test":
+    raise RuntimeError("PAYMENT_MODE=test is not allowed in production. Set PAYMENT_MODE=off until a live gateway is wired up.")
+
 if not settings.SECRET_KEY:
     if settings.ENVIRONMENT == "production":
         raise RuntimeError("SECRET_KEY must be set in production.")

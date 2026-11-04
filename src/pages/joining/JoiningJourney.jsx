@@ -10,6 +10,7 @@ import {
 } from '../../components/joining/joiningUi.jsx';
 import { btnGhost, btnPrimary, inputCls, labelCls } from '../../components/services/requestUi.jsx';
 import { joiningApi } from '../../utils/api.js';
+import { fmtDay } from '../../utils/campus.js';
 
 const EDITABLE = ['draft', 'needs_changes'];
 const FIELDS = [
@@ -50,6 +51,7 @@ export default function JoiningJourney() {
   const [optional, setOptional] = useState([]);
   const [boarding, setBoarding] = useState('');
   const [checkout, setCheckout] = useState(null);
+  const [issued, setIssued] = useState({});          // the date printed on a certificate, for documents with a validity rule
   const fileInputs = useRef({});
 
   const flash = (text, bad = false) => setMsg({ text, bad });
@@ -81,6 +83,14 @@ export default function JoiningJourney() {
   }), 'Details saved.');
 
   const required = useMemo(() => (app?.checklist || []).filter((c) => c.required), [app]);
+  const bring = useMemo(() => {
+    const list = app?.checklist || [];
+    return {
+      originals: list.filter((c) => c.original && c.required).map((c) => c.label),
+      sets: list.find((c) => c.copy_unit === 'sets' && c.copies)?.copies || 3,
+      photos: list.find((c) => c.copy_unit === 'photos')?.copies || 0,
+    };
+  }, [app]);
   const readyToSubmit = app && !app.missing_fields.length && required.every((c) => c.upload && c.upload.status !== 'rejected');
   const feeHeads = config?.fee_heads || [];
   const total = feeHeads.filter((h) => !h.optional || optional.includes(h.id)).reduce((n, h) => n + h.amount, 0);
@@ -95,7 +105,7 @@ export default function JoiningJourney() {
   return (
     <PageTransition className="mx-auto min-h-screen max-w-5xl space-y-5 px-4 pb-20 pt-28 sm:px-6">
       <DashboardHeading eyebrow={`Joining · ${config.academic_year}`} title="Welcome to MVSR. Let's get you enrolled." />
-      {msg.text && <p className={`rounded-lg border px-3 py-2 text-sm ${msg.bad ? 'border-rose-400/30 bg-rose-500/10 text-rose-200' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'}`}>{msg.text}</p>}
+      {msg.text && <p role={msg.bad ? 'alert' : 'status'} className={`sticky top-20 z-20 rounded-lg border px-3 py-2 text-sm backdrop-blur ${msg.bad ? 'border-rose-400/30 bg-rose-500/10 text-rose-200' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'}`}>{msg.text}</p>}
 
       {!app ? (
         <section className="glass rounded-2xl p-6">
@@ -160,6 +170,13 @@ export default function JoiningJourney() {
 
           <Section n={2} title="Documents">
             <p className="mb-3 text-xs text-slate-400">Clear scans or photos, PDF/JPG/PNG, up to 5 MB each. The list depends on your category and the options above — save your details first.</p>
+            {bring.originals.length > 0 && (
+              <div className="mb-4 rounded-xl border border-cyan-400/25 bg-cyan-500/5 px-4 py-3 text-sm text-slate-200">
+                <p className="font-bold text-cyan-200">Bring these to the Admin Office</p>
+                <p className="mt-1">The <b>originals</b> of: {bring.originals.join(', ')}.</p>
+                <p className="mt-1"><b>{bring.sets} sets of photocopies</b> of your documents, arranged in the same order{bring.photos ? <>, and <b>{bring.photos} recent passport-size photos</b></> : ''}.</p>
+              </div>
+            )}
             <ul className="space-y-2">
               {app.checklist.map((c) => {
                 const up = c.upload;
@@ -168,6 +185,17 @@ export default function JoiningJourney() {
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-white">{c.label} {!c.required && <span className="text-xs font-normal text-slate-500">(optional)</span>}</p>
                       {c.hint && <p className="text-xs text-slate-500">{c.hint}</p>}
+                      {c.required && (c.original || c.copies > 0) && (
+                        <p className="text-[11px] text-slate-400">Bring: {[c.original && 'original', c.copies > 0 && `${c.copies} ${c.copy_unit === 'photos' ? 'photos' : 'photocopy sets'}`].filter(Boolean).join(' + ')}</p>
+                      )}
+                      {c.needs_issue_date && editable && up?.status !== 'accepted' && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                          <label className="text-[11px] text-amber-200" htmlFor={`iss-${c.key}`}>Date printed on the certificate (on or after {fmtDay(c.issued_after)})</label>
+                          <input id={`iss-${c.key}`} type="date" className={`${inputCls} !w-auto !py-1`} max={new Date().toISOString().slice(0, 10)} value={issued[c.key] || ''}
+                            onChange={(e) => setIssued((m) => ({ ...m, [c.key]: e.target.value }))} />
+                        </div>
+                      )}
+                      {up?.issued_on && <p className="text-[11px] text-slate-400">Dated {fmtDay(up.issued_on)}</p>}
                       {up ? (
                         <p className={`text-xs ${DOC_STATUS[up.status].cls}`}>{DOC_STATUS[up.status].label}{up.remarks ? ` — ${up.remarks}` : ''} · {up.original_name}</p>
                       ) : <p className="text-xs text-amber-300">{c.required ? 'Not uploaded' : 'Not uploaded (optional)'}</p>}
@@ -178,8 +206,8 @@ export default function JoiningJourney() {
                         <>
                           <input type="file" accept={c.images_only ? 'image/png,image/jpeg' : 'application/pdf,image/png,image/jpeg'} className="hidden"
                             ref={(el) => { fileInputs.current[c.key] = el; }}
-                            onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) run(`up-${c.key}`, () => joiningApi.uploadDoc(c.key, file), `${c.label} uploaded.`); }} />
-                          <button className={btnPrimary} disabled={busy === `up-${c.key}`} onClick={() => fileInputs.current[c.key]?.click()}>
+                            onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) run(`up-${c.key}`, () => joiningApi.uploadDoc(c.key, file, issued[c.key]), `${c.label} uploaded.`); }} />
+                          <button className={btnPrimary} disabled={busy === `up-${c.key}` || (c.needs_issue_date && !issued[c.key])} title={c.needs_issue_date && !issued[c.key] ? 'Enter the date on the certificate first' : undefined} onClick={() => fileInputs.current[c.key]?.click()}>
                             <FileUp size={14} /> {busy === `up-${c.key}` ? 'Uploading…' : up ? 'Replace' : 'Upload'}
                           </button>
                           {up && <button className={btnGhost} aria-label="Remove" onClick={() => run(`rm-${c.key}`, () => joiningApi.removeDoc(c.key))}><Trash2 size={14} /></button>}

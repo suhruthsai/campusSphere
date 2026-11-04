@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { useCampusStore } from '../store/useCampusStore.js';
 import { guideApi } from '../utils/api.js';
-import { getStoredUser } from '../utils/auth.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import * as voice from '../utils/mitraVoice.js';
 
 const LANGS = [
@@ -38,6 +38,7 @@ const GREETING = {
 const MAX_HISTORY = 10;
 
 export default function GuidePanel({ defaultOpen = false }) {
+  const { user } = useAuth();
   const open = useCampusStore((s) => s.guideOpen);
   const setOpen = useCampusStore((s) => s.setGuideOpen);
   const [lang, setLang] = useState('auto');
@@ -188,7 +189,7 @@ export default function GuidePanel({ defaultOpen = false }) {
 
   askRef.current = ask;
   const greeting = GREETING[shownLang];
-  const isStudent = getStoredUser()?.role === 'student';
+  const isStudent = user?.role === 'student';
   const suggestions = isStudent ? [...STUDENT_SUGGESTIONS[shownLang], ...SUGGESTIONS[shownLang].slice(0, 2)] : SUGGESTIONS[shownLang];
   const walking = !!tour && !tour.done;
   const compact = walking && !expanded;
@@ -211,7 +212,8 @@ export default function GuidePanel({ defaultOpen = false }) {
   );
 
   return (
-    <div className="fixed bottom-5 left-5 z-50">
+    // On desktop she sits just right of the sidebar (Shell sets --sw to its width)
+    <div className="keep-dark fixed bottom-5 left-5 z-50 lg:left-[calc(var(--sw,0px)+1.25rem)]">
       <AnimatePresence mode="wait">
         {open && compact && (
           // While she walks: a slim bar, so the 3D map (and Mitra) stay in view

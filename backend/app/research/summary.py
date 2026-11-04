@@ -6,7 +6,8 @@ verified research items count.
   S             students of the programme's 2nd, 3rd and 4th years (admitted + lateral of those batches)
   SFR (5.1)     S / faculty in position;   RF = S / 20 (faculty required)
   FCR (5.2)     cadre proportion against the 1 : 2 : 6 norm: (AF1/RF1 + 0.6 AF2/RF2 + 0.4 AF3/RF3) x 12.5, at most 25
-  FQI (5.3)     2.5 x (10X + 4Y) / F, X = PhDs, Y = M.Tech / M.E, F = max(faculty in position, RF), at most 25
+  FQI (5.3)     2.5 x (10X + 6Y + 2Z) / F, as the SAR weights it: X = PhDs, Y = any other postgraduate degree,
+                Z = the rest (undergraduate or not recorded), F = max(faculty in position, RF), at most 25
   retention     share of the faculty two years earlier still in position (5.4)
   NAAC          % with PhD (2.4.2), average teaching experience (2.4.3), grants (3.1.1), % with projects (3.1.3),
                 journal papers per teacher (3.3.2), books / chapters / proceedings per teacher (3.3.3),
@@ -22,6 +23,7 @@ from backend.app.models.research import DeptActivityModel, FacultyRecordModel, R
 
 PUBLICATIONS = ("journal",)
 BOOKISH = ("book", "chapter", "conference")
+POSTGRADUATE = ("M.Tech", "M.E", "M.Sc", "MBA", "MCA")      # the SAR's Y: a master's degree short of a PhD
 
 
 def bounds(year: str) -> tuple:
@@ -59,13 +61,14 @@ def year_summary(db: Session, programme: str, year: str) -> dict:
     RF = S / 20 if S else None
     cadre = Counter(r.designation for r in fac)
     phd = sum(1 for r in fac if r.qualification == "PhD")
-    mtech = sum(1 for r in fac if r.qualification in ("M.Tech", "M.E"))
+    mtech = sum(1 for r in fac if r.qualification in POSTGRADUATE)
+    ug = F - phd - mtech                      # undergraduate or not recorded: the SAR's Z, worth 2
     fcr = fqi = None
     if RF:
         rf1, rf2, rf3 = RF / 9, 2 * RF / 9, 6 * RF / 9
         fcr = min(25.0, (cadre["Professor"] / rf1 + 0.6 * cadre["Associate Professor"] / rf2 +
                          0.4 * cadre["Assistant Professor"] / rf3) * 12.5)
-        fqi = min(25.0, 2.5 * (10 * phd + 4 * mtech) / max(F, RF)) if F else 0.0
+        fqi = min(25.0, 2.5 * (10 * phd + 6 * mtech + 2 * ug) / max(F, RF)) if F else 0.0
     prev = in_position(records, f"{int(year[:4]) - 2}-{(int(year[:4]) - 1) % 100:02d}")
     retained = sum(1 for r in prev if r in fac)
     ids = [r.id for r in fac]
@@ -85,7 +88,7 @@ def year_summary(db: Session, programme: str, year: str) -> dict:
         "year": year, "faculty": F, "students": S, "required": r2(RF), "sfr": r2(S / F) if S and F else None,
         "cadre": {"Professor": cadre["Professor"], "Associate Professor": cadre["Associate Professor"],
                   "Assistant Professor": cadre["Assistant Professor"]},
-        "fcr_marks": r2(fcr), "phd": phd, "mtech": mtech, "fqi_marks": r2(fqi),
+        "fcr_marks": r2(fcr), "phd": phd, "mtech": mtech, "ug": ug, "fqi_marks": r2(fqi),
         "phd_pct": round(100 * phd / F, 1) if F else None,
         "avg_experience": round(sum(experience(r, year) for r in fac) / F, 1) if F else None,
         "retention_pct": round(100 * retained / len(prev), 1) if prev else None, "retained": retained, "two_years_ago": len(prev),

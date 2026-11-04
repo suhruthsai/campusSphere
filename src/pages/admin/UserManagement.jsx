@@ -223,7 +223,7 @@ export default function UserManagement() {
                     className="rounded-xl px-4 py-2 text-xs font-semibold transition"
                     style={activeTab === tab
                       ? { background: 'rgba(0,229,255,0.12)', color: '#00E5FF', border: '1px solid rgba(0,229,255,0.25)' }
-                      : { background: 'rgba(255,255,255,0.04)', color: '#64748b', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      : { background: 'var(--surface-2)', color: 'var(--text-3)', border: '1px solid var(--border)' }}>
               {tab} <span className="ml-1 opacity-60">{counts[tab]}</span>
             </button>
           ))}
@@ -244,7 +244,7 @@ export default function UserManagement() {
         </div>
 
         {/* Table */}
-        <div className="overflow-hidden rounded-2xl border border-white/8" style={{ background: 'rgba(4,9,26,0.7)', backdropFilter: 'blur(16px)' }}>
+        <div className="overflow-hidden rounded-2xl border border-white/8" style={{ background: 'var(--surface)', backdropFilter: 'blur(16px)' }}>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -387,7 +387,7 @@ function Modal({ title, onClose, children }) {
                 style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
       <motion.div initial={{ scale: 0.9, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 16 }}
                   className="w-full max-w-md rounded-3xl border border-white/10 p-6 shadow-2xl"
-                  style={{ background: 'rgba(4,9,26,0.95)', backdropFilter: 'blur(32px)' }}>
+                  style={{ background: 'var(--surface-solid)', backdropFilter: 'blur(32px)' }}>
         <div className="mb-5 flex items-center justify-between">
           <h2 className="font-display text-base font-bold text-white">{title}</h2>
           <button onClick={onClose} className="rounded-xl border border-white/10 bg-white/5 p-1.5 text-slate-400 hover:text-white transition">

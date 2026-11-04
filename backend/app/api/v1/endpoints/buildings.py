@@ -5,12 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from backend.app.core.security import require_admin
+from backend.app.core.security import get_optional_user, require_admin
 from backend.app.db.session import get_db
 from backend.app.models.campus import BuildingModel
 from backend.app.schemas.campus import BuildingOut
 
 router = APIRouter()
+public_router = APIRouter()   # the building list the open campus map needs (no account)
 
 # MVSR Nadergul buildings, with the same ids as the 3D twin. Seeded into the database once;
 # after that the admin edits them under Admin → Buildings.
@@ -50,10 +51,15 @@ class BuildingIn(BaseModel):
     health: str = Field("Good", pattern=r"^(Good|Warning|Critical)$")
 
 
-@router.get("/", response_model=List[BuildingOut])
-def get_buildings(db: Session = Depends(get_db)):
+# Guests get what is on the map (name, type, floors, colour, position); the upkeep status and head-counts stay internal
+PUBLIC_FIELDS = ("id", "name", "type", "x", "z", "height", "floors", "color", "departments")
+
+
+@public_router.get("/", response_model=None)
+def get_buildings(db: Session = Depends(get_db), current: Optional[dict] = Depends(get_optional_user)):
     _ensure_seeded(db)
-    return db.query(BuildingModel).order_by(BuildingModel.name).all()
+    rows = [BuildingOut.model_validate(b).model_dump() for b in db.query(BuildingModel).order_by(BuildingModel.name).all()]
+    return rows if current else [{k: r[k] for k in PUBLIC_FIELDS} for r in rows]
 
 
 @router.post("/", response_model=BuildingOut, status_code=201, summary="Add a building (admin only)")

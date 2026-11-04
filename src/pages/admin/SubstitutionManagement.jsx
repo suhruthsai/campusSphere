@@ -45,16 +45,16 @@ const Badge = ({ children, color = '#00E5FF' }) => (
   }}>{children}</span>
 );
 
-const Pill = ({ label, value, color = '#94A3B8' }) => (
+const Pill = ({ label, value, color = 'var(--text-2)' }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-    <span style={{ fontSize: 10, color: '#64748B', textTransform: 'uppercase', letterSpacing: 1 }}>{label}</span>
+    <span style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 1 }}>{label}</span>
     <span style={{ fontSize: 13, color, fontWeight: 600 }}>{value || '—'}</span>
   </div>
 );
 
 const Card = ({ children, style = {} }) => (
   <div style={{
-    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+    background: 'var(--surface-2)', border: '1px solid var(--border)',
     borderRadius: 12, padding: 16, ...style,
   }}>{children}</div>
 );
@@ -68,8 +68,8 @@ const Btn = ({ children, variant = 'primary', onClick, disabled, style = {} }) =
   const variants = {
     primary:  { background: 'linear-gradient(135deg,#00E5FF,#3B82F6)', color: '#0F172A' },
     danger:   { background: '#EF444422', border: '1px solid #EF444455', color: '#F87171' },
-    ghost:    { background: 'rgba(255,255,255,0.06)', color: '#CBD5E1' },
-    cancel:   { background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: '#94A3B8' },
+    ghost:    { background: 'var(--surface-2)', color: 'var(--text-2)' },
+    cancel:   { background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-2)' },
     success:  { background: '#10B98122', border: '1px solid #10B98144', color: '#34D399' },
   };
   return <button style={{ ...base, ...variants[variant] }} onClick={onClick} disabled={disabled}>{children}</button>;
@@ -96,7 +96,7 @@ function SubCard({ sub, onCancel, compact = false }) {
           {isActive
             ? <span style={{ fontSize: 16 }}>🟡</span>
             : <span style={{ fontSize: 16 }}>⚫</span>}
-          <span style={{ fontWeight: 800, color: '#fff', fontSize: 14 }}>
+          <span style={{ fontWeight: 800, color: 'var(--text)', fontSize: 14 }}>
             TEMPORARY SUBSTITUTION
           </span>
           <Badge color={isActive ? '#F59E0B' : '#EF4444'}>{sub.status.toUpperCase()}</Badge>
@@ -110,10 +110,10 @@ function SubCard({ sub, onCancel, compact = false }) {
 
       {/* Details grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
-        <Pill label="Date" value={sub.date} color="#E2E8F0" />
+        <Pill label="Date" value={sub.date} color="var(--text)" />
         <Pill label="Period" value={`P${sub.period_number} · ${sub.start_time}–${sub.end_time}`} color="#38BDF8" />
         <Pill label="Room" value={sub.classroom_id} color="#38BDF8" />
-        <Pill label="Section" value={sub.section} color="#E2E8F0" />
+        <Pill label="Section" value={sub.section} color="var(--text)" />
         <Pill label="Subject" value={sub.subject_name} color="#A78BFA" />
         <Pill label="Reason" value={sub.reason} color="#FBBF24" />
       </div>
@@ -136,7 +136,7 @@ function SubCard({ sub, onCancel, compact = false }) {
       </div>
 
       {/* Footer */}
-      <div style={{ fontSize: 10, color: '#475569', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ fontSize: 10, color: 'var(--text-3)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <span>Created by: {sub.created_by}</span>
         <span>•</span>
         <span>{new Date(sub.created_at).toLocaleString()}</span>
@@ -165,10 +165,10 @@ function TodayTab({ onCancel }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
-          <h2 style={{ color: '#fff', fontSize: 18, fontWeight: 800, margin: 0 }}>
+          <h2 style={{ color: 'var(--text)', fontSize: 18, fontWeight: 800, margin: 0 }}>
             📅 Today's Substitutions
           </h2>
-          <p style={{ color: '#64748B', fontSize: 12, margin: '4px 0 0' }}>
+          <p style={{ color: 'var(--text-3)', fontSize: 12, margin: '4px 0 0' }}>
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
         </div>
@@ -177,13 +177,13 @@ function TodayTab({ onCancel }) {
         </Btn>
       </div>
 
-      {loading && <div style={{ textAlign: 'center', padding: 40, color: '#64748B' }}>Loading…</div>}
+      {loading && <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>Loading…</div>}
 
       {!loading && subs.length === 0 && (
         <Card style={{ textAlign: 'center', padding: 40 }}>
           <CheckCircle2 size={36} color="#10B981" style={{ margin: '0 auto 12px' }} />
           <p style={{ color: '#34D399', fontWeight: 700, fontSize: 15 }}>No substitutions scheduled for today</p>
-          <p style={{ color: '#64748B', fontSize: 12 }}>All faculty are available per the official timetable.</p>
+          <p style={{ color: 'var(--text-3)', fontSize: 12 }}>All faculty are available per the official timetable.</p>
         </Card>
       )}
 
@@ -314,8 +314,8 @@ function CreateTab({ user, onCreated }) {
 
   return (
     <div>
-      <h2 style={{ color: '#fff', fontSize: 18, fontWeight: 800, marginBottom: 4 }}>➕ Create Substitution</h2>
-      <p style={{ color: '#64748B', fontSize: 12, marginBottom: 20 }}>
+      <h2 style={{ color: 'var(--text)', fontSize: 18, fontWeight: 800, marginBottom: 4 }}>➕ Create Substitution</h2>
+      <p style={{ color: 'var(--text-3)', fontSize: 12, marginBottom: 20 }}>
         Step {step} of 3 — {step === 1 ? 'Select Date & Slot' : step === 2 ? 'Assign Replacement Faculty' : 'Confirm'}
       </p>
 
@@ -324,7 +324,7 @@ function CreateTab({ user, onCreated }) {
         {[1,2,3].map(s => (
           <div key={s} style={{
             flex: 1, height: 4, borderRadius: 4,
-            background: s <= step ? 'linear-gradient(90deg,#00E5FF,#3B82F6)' : 'rgba(255,255,255,0.08)',
+            background: s <= step ? 'linear-gradient(90deg,#00E5FF,#3B82F6)' : 'var(--border)',
             transition: 'background .3s',
           }} />
         ))}
@@ -378,14 +378,14 @@ function CreateTab({ user, onCreated }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Original class card */}
           <Card style={{ borderLeft: '4px solid #00E5FF' }}>
-            <p style={{ color: '#94A3B8', fontSize: 11, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <p style={{ color: 'var(--text-2)', fontSize: 11, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
               📋 Official Timetable — Original Schedule
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
-              <Pill label="Date" value={form.date} color="#E2E8F0" />
+              <Pill label="Date" value={form.date} color="var(--text)" />
               <Pill label="Period" value={`P${form.period} · ${periodInfo?.start}–${periodInfo?.end}`} color="#38BDF8" />
               <Pill label="Room" value={form.classroom_id} color="#38BDF8" />
-              <Pill label="Section" value={originalEntry.section} color="#E2E8F0" />
+              <Pill label="Section" value={originalEntry.section} color="var(--text)" />
               <Pill label="Subject" value={originalEntry.subject_name} color="#A78BFA" />
               <Pill label="Original Faculty" value={originalEntry.faculty_name} color="#F87171" />
             </div>
@@ -396,7 +396,7 @@ function CreateTab({ user, onCreated }) {
 
           {/* Replacement faculty selector */}
           <Card>
-            <p style={{ color: '#94A3B8', fontSize: 11, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <p style={{ color: 'var(--text-2)', fontSize: 11, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
               👤 Select Replacement Faculty
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -435,7 +435,7 @@ function CreateTab({ user, onCreated }) {
           {/* Conflict result */}
           {checkingConflict && (
             <Card>
-              <p style={{ color: '#94A3B8', fontSize: 13 }}>🔍 Checking faculty availability…</p>
+              <p style={{ color: 'var(--text-2)', fontSize: 13 }}>🔍 Checking faculty availability…</p>
             </Card>
           )}
           {!checkingConflict && conflict && (
@@ -450,7 +450,7 @@ function CreateTab({ user, onCreated }) {
                     <span style={{ color: '#F87171', fontWeight: 800, fontSize: 14 }}>⚠️ FACULTY CONFLICT</span>
                   </div>
                   <p style={{ color: '#FCA5A5', fontSize: 13 }}>{conflict.conflict_detail}</p>
-                  <p style={{ color: '#94A3B8', fontSize: 12, marginTop: 6 }}>Please select a different faculty member.</p>
+                  <p style={{ color: 'var(--text-2)', fontSize: 12, marginTop: 6 }}>Please select a different faculty member.</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -480,10 +480,10 @@ function CreateTab({ user, onCreated }) {
               📋 TEMPORARY FACULTY SUBSTITUTION — CONFIRMATION
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <Pill label="Date" value={new Date(form.date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} color="#E2E8F0" />
+              <Pill label="Date" value={new Date(form.date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} color="var(--text)" />
               <Pill label="Time" value={`${periodInfo?.start}–${periodInfo?.end} (Period ${form.period})`} color="#38BDF8" />
               <Pill label="Room" value={form.classroom_id} color="#38BDF8" />
-              <Pill label="Section" value={originalEntry.section} color="#E2E8F0" />
+              <Pill label="Section" value={originalEntry.section} color="var(--text)" />
               <Pill label="Subject" value={originalEntry.subject_name} color="#A78BFA" />
               <Pill label="Reason" value={reason} color="#FBBF24" />
             </div>
@@ -502,7 +502,7 @@ function CreateTab({ user, onCreated }) {
                 <div style={{ color: '#34D399', fontWeight: 700, fontSize: 14 }}>{replacementFaculty?.name}</div>
               </div>
             </div>
-            {notes && <p style={{ color: '#94A3B8', fontSize: 12, fontStyle: 'italic' }}>Notes: {notes}</p>}
+            {notes && <p style={{ color: 'var(--text-2)', fontSize: 12, fontStyle: 'italic' }}>Notes: {notes}</p>}
           </Card>
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between' }}>
@@ -603,7 +603,7 @@ function ManageTab({ user, onCancelled }) {
 
   return (
     <div>
-      <h2 style={{ color: '#fff', fontSize: 18, fontWeight: 800, marginBottom: 16 }}>🗂 Manage Substitutions</h2>
+      <h2 style={{ color: 'var(--text)', fontSize: 18, fontWeight: 800, marginBottom: 16 }}>🗂 Manage Substitutions</h2>
 
       {/* Filters */}
       <Card style={{ marginBottom: 16 }}>
@@ -632,10 +632,10 @@ function ManageTab({ user, onCancelled }) {
         </div>
       </Card>
 
-      {loading && <div style={{ textAlign: 'center', padding: 40, color: '#64748B' }}>Loading…</div>}
+      {loading && <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>Loading…</div>}
 
       {!loading && subs.length === 0 && (
-        <Card style={{ textAlign: 'center', padding: 32, color: '#64748B' }}>No substitutions found for the selected filters.</Card>
+        <Card style={{ textAlign: 'center', padding: 32, color: 'var(--text-3)' }}>No substitutions found for the selected filters.</Card>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -665,11 +665,11 @@ function ManageTab({ user, onCancelled }) {
           >
             <motion.div
               initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-              style={{ background: '#0F172A', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 520 }}
+              style={{ background: 'var(--surface-solid)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 520 }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                <h3 style={{ color: '#fff', margin: 0 }}>✏️ Edit Substitution</h3>
-                <button onClick={() => setEditSub(null)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}>
+                <h3 style={{ color: 'var(--text)', margin: 0 }}>✏️ Edit Substitution</h3>
+                <button onClick={() => setEditSub(null)} style={{ background: 'none', border: 'none', color: 'var(--text-2)', cursor: 'pointer' }}>
                   <X size={18} />
                 </button>
               </div>
@@ -682,7 +682,7 @@ function ManageTab({ user, onCancelled }) {
                     {faculty.map(f => <option key={f.id} value={f.id}>{f.name} ({f.department})</option>)}
                   </select>
                 </label>
-                {checkingConflict && <p style={{ color: '#94A3B8', fontSize: 12 }}>Checking availability…</p>}
+                {checkingConflict && <p style={{ color: 'var(--text-2)', fontSize: 12 }}>Checking availability…</p>}
                 {conflict && (
                   <div style={{
                     padding: '8px 12px', borderRadius: 8, fontSize: 12,
@@ -742,12 +742,12 @@ function HistoryTab() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ color: '#fff', fontSize: 18, fontWeight: 800, margin: 0 }}>📜 Audit History</h2>
-        <div style={{ display: 'flex', background: '#1E293B', borderRadius: 8, padding: 3, gap: 2 }}>
+        <h2 style={{ color: 'var(--text)', fontSize: 18, fontWeight: 800, margin: 0 }}>📜 Audit History</h2>
+        <div style={{ display: 'flex', background: 'var(--surface-solid)', borderRadius: 8, padding: 3, gap: 2 }}>
           {['substitutions', 'audit'].map(v => (
             <button key={v} onClick={() => setView(v)} style={{
               background: view === v ? '#00E5FF' : 'transparent',
-              color: view === v ? '#0F172A' : '#94A3B8',
+              color: view === v ? '#0F172A' : 'var(--text-2)',
               border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontWeight: 700, fontSize: 12,
             }}>
               {v === 'substitutions' ? 'All Records' : 'Change Log'}
@@ -756,12 +756,12 @@ function HistoryTab() {
         </div>
       </div>
 
-      {loading && <div style={{ textAlign: 'center', padding: 40, color: '#64748B' }}>Loading history…</div>}
+      {loading && <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>Loading history…</div>}
 
       {!loading && view === 'substitutions' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {subs.length === 0
-            ? <Card style={{ textAlign: 'center', padding: 32, color: '#64748B' }}>No substitution records found.</Card>
+            ? <Card style={{ textAlign: 'center', padding: 32, color: 'var(--text-3)' }}>No substitution records found.</Card>
             : subs.map(sub => <SubCard key={sub.id} sub={sub} compact />)
           }
         </div>
@@ -770,7 +770,7 @@ function HistoryTab() {
       {!loading && view === 'audit' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {auditLogs.length === 0
-            ? <Card style={{ textAlign: 'center', padding: 32, color: '#64748B' }}>No audit logs found.</Card>
+            ? <Card style={{ textAlign: 'center', padding: 32, color: 'var(--text-3)' }}>No audit logs found.</Card>
             : auditLogs.map(log => (
               <Card key={log.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                 <div style={{
@@ -780,10 +780,10 @@ function HistoryTab() {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                     <Badge color={actionColors[log.action] || '#94A3B8'}>{log.action}</Badge>
-                    <span style={{ color: '#94A3B8', fontSize: 12 }}>by {log.changed_by}</span>
-                    <span style={{ color: '#475569', fontSize: 11 }}>{new Date(log.timestamp).toLocaleString()}</span>
+                    <span style={{ color: 'var(--text-2)', fontSize: 12 }}>by {log.changed_by}</span>
+                    <span style={{ color: 'var(--text-3)', fontSize: 11 }}>{new Date(log.timestamp).toLocaleString()}</span>
                   </div>
-                  <div style={{ marginTop: 6, fontSize: 11, color: '#64748B', fontFamily: 'monospace', background: '#0F172A', padding: '6px 10px', borderRadius: 6, maxHeight: 80, overflowY: 'auto' }}>
+                  <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-3)', fontFamily: 'monospace', background: 'var(--surface-solid)', padding: '6px 10px', borderRadius: 6, maxHeight: 80, overflowY: 'auto' }}>
                     Sub #{log.substitution_id} — {JSON.stringify(log.snapshot, null, 0).slice(0, 200)}…
                   </div>
                 </div>
@@ -800,11 +800,11 @@ function HistoryTab() {
 
 const labelStyle = {
   display: 'flex', flexDirection: 'column', gap: 6,
-  fontSize: 12, color: '#94A3B8', fontWeight: 600,
+  fontSize: 12, color: 'var(--text-2)', fontWeight: 600,
 };
 const inputStyle = {
-  background: '#1E293B', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8,
-  color: '#F1F5F9', padding: '8px 12px', fontSize: 13, outline: 'none',
+  background: 'var(--surface-solid)', border: '1px solid var(--border)', borderRadius: 8,
+  color: 'var(--text)', padding: '8px 12px', fontSize: 13, outline: 'none',
   fontFamily: 'inherit', width: '100%', boxSizing: 'border-box',
 };
 
@@ -847,7 +847,7 @@ export default function SubstitutionManagement() {
 
   return (
     <PageTransition className="min-h-screen px-4 pb-20 pt-28 sm:px-6">
-      <div style={{ maxWidth: 1100, margin: '0 auto', color: '#E2E8F0', fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto', color: 'var(--text)', fontFamily: 'system-ui, sans-serif' }}>
 
         {/* Page Header */}
         <div style={{ marginBottom: 24 }}>
@@ -857,10 +857,10 @@ export default function SubstitutionManagement() {
             border: '1px solid rgba(245,158,11,0.15)', borderRadius: 16, padding: 20,
           }}>
             <div>
-              <h1 style={{ color: '#fff', fontSize: 22, fontWeight: 900, margin: 0 }}>
+              <h1 style={{ color: 'var(--text)', fontSize: 22, fontWeight: 900, margin: 0 }}>
                 🔄 Faculty Substitution Management
               </h1>
-              <p style={{ color: '#94A3B8', fontSize: 13, margin: '6px 0 0' }}>
+              <p style={{ color: 'var(--text-2)', fontSize: 13, margin: '6px 0 0' }}>
                 Temporarily assign replacement faculty without modifying the official timetable.
                 {hodOf?.length > 0 && <> You arrange substitutions for <b style={{ color: '#F59E0B' }}>{hodOf.join(', ')}</b> classes.</>}
               </p>
@@ -869,17 +869,17 @@ export default function SubstitutionManagement() {
               <div style={{ fontSize: 32, fontWeight: 900, color: todayCount > 0 ? '#F59E0B' : '#10B981' }}>
                 {todayCount ?? '…'}
               </div>
-              <div style={{ fontSize: 11, color: '#64748B' }}>Today's Active Subs</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Today's Active Subs</div>
             </div>
           </div>
         </div>
 
         {/* Tab navigation */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 24, borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               background: tab === t.id ? 'rgba(0,229,255,0.15)' : 'transparent',
-              color: tab === t.id ? '#00E5FF' : '#94A3B8',
+              color: tab === t.id ? '#00E5FF' : 'var(--text-2)',
               border: tab === t.id ? '1px solid rgba(0,229,255,0.3)' : '1px solid transparent',
               borderRadius: 8, padding: '8px 16px', cursor: 'pointer',
               fontWeight: 700, fontSize: 13, transition: 'all .15s',

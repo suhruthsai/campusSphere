@@ -1,4 +1,5 @@
 import asyncio
+import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -17,12 +18,12 @@ from backend.app.models import obe as _obe_models  # outcomes, COs, mapping, ass
 from backend.app.models import feedback as _feedback_models  # feedback forms and responses, ATRs, exam results
 from backend.app.models import research as _research_models  # faculty records, research items, MoUs and extension
 from backend.app.models import institution as _institution_models  # progression, facility / finance figures, meetings
-from backend.app.core.state import global_state
+from backend.app.models import locker as _locker_models  # CampusLocker: documents, share links, access log
+from backend.app.models import college_docs as _college_docs_models  # documents read from the college website
 from backend.app.core.security import get_password_hash, verify_password
 from backend.app.core.realtime import timetable_manager
 from backend.app.api.v1.endpoints.media import MEDIA_DIR
 from sqlalchemy import text
-import random
 import secrets
 import datetime
 import uuid
@@ -108,6 +109,9 @@ warm_utilization_model()
 # Mitra's college knowledge base: load the search index, crawl mvsrec.edu.in on first run and weekly
 from backend.app.knowledge.service import start_background as start_knowledge
 start_knowledge()
+# The documents the college website publishes, kept for CampusLocker (first run, then weekly)
+from backend.app.college_docs.scraper import start_background as start_college_docs
+start_college_docs()
 
 
 
@@ -154,65 +158,46 @@ def root():
     }
 
 # ── WebSockets Live Telemetry Stream ──────────────────────────────────────────
-@app.websocket("/ws/telemetry")
-async def websocket_telemetry_endpoint(websocket: WebSocket):
+async def _ws_sign_in(websocket: WebSocket):
+    """Sign the socket in with its first frame: {"token": "..."}.
+
+    Browsers can't set an Authorization header on a WebSocket, and a token in the query string ends up in
+    the server's access log, the proxy's log and the browser's history. So the socket is accepted first and
+    the caller has SIGN_IN_SECONDS to send its token; anything else closes the connection.
+    """
+    from backend.app.core.security import _resolve_user
     await websocket.accept()
-    # Initialize parking spots (60 spots, randomly occupied)
-    spots = [{"id": f"spot_{i}", "occupied": random.random() > 0.3} for i in range(60)]
-    
     try:
-        count = 0
-        while True:
-            count += 1
-            
-            # Simulate cars entering/leaving (toggle 1-3 spots)
-            num_to_toggle = random.randint(1, 3)
-            for _ in range(num_to_toggle):
-                idx = random.randint(0, 59)
-                spots[idx]["occupied"] = not spots[idx]["occupied"]
-            
-            # Sync to global state for API routing logic to read
-            global_state.parking_spots = spots
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=SIGN_IN_SECONDS)
+        token = json.loads(raw).get("token")
+    except (asyncio.TimeoutError, ValueError, AttributeError, WebSocketDisconnect):
+        token = None
+    if not token:
+        await websocket.close(code=1008)      # policy violation: not signed in
+        return None
+    db = SessionLocal()
+    try:
+        user = _resolve_user(token, db)
+    finally:
+        db.close()
+    if not user:
+        await websocket.close(code=1008)
+    return user
 
-            occupied_count = sum(1 for s in spots if s["occupied"])
 
-            telemetry_data = {
-                "sequence": count,
-                "active_users": 2840 + (count % 15) - (count % 7),
-                "parking": {
-                    "total": 60,
-                    "occupied": occupied_count,
-                    "spots": spots
-                },
-                "timestamp": asyncio.get_event_loop().time()
-            }
-            
-            # Log to SQLite every 10 iterations (30 seconds)
-            if count % 10 == 0:
-                db = SessionLocal()
-                try:
-                    log_entry = campus.TelemetryLogModel(
-                        module="parking_and_users",
-                        data=telemetry_data
-                    )
-                    db.add(log_entry)
-                    db.commit()
-                except Exception as e:
-                    print("DB Log Error:", e)
-                finally:
-                    db.close()
-                    
-            await websocket.send_json(telemetry_data)
-            await asyncio.sleep(3) # Send real-time updates every 3 seconds
-    except WebSocketDisconnect:
-        pass
+SIGN_IN_SECONDS = 5
 
+
+# There is no /ws/telemetry socket: it used to stream invented parking occupancy and a made-up
+# "active users" count. The car park is a fixed arrangement in core/state.py until real sensors exist.
 
 # ── WebSockets Timetable Updates ──────────────────────────────────────────────
 
 @app.websocket("/ws/timetable")
 async def websocket_timetable_endpoint(websocket: WebSocket):
-    await timetable_manager.connect(websocket)
+    if not await _ws_sign_in(websocket):
+        return
+    timetable_manager.join(websocket)
     try:
         while True:
             # We don't expect messages from client, but we must receive to keep conn alive

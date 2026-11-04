@@ -19,6 +19,8 @@ services:
         value: "1"
       - key: ENVIRONMENT
         value: production
+      - key: PAYMENT_MODE
+        value: "off"   # "test" is refused in production; online fee payment shows "not configured"
       - key: TRUSTED_PROXY_HOPS
         value: "1"   # Render's proxy appends the real client IP to X-Forwarded-For
       - key: SECRET_KEY

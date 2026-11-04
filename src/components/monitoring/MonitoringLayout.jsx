@@ -51,7 +51,7 @@ export default function MonitoringLayout({ title, subtitle, icon, accentColor = 
               <motion.div key={k.label}
                           initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 + i * 0.05 }}
                           className="rounded-2xl border border-white/8 p-4"
-                          style={{ background: 'rgba(255,255,255,0.04)' }}>
+                          style={{ background: 'var(--surface-2)' }}>
                 <div className="flex items-start justify-between mb-1">
                   <span className="text-lg">{k.icon}</span>
                   {k.delta !== undefined && (
@@ -80,7 +80,7 @@ export function MCard({ title, className = '', children, accent }) {
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
                 className={`rounded-2xl border border-white/8 p-5 ${className}`}
-                style={{ background: 'rgba(4,9,26,0.75)', backdropFilter: 'blur(16px)' }}>
+                style={{ background: 'var(--surface)', backdropFilter: 'blur(16px)' }}>
       {title && (
         <p className="mb-4 text-xs font-bold uppercase tracking-wider"
            style={{ color: accent || '#94a3b8' }}>
@@ -118,7 +118,7 @@ export function DonutRing({ value, max, color, label, size = 96 }) {
   return (
     <div className="flex flex-col items-center gap-1">
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size/2} cy={size/2} r={r} stroke="rgba(255,255,255,0.08)" strokeWidth={10} fill="none" />
+        <circle cx={size/2} cy={size/2} r={r} stroke="var(--border)" strokeWidth={10} fill="none" />
         <motion.circle cx={size/2} cy={size/2} r={r}
                        stroke={color} strokeWidth={10} fill="none" strokeLinecap="round"
                        strokeDasharray={circ} strokeDashoffset={circ}

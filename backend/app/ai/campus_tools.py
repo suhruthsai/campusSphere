@@ -107,7 +107,7 @@ def _fmt(db, entries, rooms, with_section=True, with_faculty=True):
             row["section"] = e.section
         if with_faculty:
             row["faculty"] = x.get("faculty_name")
-        if sub:
+        if sub and with_faculty:
             row["substitute_for"] = sub.original_faculty_name
         out.append(row)
     return out
@@ -119,7 +119,8 @@ def _norm_section(s: str) -> str:
     return f"{m.group(1)}-{m.group(2)}{m.group(3)}" if m else s
 
 
-def classes_now(db, day=None, period=None):
+def classes_now(db, day=None, period=None, with_faculty=True):
+    """with_faculty=False for visitors: the classes are public, who teaches them is not."""
     from backend.app.api.v1.endpoints.timetable import current_class
     now = campus_now()
     d = _day(day) if day else now.weekday()
@@ -128,7 +129,7 @@ def classes_now(db, day=None, period=None):
         rows = _entries(db, day_of_week=d, period_number=int(period))
         busy = {e.classroom_id for e in rows}
         free = sorted(r["room"] for rid, r in rooms.items() if rid not in busy and rid in {e.classroom_id for e in _entries(db)})
-        return {"when": f"{DAYS[d]} period {period}", "classes": _fmt(db, rows, rooms), "free_timetabled_rooms": free}
+        return {"when": f"{DAYS[d]} period {period}", "classes": _fmt(db, rows, rooms, with_faculty=with_faculty), "free_timetabled_rooms": free}
     if d != now.weekday():
         return {"when": DAYS[d], "note": "Give a period (1-6) to see one slot."}
     running, free = [], []
@@ -138,8 +139,10 @@ def classes_now(db, day=None, period=None):
         if c.current_entry:
             e = c.current_entry
             running.append({"room": r.get("room", rid), "building": r.get("building"), "floor": r.get("floor"),
-                            "section": e.section, "subject": e.subject_name, "faculty": e.faculty_name,
-                            "until": e.end_time, **({"substitute_for": c.substitution_original_faculty} if c.is_substitution else {})})
+                            "section": e.section, "subject": e.subject_name,
+                            **({"faculty": e.faculty_name} if with_faculty else {}),
+                            "until": e.end_time,
+                            **({"substitute_for": c.substitution_original_faculty} if with_faculty and c.is_substitution else {})})
         else:
             free.append(r.get("room", rid))
     return {"now": now.strftime("%A %H:%M") + " IST", "running": running,
@@ -225,7 +228,7 @@ def services_info(db):
 def run(db: Session, current: dict, name: str, args: dict) -> str:
     try:
         if name == "classes_now":
-            out = classes_now(db, args.get("day"), args.get("period"))
+            out = classes_now(db, args.get("day"), args.get("period"), with_faculty=bool(current))
         elif name == "section_timetable":
             out = section_timetable(db, args.get("section", ""), args.get("day"))
         elif name == "faculty_timetable":

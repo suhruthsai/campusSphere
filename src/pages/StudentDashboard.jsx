@@ -1,15 +1,30 @@
 // Student home: today's classes from the real timetable, my certificate requests, joining / leaving status.
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { CalendarClock, ClipboardCheck, DoorOpen, FileText } from 'lucide-react';
+import { CalendarClock, CalendarDays, ClipboardCheck, ClipboardList, DoorOpen, FileText, FolderLock, Megaphone, MapPinned, Box } from 'lucide-react';
 import PageTransition from '../components/PageTransition.jsx';
 import MetricCard from '../components/dashboard/MetricCard.jsx';
 import MorningBrief from '../components/dashboard/MorningBrief.jsx';
 import MyDay, { fmtIn, placeOf, today } from '../components/dashboard/MyDay.jsx';
+import { ExploreCard, QuickActions, firstNameOf, greeting } from '../components/dashboard/shared.jsx';
+import HeroBanner from '../components/ui/HeroBanner.jsx';
+import Panel, { PanelNote } from '../components/ui/Panel.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import { StatusBadge, whereNow } from '../components/services/requestUi.jsx';
 import { joiningApi, leavingApi, servicesApi, timetableApi } from '../utils/api.js';
 
+export { default as DashboardHeading } from '../components/ui/PageHeading.jsx';
+
+const QUICK = [
+  { label: 'Attendance',   icon: ClipboardList,     to: '/attendance', color: '#38bdf8' },
+  { label: 'Certificates', icon: FileText,          to: '/services',   color: '#a78bfa' },
+  { label: 'Notices',      icon: Megaphone,         to: '/notices',    color: '#fbbf24' },
+  { label: 'My documents', icon: FolderLock,        to: '/locker',     color: '#f472b6' },
+  { label: 'Find a place', icon: MapPinned,         to: '/navigation', color: '#34d399' },
+  { label: '3D campus',    icon: Box,               to: '/',           color: '#fb923c' },
+];
+
 export default function StudentDashboard() {
+  const { user } = useAuth();
   const [week, setWeek] = useState(null);
   const [requests, setRequests] = useState(null);
   const [joining, setJoining] = useState(undefined);
@@ -26,12 +41,28 @@ export default function StudentDashboard() {
   const open = (requests || []).filter((r) => ['awaiting_payment', 'in_review', 'processing'].includes(r.status));
   const ready = (requests || []).filter((r) => r.status === 'approved');
 
-  return (
-    <PageTransition className="mx-auto min-h-screen max-w-7xl px-4 pb-20 pt-28 sm:px-6">
-      <DashboardHeading eyebrow="Student home" title="Your day, your requests, your campus." />
-      <MorningBrief />
+  const status = !day || week.reason ? 'Your timetable, requests and campus, all in one place.'
+    : day.current ? `Now: ${day.current.subject_name} · ${placeOf(day.current)}`
+    : day.next ? `Next: ${day.next.subject_name} at ${day.next.start_time} · ${placeOf(day.next)}`
+    : 'No more classes today. Enjoy the rest of your day.';
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+  return (
+    <PageTransition className="mx-auto min-h-screen max-w-[1400px] px-4 pb-16 pt-24 sm:px-6">
+      <HeroBanner
+        eyebrow="Student home"
+        title={`${greeting()}, ${firstNameOf(user) || 'there'}.`}
+        accent="Your day, your campus."
+        subtitle={status}
+        chips={[
+          { label: 'Attendance', to: '/attendance', icon: ClipboardList },
+          { label: 'Certificates', to: '/services', icon: FileText },
+          { label: '3D campus', to: '/', icon: Box },
+        ]}
+      />
+
+      <MorningBrief className="mt-5" />
+
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={CalendarClock} label="Classes today"
           value={!day ? '…' : week.reason ? '—' : String(day.list.length)}
           meta={!day ? '' : week.reason ? 'No timetable yet' : day.current ? `Now: ${day.current.subject_name}` : day.next ? `Next in ${fmtIn(day.next.startsIn)}` : 'No more classes today'} />
@@ -39,53 +70,40 @@ export default function StudentDashboard() {
           meta={requests ? `${ready.length} ready to download` : ''} tone="secondary" />
         <MetricCard icon={ClipboardCheck} label="Joining"
           value={joining === undefined ? '…' : !joining ? '—' : joining.status === 'enrolled' ? 'Enrolled' : joining.status.replace('_', ' ')}
-          meta={joining ? `${joining.progress.filter((p) => p.done).length}/${joining.progress.length} steps` : 'Not started'} tone="accent" />
+          meta={joining ? `${joining.progress.filter((p) => p.done).length}/${joining.progress.length} steps` : 'Not started'} tone="accent"
+          progress={joining ? joining.progress.filter((p) => p.done).length / Math.max(1, joining.progress.length) : undefined} />
         <MetricCard icon={DoorOpen} label="No-dues clearance"
           value={leaving === undefined ? '…' : !leaving ? '—' : `${leaving.counts.cleared}/${leaving.items.length}`}
-          meta={!leaving ? 'Not started' : leaving.status === 'cleared' ? 'All sections cleared' : `${leaving.counts.dues} with dues`} />
+          meta={!leaving ? 'Not started' : leaving.status === 'cleared' ? 'All sections cleared' : `${leaving.counts.dues} with dues`} tone="warm"
+          progress={leaving ? leaving.counts.cleared / Math.max(1, leaving.items.length) : undefined} />
       </div>
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-        {week ? <MyDay data={week} /> : <section className="glass rounded-2xl p-6 text-sm text-slate-400">Loading timetable…</section>}
+      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        {week ? <MyDay data={week} /> : <Panel title="Today's classes" icon={CalendarDays}><PanelNote>Loading timetable…</PanelNote></Panel>}
 
-        <section className="glass rounded-2xl p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="section-title">My certificate requests</h2>
-            <Link to="/services" className="text-xs font-semibold text-cyan-300 hover:underline">Open services →</Link>
-          </div>
-          {!requests ? <p className="text-sm text-slate-400">Loading…</p>
-            : requests.length === 0 ? <p className="text-sm text-slate-400">No requests yet. Ask for a bonafide, NOC or other document at a service counter.</p>
-            : (
-              <ul className="space-y-2">
-                {requests.slice(0, 5).map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-white">{r.doc_name}</p>
-                      <p className="truncate text-xs text-slate-400">{whereNow(r)}</p>
-                    </div>
-                    <StatusBadge status={r.status} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          {day?.next && !week.reason && (
-            <p className="mt-5 rounded-xl border border-cyan-400/20 bg-cyan-500/5 px-4 py-3 text-xs text-slate-300">
-              Next: <b className="text-white">{day.next.subject_name}</b> at {day.next.start_time} in {placeOf(day.next)}.
-            </p>
-          )}
-        </section>
+        <div className="space-y-5">
+          <Panel title="My certificate requests" icon={FileText} iconColor="#a78bfa" to="/services" action="Open services" delay={0.2}>
+            {!requests ? <PanelNote>Loading…</PanelNote>
+              : requests.length === 0 ? <PanelNote>No requests yet. Ask for a bonafide, NOC or other document at a service counter.</PanelNote>
+              : (
+                <ul className="space-y-2">
+                  {requests.slice(0, 5).map((r) => (
+                    <li key={r.id} className="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold" style={{ color: 'var(--text)' }}>{r.doc_name}</p>
+                        <p className="truncate text-xs" style={{ color: 'var(--text-2)' }}>{whereNow(r)}</p>
+                      </div>
+                      <StatusBadge status={r.status} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+          </Panel>
+
+          <QuickActions items={QUICK} delay={0.25} />
+          <ExploreCard />
+        </div>
       </div>
     </PageTransition>
-  );
-}
-
-export function DashboardHeading({ eyebrow, title }) {
-  return (
-    <div className="mb-8">
-      <span className="glow-pill mb-4 inline-flex">{eyebrow}</span>
-      <h1 className="mt-3 max-w-4xl font-display text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl">
-        {title}
-      </h1>
-    </div>
   );
 }

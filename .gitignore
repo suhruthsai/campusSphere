@@ -64,3 +64,7 @@ test.cjs
 # Screenshots
 Screenshot*.png
 outputs/
+
+# database backups, never commit (personal data)
+campussphere.db*
+*.db.backup*

@@ -103,10 +103,8 @@ export function RequestTimeline({ req, compact = false }) {
   );
 }
 
-export const inputCls =
-  'w-full rounded-lg border border-white/10 bg-[#0f1620] px-3 py-2 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-400/60';
-export const labelCls = 'mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400';
-export const btnPrimary =
-  'inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-bold text-slate-900 transition hover:bg-cyan-300 disabled:opacity-50';
-export const btnGhost =
-  'inline-flex items-center justify-center gap-2 rounded-lg border border-white/15 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/5 disabled:opacity-50';
+// Form and button looks live in styles.css (.f-input, .f-label, .f-btn, .f-btn-ghost): they follow the theme
+export const inputCls = 'f-input';
+export const labelCls = 'f-label';
+export const btnPrimary = 'f-btn';
+export const btnGhost = 'f-btn-ghost';

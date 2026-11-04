@@ -20,12 +20,14 @@ export default function SectionTabs({ title, tabs }) {
   const shown = tabs.filter((t) => !t.roles || t.roles.includes(user?.role));
   return (
     <nav aria-label={title} className="mb-6 flex flex-wrap items-center gap-2">
-      <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{title}</span>
-      <div className="inline-flex flex-wrap rounded-xl border border-white/10 bg-white/[0.04] p-1">
+      <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>{title}</span>
+      <div className="inline-flex flex-wrap rounded-2xl border p-1" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
         {shown.map((t) => (
           <NavLink key={t.to} to={t.to} end
-            className={({ isActive }) => `rounded-lg px-3.5 py-1.5 text-sm font-semibold transition ${isActive
-              ? 'bg-cyan-400 text-slate-950' : 'text-slate-300 hover:text-white'}`}>
+            style={({ isActive }) => (isActive
+              ? { background: 'var(--brand-grad)', color: '#fff', boxShadow: '0 6px 18px rgba(99,102,241,0.32)' }
+              : { color: 'var(--text-2)' })}
+            className="rounded-xl px-3.5 py-1.5 text-sm font-semibold transition">
             {t.label}
           </NavLink>
         ))}

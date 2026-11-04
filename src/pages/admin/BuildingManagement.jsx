@@ -98,7 +98,7 @@ export default function BuildingManagement() {
             { label: 'Need Attention',  value: buildingList.filter((b) => b.health !== 'Good').length,   color: '#F59E0B' },
           ].map((s) => (
             <div key={s.label} className="rounded-2xl border border-white/8 p-4 text-center"
-                 style={{ background: 'rgba(255,255,255,0.04)' }}>
+                 style={{ background: 'var(--surface-2)' }}>
               <p className="font-display text-3xl font-extrabold" style={{ color: s.color }}>{s.value}</p>
               <p className="mt-0.5 text-xs text-slate-400">{s.label}</p>
             </div>
@@ -116,7 +116,7 @@ export default function BuildingManagement() {
               <motion.div key={b.id}
                           layout
                           className="overflow-hidden rounded-2xl border border-white/8"
-                          style={{ background: 'rgba(4,9,26,0.7)', backdropFilter: 'blur(16px)' }}>
+                          style={{ background: 'var(--surface)', backdropFilter: 'blur(16px)' }}>
                 {/* Card header */}
                 <div className="flex items-center gap-4 p-4">
                   <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: b.color, boxShadow: `0 0 8px ${b.color}` }} />
@@ -273,7 +273,7 @@ function Modal({ title, onClose, children }) {
                 style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}>
       <motion.div initial={{ scale: 0.9, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9 }}
                   className="w-full max-w-md rounded-3xl border border-white/10 p-6 shadow-2xl"
-                  style={{ background: 'rgba(4,9,26,0.95)', backdropFilter: 'blur(32px)' }}>
+                  style={{ background: 'var(--surface-solid)', backdropFilter: 'blur(32px)' }}>
         <div className="mb-5 flex items-center justify-between">
           <h2 className="font-display text-base font-bold text-white">{title}</h2>
           <button onClick={onClose} className="rounded-xl border border-white/10 bg-white/5 p-1.5 text-slate-400 hover:text-white transition">

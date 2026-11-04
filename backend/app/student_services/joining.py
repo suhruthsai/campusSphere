@@ -2,16 +2,23 @@
 # to whom, and private storage for the uploaded copies.
 import os
 import uuid
+from datetime import date
 from pathlib import Path
 
 from backend.app.core.config import ROOT_DIR
+from backend.app.models.admissions import JoiningDocRuleModel
 
 CATEGORIES = ["OC", "BC-A", "BC-B", "BC-C", "BC-D", "BC-E", "SC", "ST", "EWS"]
 BRANCHES = ["CSE", "IT", "ECE", "EEE", "MECH", "CIVIL"]
 GENDERS = ["male", "female", "other"]
 
-# Every document a joinee may upload. "when" decides if it's required for this student:
-#   always | not_oc | ews | reimbursement | other_board
+# The default document rules. They are copied into the joining_doc_rules table the first time and from then on the
+# Admin Office edits the live copies (Joining documents page): a new rule here is added, an edited one is never overwritten.
+#   when:        always | not_oc | ews | reimbursement | other_board  (who has to give it)
+#   original:    the college keeps the original (it goes into the originals register)
+#   copies:      photocopy sets to hand in with the originals (the college's admission list says 3 sets); photos for "photos"
+#   issued_after: the certificate must carry a date on or after this (e.g. an income certificate of the current year)
+#   active:      shown to students and required when true
 JOINING_DOCS = [
     {"key": "allotment_order",    "label": "Seat allotment order (TGEAPCET)",               "when": "always"},
     {"key": "self_report_ack",    "label": "Online self-reporting acknowledgement",          "when": "always"},
@@ -19,31 +26,78 @@ JOINING_DOCS = [
      "hint": "If your tuition is fully reimbursed, upload the portal page showing ₹0 due."},
     {"key": "rank_card",          "label": "TGEAPCET rank card",                             "when": "always"},
     {"key": "hall_ticket",        "label": "TGEAPCET hall ticket",                           "when": "always"},
-    {"key": "ssc_memo",           "label": "SSC / Class 10 marks memo",                      "when": "always"},
-    {"key": "inter_memo",         "label": "Intermediate / Class 12 marks memo",             "when": "always"},
-    {"key": "tc",                 "label": "Transfer Certificate (TC)",                      "when": "always",
+    {"key": "ssc_memo",           "label": "SSC / Class 10 marks memo",                      "when": "always", "original": True},
+    {"key": "inter_memo",         "label": "Intermediate / Class 12 marks memo",             "when": "always", "original": True},
+    {"key": "bonafide_6_10",      "label": "Bonafide certificates, Class 6 to 10",           "when": "always", "original": True},
+    {"key": "bonafide_11_12",     "label": "Bonafide certificates, Class 11 and 12 (Intermediate)", "when": "always", "original": True},
+    {"key": "tc",                 "label": "Transfer Certificate (TC)",                      "when": "always", "original": True,
      "hint": "The original TC is handed in at the Admin Office."},
-    {"key": "study_certificates", "label": "Study certificates (Class 6 to Intermediate)",   "when": "always"},
+    {"key": "study_certificates", "label": "Study certificates (Class 6 to Intermediate)",   "when": "always", "original": True},
     {"key": "aadhaar",            "label": "Aadhaar card",                                   "when": "always"},
-    {"key": "photo",              "label": "Passport-size photo",                            "when": "always", "images_only": True},
-    {"key": "caste_cert",         "label": "Caste certificate",                              "when": "not_oc"},
-    {"key": "ews_cert",           "label": "EWS certificate",                                "when": "ews"},
-    {"key": "income_cert",        "label": "Income certificate (for fee reimbursement)",     "when": "reimbursement"},
-    {"key": "migration",          "label": "Migration certificate (Intermediate outside Telangana)", "when": "other_board"},
+    {"key": "photo",              "label": "Passport-size photo",                            "when": "always", "images_only": True,
+     "copies": 4, "copy_unit": "photos", "hint": "Upload one here and bring 4 recent passport-size photos."},
+    {"key": "caste_cert",         "label": "Caste certificate",                              "when": "not_oc", "original": True},
+    {"key": "ews_cert",           "label": "EWS certificate",                                "when": "ews",
+     "hint": "It must be valid for the current academic year."},
+    {"key": "income_cert",        "label": "Income certificate (for fee reimbursement)",     "when": "reimbursement", "original": True,
+     "hint": "It must be issued in the current year; an older certificate is not accepted.",
+     "issued_after": date(date.today().year, 1, 1)},
+    {"key": "migration",          "label": "Migration certificate (Intermediate outside Telangana)", "when": "other_board", "original": True},
+    # Not on the college's admission list; the Admin Office can switch these on if it collects them at admission
+    {"key": "antiragging_student", "label": "Anti-ragging undertaking by the student",       "when": "always", "active": False, "copies": 1,
+     "hint": "A signed undertaking under the UGC anti-ragging regulations."},
+    {"key": "antiragging_parent",  "label": "Anti-ragging undertaking by the parent / guardian", "when": "always", "active": False, "copies": 1,
+     "hint": "A signed undertaking under the UGC anti-ragging regulations."},
 ]
-DOC_LABELS = {d["key"]: d["label"] for d in JOINING_DOCS}
+DEFAULT_COPIES = 3
 
-# Originals the Admin Office may take in at joining (the TC is always kept)
-ORIGINAL_KEYS = ["tc", "ssc_memo", "inter_memo", "study_certificates", "caste_cert", "income_cert", "migration"]
-ORIGINAL_LABELS = {
-    "tc": "Transfer Certificate (TC)",
-    "ssc_memo": "SSC / Class 10 marks memo",
-    "inter_memo": "Intermediate / Class 12 marks memo",
-    "study_certificates": "Study certificates (Class 6 to Intermediate)",
-    "caste_cert": "Caste certificate",
-    "income_cert": "Income certificate",
-    "migration": "Migration certificate",
-}
+
+def _row_from_default(i: int, d: dict) -> dict:
+    return {"key": d["key"], "label": d["label"], "hint": d.get("hint"), "applies": d["when"], "images_only": d.get("images_only", False),
+            "original": d.get("original", False), "copies": d.get("copies", DEFAULT_COPIES), "copy_unit": d.get("copy_unit", "sets"),
+            "issued_after": d.get("issued_after"), "active": d.get("active", True), "sort_order": (i + 1) * 10}
+
+
+_seeded = False
+
+
+def ensure_rules(db) -> None:
+    """Add any default rule that is not in the table yet (never touches a rule the Admin Office has edited)."""
+    global _seeded
+    if _seeded:
+        return
+    have = {k for (k,) in db.query(JoiningDocRuleModel.key).all()}
+    added = False
+    for i, d in enumerate(JOINING_DOCS):
+        if d["key"] not in have:
+            db.add(JoiningDocRuleModel(**_row_from_default(i, d)))
+            added = True
+    if added:
+        db.commit()
+    _seeded = True
+
+
+def rule_out(r: JoiningDocRuleModel) -> dict:
+    return {"id": r.id, "key": r.key, "label": r.label, "hint": r.hint, "when": r.applies, "images_only": bool(r.images_only),
+            "original": bool(r.original), "copies": r.copies if r.copies is not None else DEFAULT_COPIES, "copy_unit": r.copy_unit or "sets",
+            "issued_after": r.issued_after.isoformat() if r.issued_after else None, "needs_issue_date": bool(r.issued_after),
+            "active": bool(r.active), "sort_order": r.sort_order}
+
+
+def rules(db, include_inactive: bool = False) -> list[dict]:
+    ensure_rules(db)
+    q = db.query(JoiningDocRuleModel)
+    if not include_inactive:
+        q = q.filter(JoiningDocRuleModel.active.is_(True))
+    return [rule_out(r) for r in q.order_by(JoiningDocRuleModel.sort_order, JoiningDocRuleModel.id).all()]
+
+
+def labels(db) -> dict:
+    return {r["key"]: r["label"] for r in rules(db, include_inactive=True)}
+
+
+def original_rules(db) -> list[dict]:
+    return [r for r in rules(db) if r["original"]]
 
 
 def applies(doc: dict, admission) -> bool:
@@ -61,8 +115,8 @@ def applies(doc: dict, admission) -> bool:
     return False
 
 
-def required_docs(admission) -> list[dict]:
-    return [d for d in JOINING_DOCS if applies(d, admission)]
+def required_docs(db, admission) -> list[dict]:
+    return [d for d in rules(db) if applies(d, admission)]
 
 
 # ── Private storage ────────────────────────────────────────────────────────────

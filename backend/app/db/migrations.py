@@ -26,6 +26,10 @@ ADDED_COLUMNS = {
     "users": [                      # temporary passwords (created accounts, admin resets) must be changed
         ("must_change_password", "BOOLEAN DEFAULT 0"),
     ],
+    "admission_documents": [        # joining: the date on a certificate, and copy sets handed in
+        ("issued_on", "DATE"),
+        ("copies_received", "INTEGER DEFAULT 0"),
+    ],
     "student_profiles": [           # what the student wants to be called (greetings), if not their given name
         ("preferred_name", "VARCHAR"),
     ],

@@ -1,10 +1,17 @@
-// AdminDashboard.jsx — KPI + Live stats + Weather + Alerts
+// AdminDashboard.jsx — hero + KPI tiles, the day's class load, classes in session by building, alerts,
+// substitutions, recent requests and quick actions. All numbers come from the API (nothing is made up).
 import {
-  Activity, AlertTriangle, Bell, BookOpen, Building2, CalendarDays, ChevronRight, Cloud, GraduationCap, TrendingUp, Users, Zap, UserCheck,
+  Activity, AlertTriangle, Bell, BookOpen, Building2, CalendarDays, Box, GraduationCap, ShieldCheck,
+  Users, UserCheck, Zap, BarChart3, Droplets, Wind, Layers,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import PageTransition from '../../components/PageTransition.jsx';
+import MetricCard from '../../components/dashboard/MetricCard.jsx';
+import { ExploreCard, QuickActions, greeting } from '../../components/dashboard/shared.jsx';
+import HeroBanner from '../../components/ui/HeroBanner.jsx';
+import Panel, { PanelNote } from '../../components/ui/Panel.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import {
   authApi, buildingsApi, announcementsApi, classroomsApi, servicesApi, substitutionsApi, timetableApi,
@@ -12,27 +19,13 @@ import {
 import { istNow, liveSessionsByBuilding } from '../../components/three/twinExtras.js';
 import { StatusBadge, fmtIst, whereNow } from '../../components/services/requestUi.jsx';
 
-const fadeUp = (delay = 0) => ({
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.5, delay, ease: [0.22, 1, 0.36, 1] },
-});
-
-const kpisInitial = [
-  { label: 'Total Students', value: '...', change: 'Loading', icon: GraduationCap, color: '#00E5FF' },
-  { label: 'Total Faculty',  value: '...', change: 'Loading', icon: Users,         color: '#F59E0B' },
-  { label: 'Total Staff',    value: '...', change: 'Loading', icon: Users,         color: '#F472B6' },
-  { label: 'Active Buildings',value: '...', change: 'Loading', icon: Building2,     color: '#7B61FF' },
-];
-
-
 const quickActions = [
-  { label: 'Add User',           icon: Users,       href: '/admin/users',         color: '#00E5FF' },
-  { label: 'Manage Buildings',   icon: Building2,   href: '/admin/buildings',      color: '#F59E0B' },
-  { label: 'View Floors',        icon: Activity,    href: '/admin/floors',         color: '#00FFB3' },
-  { label: 'Classrooms',         icon: BookOpen,    href: '/classrooms',           color: '#7B61FF' },
-  { label: 'Labs',               icon: Zap,         href: '/labs',                 color: '#F472B6' },
-  { label: 'Schedule Changes',   icon: CalendarDays,href: '/admin/substitutions',  color: '#F59E0B' },
+  { label: 'Add User',         icon: Users,        to: '/admin/users',         color: '#38bdf8' },
+  { label: 'Buildings',        icon: Building2,    to: '/admin/buildings',     color: '#fbbf24' },
+  { label: 'Floors',           icon: Layers,       to: '/admin/floors',        color: '#34d399' },
+  { label: 'Classrooms',       icon: BookOpen,     to: '/classrooms',          color: '#a78bfa' },
+  { label: 'Labs',             icon: Zap,          to: '/labs',                color: '#f472b6' },
+  { label: 'Schedule Changes', icon: CalendarDays, to: '/admin/substitutions', color: '#fb923c' },
 ];
 
 // MVSR Engineering College, Nadergul
@@ -56,15 +49,9 @@ async function fetchCampusWeather() {
   };
 }
 
-/** Morning / afternoon / evening by the campus clock (IST). */
-function greeting() {
-  const h = Number(new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }));
-  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-}
-
 export default function AdminDashboard() {
   const { user } = useAuth();
-  
+
   const [stats, setStats] = useState(null);
   const [buildingList, setBuildingList] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -72,6 +59,7 @@ export default function AdminDashboard() {
   const [activity, setActivity] = useState(null);   // latest certificate requests
   const [weather, setWeather] = useState(null);     // null = loading, false = unavailable
   const [inSession, setInSession] = useState(null); // { live: {buildingId: [sessions]}, rooms: {buildingId: count} }
+  const [load, setLoad] = useState(null);           // classes per period today, from the timetable
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -86,14 +74,22 @@ export default function AdminDashboard() {
         fetchCampusWeather().then(setWeather).catch(() => setWeather(false));
         // Classes running right now, from the timetable (rooms are mapped to buildings)
         Promise.all([timetableApi.list(), classroomsApi.list()]).then(([entries, rooms]) => {
+          const now = istNow();
           const timetabled = new Set(entries.map((e) => e.classroom_id));
           const roomCount = {};
           rooms.filter((r) => timetabled.has(r.id)).forEach((r) => { roomCount[r.building] = (roomCount[r.building] || 0) + 1; });
-          setInSession({ live: liveSessionsByBuilding(entries, rooms, istNow()), rooms: roomCount });
-        }).catch(() => setInSession({ live: {}, rooms: {} }));
+          setInSession({ live: liveSessionsByBuilding(entries, rooms, now), rooms: roomCount });
+          // Today's load: how many classes run in each period
+          const byPeriod = {};
+          entries.filter((e) => e.day_of_week === now.dow).forEach((e) => {
+            const p = (byPeriod[e.period_number] ||= { period: e.period_number, label: `P${e.period_number}`, start: e.start_time, classes: 0 });
+            p.classes += 1;
+          });
+          setLoad(Object.values(byPeriod).sort((a, b) => a.period - b.period));
+        }).catch(() => { setInSession({ live: {}, rooms: {} }); setLoad([]); });
         setStats(statsData);
         setBuildingList(bldgsData);
-        setAlerts(annsData.map((a, i) => ({
+        setAlerts(annsData.map((a) => ({
           id: a.id,
           type: a.priority === 'urgent' ? 'error' : a.priority === 'info' ? 'info' : 'warning',
           msg: `${a.title} — ${a.body} (${a.for})`,
@@ -107,235 +103,176 @@ export default function AdminDashboard() {
     loadDashboardData();
   }, []);
 
-  const kpis = [
-    { label: 'Total Students', value: stats?.students || '...', change: 'Live DB', icon: GraduationCap, color: '#00E5FF' },
-    { label: 'Total Faculty',  value: stats?.faculty || '...',  change: 'Live DB', icon: Users,         color: '#F59E0B' },
-    { label: 'Total Staff',    value: stats?.staff || '...',    change: 'Live DB', icon: Users,         color: '#F472B6' },
-    { label: 'Active Buildings',value: buildingList.length || '...', change: 'Live DB', icon: Building2, color: '#7B61FF' },
-  ];
+  const peak = load?.length ? load.reduce((m, p) => (p.classes > m.classes ? p : m), load[0]) : null;
 
   return (
-    <PageTransition className="min-h-screen px-4 pb-20 pt-28 sm:px-6">
-      <div className="mx-auto max-w-7xl">
-        {/* Welcome banner */}
-        <motion.div {...fadeUp(0.05)} className="mb-8">
-          <div className="rounded-2xl border border-white/10 p-6"
-               style={{ background: 'linear-gradient(135deg,rgba(0,229,255,0.08),rgba(123,97,255,0.06))', backdropFilter: 'blur(16px)' }}>
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div>
-                <p className="text-sm text-slate-400">{greeting()},</p>
-                <h1 className="font-display text-2xl font-extrabold text-white">{user?.name} 👋</h1>
-                <p className="mt-1 text-sm text-slate-400">
-                  MVSR Engineering College · Admin Dashboard ·{' '}
-                  <span className="text-[#00E5FF]">
-                    {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+    <PageTransition className="mx-auto min-h-screen max-w-[1400px] px-4 pb-16 pt-24 sm:px-6">
+      <HeroBanner
+        eyebrow="CampusSphere · Admin"
+        title={`${greeting()}, ${user?.name || 'Admin'}.`}
+        accent="Your campus at a glance."
+        subtitle="Live figures from the college database, the timetable and the service desks. Real-time, in one place."
+        chips={[
+          { label: '3D Digital Twin', to: '/', icon: Box },
+          { label: 'Timetable', to: '/admin/timetable', icon: CalendarDays },
+          { label: 'Accreditation', to: '/accreditation', icon: ShieldCheck },
+        ]}
+        aside={<WeatherCard weather={weather} />}
+      />
+
+      {/* KPI tiles */}
+      <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <MetricCard icon={GraduationCap} label="Total Students" value={stats ? stats.students : '…'} meta="Live" tone="primary" />
+        <MetricCard icon={Users} label="Total Faculty" value={stats ? stats.faculty : '…'} meta="Live" tone="warm" />
+        <MetricCard icon={UserCheck} label="Total Staff" value={stats ? stats.staff : '…'} meta="Live" tone="secondary" />
+        <MetricCard icon={Building2} label="Campus Buildings" value={buildingList.length || '…'} meta="Live" tone="accent" />
+      </div>
+
+      {/* Class load + buildings in session */}
+      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+        <Panel title="Class load today" icon={BarChart3} iconColor="#38bdf8" delay={0.1}
+          badge={peak ? <span className="rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}>Peak {peak.label} · {peak.classes} classes</span> : null}>
+          {load === null ? <PanelNote>Loading the timetable…</PanelNote>
+            : load.length === 0 ? <PanelNote>No classes are scheduled today.</PanelNote>
+            : (
+              <>
+                <div className="h-[260px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={load} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="loadFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#6366f1" stopOpacity={0.55} />
+                          <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 5" />
+                      <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: 'var(--text-3)', fontSize: 12 }} />
+                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: 'var(--text-3)', fontSize: 12 }} />
+                      <Tooltip
+                        cursor={{ stroke: 'var(--border-strong)' }}
+                        contentStyle={{ background: 'var(--surface-solid)', border: '1px solid var(--border-strong)', borderRadius: 12, color: 'var(--text)', fontSize: 12 }}
+                        labelFormatter={(l, p) => `${l}${p?.[0]?.payload?.start ? ` · from ${p[0].payload.start}` : ''}`}
+                        formatter={(v) => [v, 'Classes running']} />
+                      <Area type="monotone" dataKey="classes" stroke="#818cf8" strokeWidth={2.5} fill="url(#loadFill)" dot={{ r: 3.5, fill: '#38bdf8', strokeWidth: 0 }} activeDot={{ r: 6 }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+                <p className="mt-2 text-[11px]" style={{ color: 'var(--text-3)' }}>Classes running in each period, from the official timetable.</p>
+              </>
+            )}
+        </Panel>
+
+        <Panel title="Classes in session now" icon={Building2} iconColor="#a78bfa" delay={0.15} bodyClass="max-h-[330px] space-y-3.5 overflow-y-auto pr-1 no-scrollbar">
+          {buildingList.length === 0 && <PanelNote>Loading buildings…</PanelNote>}
+          {buildingList.map((b) => {
+            const live = inSession?.live[b.id]?.length || 0;
+            const rooms = inSession?.rooms[b.id] || 0;
+            return (
+              <div key={b.id}>
+                <div className="mb-1.5 flex items-center justify-between gap-3 text-[13px]">
+                  <span className="flex min-w-0 items-center gap-2 font-semibold" style={{ color: 'var(--text)' }}>
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: b.color }} />
+                    <span className="truncate">{b.name}</span>
                   </span>
+                  <span className="shrink-0 text-xs font-bold" style={{ color: b.color }}>
+                    {inSession === null ? '…' : rooms ? `${live}/${rooms}` : '—'}
+                  </span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full" style={{ background: 'var(--surface-2)' }}>
+                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${rooms ? (live / rooms) * 100 : 0}%`, background: `linear-gradient(90deg, ${b.color}, color-mix(in srgb, ${b.color} 55%, #8b5cf6))` }} />
+                </div>
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--text-3)' }}>
+                  {inSession === null ? 'Loading' : rooms ? `${live} class${live === 1 ? '' : 'es'} running` : 'No timetable yet'}
                 </p>
               </div>
-              <span className="rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-xs font-bold text-red-400">
-                ADMINISTRATOR
-              </span>
-            </div>
-          </div>
-        </motion.div>
+            );
+          })}
+        </Panel>
+      </div>
 
-        {/* KPI cards */}
-        <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {kpis.map((kpi, i) => (
-            <motion.div key={kpi.label} {...fadeUp(0.1 + i * 0.06)}
-                        className="rounded-2xl border border-white/8 p-5"
-                        style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(16px)' }}>
-              <div className="mb-3 flex items-center justify-between">
-                <span className="grid h-10 w-10 place-items-center rounded-xl"
-                      style={{ background: kpi.color + '18', color: kpi.color }}>
-                  <kpi.icon size={18} />
-                </span>
-                <TrendingUp size={13} className="text-slate-600" />
-              </div>
-              <p className="font-display text-2xl font-extrabold text-white">{kpi.value}</p>
-              <p className="mt-0.5 text-xs text-slate-400">{kpi.label}</p>
-              <p className="mt-1 text-[10px]" style={{ color: kpi.color }}>{kpi.change}</p>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Middle row */}
-        <div className="mb-8 grid gap-4 lg:grid-cols-2">
-          {/* Weather widget */}
-          <motion.div {...fadeUp(0.28)} className="glass-card rounded-2xl p-5">
-            <h2 className="mb-4 flex items-center gap-2 font-bold text-white text-sm">
-              <Cloud size={15} className="text-[#38BDF8]" /> Campus Weather
-            </h2>
-            <div className="flex items-center gap-4 mb-4">
-              <span className="text-5xl">{weather ? weather.icon : '🌡️'}</span>
-              <div>
-                <p className="font-display text-4xl font-extrabold text-white">{weather ? weather.temp : weather === null ? '…' : '—'}</p>
-                <p className="text-xs text-slate-400">{weather ? weather.condition : weather === null ? 'Loading' : 'Weather unavailable (offline?)'}</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: 'Humidity', value: weather ? weather.humidity : '—', icon: '💧' },
-                { label: 'Wind',     value: weather ? weather.wind : '—',     icon: '🌬️' },
-              ].map((w) => (
-                <div key={w.label} className="rounded-xl border border-white/8 bg-white/4 p-3 text-center">
-                  <p className="text-lg">{w.icon}</p>
-                  <p className="font-bold text-white text-sm">{w.value}</p>
-                  <p className="text-[10px] text-slate-500">{w.label}</p>
-                </div>
-              ))}
-            </div>
-            <p className="mt-3 text-[10px] text-slate-600 text-center">Nadergul, Hyderabad{weather ? ` · reading at ${weather.at} IST (Open-Meteo)` : ''}</p>
-          </motion.div>
-
-          {/* Alerts */}
-          <motion.div {...fadeUp(0.32)} className="glass-card rounded-2xl p-5">
-            <h2 className="mb-4 flex items-center gap-2 font-bold text-white text-sm">
-              <Bell size={15} className="text-[#F59E0B]" /> System Alerts
-              <span className="ml-auto rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-bold text-red-400">
-                {alerts.length}
-              </span>
-            </h2>
-            <div className="space-y-2">
-              {alerts.map((a) => (
-                <div key={a.id} className="flex items-start gap-2 rounded-xl border border-white/6 bg-white/4 p-3">
-                  <AlertTriangle size={13} className={a.type === 'error' ? 'text-red-400 mt-0.5' : a.type === 'warning' ? 'text-amber-400 mt-0.5' : 'text-blue-400 mt-0.5'} />
-                  <div>
-                    <p className="text-xs text-slate-300 leading-relaxed">{a.msg}</p>
-                    <p className="mt-0.5 text-[10px] text-slate-500">{a.time}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Quick Actions + Activity */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          {/* Quick actions */}
-          <motion.div {...fadeUp(0.38)} className="glass-card rounded-2xl p-5">
-            <h2 className="mb-4 font-bold text-white text-sm">⚡ Quick Actions</h2>
-            <div className="grid grid-cols-3 gap-2">
-              {quickActions.map((qa) => (
-                <a key={qa.label} href={qa.href}
-                   className="flex flex-col items-center gap-2 rounded-xl border border-white/8 bg-white/4 p-3 text-center transition hover:border-white/20 hover:bg-white/8 active:scale-95">
-                  <span className="grid h-9 w-9 place-items-center rounded-xl"
-                        style={{ background: qa.color + '18', color: qa.color }}>
-                    <qa.icon size={16} />
-                  </span>
-                  <span className="text-[10px] font-medium text-slate-300 leading-tight">{qa.label}</span>
-                </a>
-              ))}
-            </div>
-          </motion.div>
-
-          {/* Activity feed */}
-          <motion.div {...fadeUp(0.42)} className="glass-card rounded-2xl p-5">
-            <h2 className="mb-4 flex items-center gap-2 font-bold text-white text-sm">
-              <Activity size={15} className="text-[#00FFB3]" /> Recent Activity
-            </h2>
-            <div className="space-y-2 max-h-56 overflow-y-auto no-scrollbar">
-              {activity === null && <p className="text-xs text-slate-500">Loading…</p>}
-              {activity?.length === 0 && <p className="text-xs text-slate-500">No certificate requests yet.</p>}
-              {activity?.map((r) => (
-                <a key={r.id} href="/services/setup" className="flex items-start gap-3 py-2 border-b border-white/5">
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/8 text-[10px] font-bold text-slate-300">
-                    {(r.student?.name || '?').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-slate-300">
-                      <strong className="text-white">{r.student?.name}</strong>{' '}
-                      <span className="text-slate-400">requested {r.doc_name}</span>
-                    </p>
-                    <p className="truncate text-[10px] text-slate-500">{whereNow(r)} · {fmtIst(r.created_at)}</p>
-                  </div>
-                  <StatusBadge status={r.status} />
-                </a>
-              ))}
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Building occupancy summary */}
-        <motion.div {...fadeUp(0.48)} className="mt-4 glass-card rounded-2xl p-5">
-          <h2 className="mb-4 flex items-center gap-2 font-bold text-white text-sm">
-            <Building2 size={15} className="text-[#7B61FF]" /> Classes in session now
-            <span className="ml-auto text-[10px] font-normal text-slate-500">from the timetable</span>
-          </h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {buildingList.map((b) => {
-              const live = inSession?.live[b.id]?.length || 0;
-              const rooms = inSession?.rooms[b.id] || 0;
-              return (
-                <div key={b.id} className="rounded-xl border border-white/6 bg-white/4 p-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="h-2 w-2 rounded-full" style={{ background: b.color }} />
-                    <span className="text-[10px]" style={{ color: b.color }}>{inSession === null ? '…' : rooms ? `${live}/${rooms} rooms` : '—'}</span>
-                  </div>
-                  <p className="text-xs font-semibold text-white truncate">{b.name}</p>
-                  <p className="mt-1 text-[10px] text-slate-500">{inSession === null ? 'Loading' : rooms ? `${live} class${live === 1 ? '' : 'es'} running` : 'No timetable yet'}</p>
-                  <div className="mt-1.5 h-1 rounded-full bg-white/8 overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${rooms ? (live / rooms) * 100 : 0}%`, background: b.color }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </motion.div>
-
-        {/* Today's Faculty Substitutions widget */}
-        <motion.div {...fadeUp(0.54)} className="mt-4 glass-card rounded-2xl p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 font-bold text-white text-sm">
-              <UserCheck size={15} className="text-[#F59E0B]" /> Today's Faculty Substitutions
-              {todaySubs.length > 0 && (
-                <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-400">
-                  {todaySubs.length} active
-                </span>
-              )}
-            </h2>
-            <a href="/admin/substitutions"
-               className="text-xs text-[#00E5FF] hover:underline font-semibold flex items-center gap-1">
-              Manage <ChevronRight size={12} />
-            </a>
-          </div>
+      {/* Substitutions, requests, alerts */}
+      <div className="mt-5 grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
+        <Panel title="Today's substitutions" icon={UserCheck} iconColor="#fbbf24" to="/admin/substitutions" action="Manage" delay={0.2}
+          badge={todaySubs.length > 0 ? <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-500">{todaySubs.length} active</span> : null}>
           {todaySubs.length === 0 ? (
-            <div className="rounded-xl border border-white/6 bg-white/4 p-4 text-center">
-              <p className="text-xs text-slate-400">✅ No substitutions today — all faculty available per official timetable.</p>
-            </div>
+            <PanelNote>✅ No substitutions today. All faculty are available per the official timetable.</PanelNote>
           ) : (
-            <div className="space-y-2">
-              {todaySubs.slice(0, 3).map((sub) => (
-                <div key={sub.id}
-                     className="flex items-center gap-3 rounded-xl border p-3"
-                     style={{ borderColor: 'rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.05)' }}>
-                  <span className="text-base">🟡</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-white">
-                      P{sub.period_number} · {sub.classroom_id} · {sub.section}
-                    </p>
-                    <p className="text-[10px] text-slate-400 truncate">
-                      <span className="text-red-400">{sub.original_faculty_name || 'N/A'}</span>
-                      {' → '}
-                      <span className="text-green-400">{sub.replacement_faculty_name}</span>
-                      {' · '}{sub.reason}
-                    </p>
-                  </div>
-                  <span className="text-[10px] text-amber-400 font-bold shrink-0">
-                    {sub.start_time}–{sub.end_time}
-                  </span>
-                </div>
+            <ol className="relative space-y-4 border-l pl-5" style={{ borderColor: 'var(--border-strong)' }}>
+              {todaySubs.slice(0, 4).map((sub) => (
+                <li key={sub.id} className="relative">
+                  <span className="absolute -left-[26px] top-1 h-3 w-3 rounded-full border-2" style={{ borderColor: '#fbbf24', background: 'var(--surface-solid)' }} />
+                  <p className="text-[13px] font-bold" style={{ color: 'var(--text)' }}>P{sub.period_number} · {sub.classroom_id} · {sub.section}
+                    <span className="ml-2 text-[11px] font-semibold text-amber-500">{sub.start_time}–{sub.end_time}</span></p>
+                  <p className="mt-0.5 text-xs" style={{ color: 'var(--text-2)' }}>
+                    <span className="text-red-500">{sub.original_faculty_name || 'N/A'}</span> → <span className="font-semibold text-emerald-500">{sub.replacement_faculty_name}</span> · {sub.reason}
+                  </p>
+                </li>
               ))}
-              {todaySubs.length > 3 && (
-                <p className="text-center text-[10px] text-slate-500 pt-1">
-                  +{todaySubs.length - 3} more —{' '}
-                  <a href="/admin/substitutions" className="text-[#00E5FF] hover:underline">view all</a>
-                </p>
-              )}
-            </div>
+              {todaySubs.length > 4 && <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>+{todaySubs.length - 4} more</p>}
+            </ol>
           )}
-        </motion.div>
+        </Panel>
+
+        <Panel title="Recent requests" icon={Activity} iconColor="#34d399" to="/services/setup" action="Open" delay={0.25} bodyClass="max-h-[300px] overflow-y-auto no-scrollbar">
+          {activity === null && <PanelNote>Loading…</PanelNote>}
+          {activity?.length === 0 && <PanelNote>No certificate requests yet.</PanelNote>}
+          <ul className="divide-y" style={{ '--tw-divide-opacity': 1 }}>
+            {activity?.map((r) => (
+              <li key={r.id} className="flex items-center gap-3 py-2.5" style={{ borderColor: 'var(--border)' }}>
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white" style={{ background: 'var(--brand-grad)' }}>
+                  {(r.student?.name || '?').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px]" style={{ color: 'var(--text)' }}><b>{r.student?.name}</b> <span style={{ color: 'var(--text-2)' }}>requested {r.doc_name}</span></p>
+                  <p className="truncate text-[11px]" style={{ color: 'var(--text-3)' }}>{whereNow(r)} · {fmtIst(r.created_at)}</p>
+                </div>
+                <StatusBadge status={r.status} />
+              </li>
+            ))}
+          </ul>
+        </Panel>
+
+        <Panel title="Alerts & notices" icon={Bell} iconColor="#f472b6" to="/notices" delay={0.3} className="lg:col-span-2 xl:col-span-1" bodyClass="max-h-[300px] space-y-2.5 overflow-y-auto no-scrollbar"
+          badge={<span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-bold text-red-500">{alerts.length}</span>}>
+          {alerts.length === 0 && <PanelNote>No active notices.</PanelNote>}
+          {alerts.map((a) => (
+            <div key={a.id} className="flex items-start gap-2.5 rounded-xl border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
+              <AlertTriangle size={14} className={`mt-0.5 shrink-0 ${a.type === 'error' ? 'text-red-500' : a.type === 'warning' ? 'text-amber-500' : 'text-sky-500'}`} />
+              <div className="min-w-0">
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text)' }}>{a.msg}</p>
+                <p className="mt-0.5 text-[10px]" style={{ color: 'var(--text-3)' }}>{a.time}</p>
+              </div>
+            </div>
+          ))}
+        </Panel>
+      </div>
+
+      {/* Quick actions + 3D */}
+      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <QuickActions items={quickActions} delay={0.35} />
+        <ExploreCard />
       </div>
     </PageTransition>
+  );
+}
+
+/** Weather at the campus, shown on the hero (Open-Meteo, fetched above). */
+function WeatherCard({ weather }) {
+  return (
+    <motion.div initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2, duration: 0.5 }}
+      className="ds-card w-full p-4 sm:w-[270px]" style={{ background: 'color-mix(in srgb, var(--surface-solid) 78%, transparent)' }}>
+      <div className="flex items-center gap-3">
+        <span className="text-4xl leading-none">{weather ? weather.icon : '🌡️'}</span>
+        <div className="min-w-0">
+          <p className="font-display text-3xl font-extrabold leading-none" style={{ color: 'var(--text)' }}>{weather ? weather.temp : weather === null ? '…' : '—'}</p>
+          <p className="mt-1 truncate text-xs" style={{ color: 'var(--text-2)' }}>{weather ? weather.condition : weather === null ? 'Loading' : 'Weather unavailable'}</p>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <span className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5" style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}><Droplets size={13} className="text-sky-500" /> {weather ? weather.humidity : '—'}</span>
+        <span className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5" style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}><Wind size={13} className="text-emerald-500" /> {weather ? weather.wind : '—'}</span>
+      </div>
+      <p className="mt-2.5 text-[10px]" style={{ color: 'var(--text-3)' }}>Nadergul, Hyderabad{weather ? ` · ${weather.at} IST` : ''}</p>
+    </motion.div>
   );
 }

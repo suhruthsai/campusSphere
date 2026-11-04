@@ -5,16 +5,17 @@ import uuid
 from datetime import date, datetime
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import settings
 from backend.app.core.security import get_current_user, require_admin, require_roles
 from backend.app.db.session import get_db
 from backend.app.models.admissions import (
-    AdmissionDocumentModel, AdmissionModel, FeeHeadModel, OriginalCertificateModel, PaymentModel,
+    AdmissionDocumentModel, AdmissionModel, FeeHeadModel, JoiningDocRuleModel, OriginalCertificateModel, PaymentModel,
 )
 from backend.app.models.campus import UserModel
 from backend.app.models.services import StudentProfileModel
@@ -143,8 +144,9 @@ def _originals(db, user_id):
     return db.query(OriginalCertificateModel).filter(OriginalCertificateModel.user_id == user_id).order_by(OriginalCertificateModel.id).all()
 
 
-def _doc_out(d: AdmissionDocumentModel) -> dict:
-    return {"id": d.id, "doc_key": d.doc_key, "label": J.DOC_LABELS.get(d.doc_key, d.doc_key), "original_name": d.original_name,
+def _doc_out(d: AdmissionDocumentModel, labels: Optional[dict] = None) -> dict:
+    return {"id": d.id, "doc_key": d.doc_key, "label": (labels or {}).get(d.doc_key, d.doc_key), "original_name": d.original_name,
+            "issued_on": d.issued_on.isoformat() if d.issued_on else None, "copies_received": d.copies_received or 0,
             "content_type": d.content_type, "size_bytes": d.size_bytes, "status": d.status, "remarks": d.remarks,
             "reviewed_by": d.reviewed_by, "reviewed_at": _iso(d.reviewed_at), "uploaded_at": _iso(d.uploaded_at)}
 
@@ -184,12 +186,17 @@ def _admission_out(db: Session, adm: AdmissionModel, with_user: bool = False) ->
     payments = _payments(db, adm.user_id)
     originals = _originals(db, adm.user_id)
     checklist = []
-    for d in J.JOINING_DOCS:
+    labels = J.labels(db)
+    for d in J.rules(db, include_inactive=True):
         uploaded = docs.get(d["key"])
+        if not d["active"] and not uploaded:
+            continue
         if not J.applies(d, adm) and not uploaded:
             continue
-        checklist.append({"key": d["key"], "label": d["label"], "hint": d.get("hint"), "images_only": d.get("images_only", False),
-                          "required": J.applies(d, adm), "upload": _doc_out(uploaded) if uploaded else None})
+        checklist.append({"key": d["key"], "label": d["label"], "hint": d.get("hint"), "images_only": d["images_only"],
+                          "original": d["original"], "copies": d["copies"], "copy_unit": d["copy_unit"],
+                          "needs_issue_date": d["needs_issue_date"], "issued_after": d["issued_after"],
+                          "required": d["active"] and J.applies(d, adm), "upload": _doc_out(uploaded, labels) if uploaded else None})
     out = {
         "id": adm.id, "user_id": adm.user_id, "status": adm.status, "academic_year": adm.academic_year,
         "details": {k: (getattr(adm, k).isoformat() if isinstance(getattr(adm, k), date) else getattr(adm, k))
@@ -226,7 +233,7 @@ def config(db: Session = Depends(get_db)):
     heads = db.query(FeeHeadModel).filter(FeeHeadModel.active == True).order_by(FeeHeadModel.sort_order, FeeHeadModel.id).all()  # noqa: E712
     return {
         "categories": J.CATEGORIES, "branches": J.BRANCHES, "genders": J.GENDERS,
-        "documents": J.JOINING_DOCS, "originals": [{"key": k, "label": J.ORIGINAL_LABELS[k]} for k in J.ORIGINAL_KEYS],
+        "documents": J.rules(db), "originals": [{"key": r["key"], "label": r["label"]} for r in J.original_rules(db)],
         "fee_heads": [{"id": h.id, "name": h.name, "description": h.description, "amount": h.amount, "optional": h.optional} for h in heads],
         "payment_mode": settings.PAYMENT_MODE, "academic_year": academic_year(),
     }
@@ -275,15 +282,27 @@ def save_details(body: DetailsIn, db: Session = Depends(get_db), current: dict =
 
 
 @router.post("/me/documents/{doc_key}", summary="Upload one joining document (PDF/JPG/PNG, max 5 MB)")
-def upload_document(doc_key: str, file: UploadFile = File(...), db: Session = Depends(get_db), current: dict = Depends(get_current_user)):
+def upload_document(doc_key: str, file: UploadFile = File(...), issued_on: Optional[str] = Form(None),
+                    db: Session = Depends(get_db), current: dict = Depends(get_current_user)):
     adm = _my_admission(db, current)
     if not adm:
         raise HTTPException(status_code=404, detail="Start your application first")
     if adm.status not in EDITABLE:
         raise HTTPException(status_code=400, detail="Your application is with the office and can't be edited now")
-    spec = next((d for d in J.JOINING_DOCS if d["key"] == doc_key), None)
+    spec = next((d for d in J.rules(db) if d["key"] == doc_key), None)
     if not spec:
         raise HTTPException(status_code=404, detail="Unknown document")
+    issued = None
+    if spec["needs_issue_date"]:
+        try:
+            issued = date.fromisoformat((issued_on or "").strip())
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Enter the date printed on this certificate")
+        if issued > date.today():
+            raise HTTPException(status_code=422, detail="The date on the certificate can't be in the future")
+        oldest = date.fromisoformat(spec["issued_after"])
+        if issued < oldest:
+            raise HTTPException(status_code=422, detail=f"This certificate is too old: it must be issued on or after {oldest.strftime('%d-%m-%Y')}. Please get a fresh one.")
     existing = db.query(AdmissionDocumentModel).filter(
         AdmissionDocumentModel.admission_id == adm.id, AdmissionDocumentModel.doc_key == doc_key).first()
     if existing and existing.status == "accepted":
@@ -296,7 +315,7 @@ def upload_document(doc_key: str, file: UploadFile = File(...), db: Session = De
         J.delete_document_file(adm.id, existing.stored_name)
         db.delete(existing)
         db.flush()
-    doc = AdmissionDocumentModel(admission_id=adm.id, doc_key=doc_key, original_name=(file.filename or "")[:120], **saved)
+    doc = AdmissionDocumentModel(admission_id=adm.id, doc_key=doc_key, original_name=(file.filename or "")[:120], issued_on=issued, **saved)
     db.add(doc)
     db.commit()
     return _admission_out(db, adm)
@@ -328,10 +347,11 @@ def submit(db: Session = Depends(get_db), current: dict = Depends(get_current_us
     if missing:
         raise HTTPException(status_code=422, detail="Please fill in: " + ", ".join(missing))
     docs = {d.doc_key: d for d in _docs(db, adm)}
-    absent = [d["label"] for d in J.required_docs(adm) if d["key"] not in docs]
+    absent = [d["label"] for d in J.required_docs(db, adm) if d["key"] not in docs]
     if absent:
         raise HTTPException(status_code=422, detail="Please upload: " + ", ".join(absent))
-    still_rejected = [J.DOC_LABELS[k] for k, d in docs.items() if d.status == "rejected"]
+    labels = J.labels(db)
+    still_rejected = [labels.get(k, k) for k, d in docs.items() if d.status == "rejected"]
     if still_rejected:
         raise HTTPException(status_code=422, detail="Upload a new copy of: " + ", ".join(still_rejected))
     adm.status = "submitted"
@@ -487,7 +507,7 @@ def verify(admission_id: int, db: Session = Depends(get_db), office: dict = Depe
     if adm.status != "submitted":
         raise HTTPException(status_code=400, detail="Only submitted applications can be verified")
     docs = {d.doc_key: d for d in _docs(db, adm)}
-    not_ok = [d["label"] for d in J.required_docs(adm) if docs.get(d["key"]) is None or docs[d["key"]].status != "accepted"]
+    not_ok = [d["label"] for d in J.required_docs(db, adm) if docs.get(d["key"]) is None or docs[d["key"]].status != "accepted"]
     if not_ok:
         raise HTTPException(status_code=422, detail="Accept every required document first: " + ", ".join(not_ok))
     adm.status = "verified"
@@ -517,7 +537,8 @@ def receive_originals(admission_id: int, body: OriginalsIn, db: Session = Depend
     if adm.status in EDITABLE:
         raise HTTPException(status_code=400, detail="The student must submit the application first")
     keys = list(dict.fromkeys(body.doc_keys))
-    bad = [k for k in keys if k not in J.ORIGINAL_KEYS]
+    orig_labels = {r["key"]: r["label"] for r in J.original_rules(db)}
+    bad = [k for k in keys if k not in orig_labels]
     if bad:
         raise HTTPException(status_code=422, detail="Unknown certificate: " + ", ".join(bad))
     held = {o.doc_key for o in _originals(db, adm.user_id) if o.status in ("held", "out")}
@@ -527,7 +548,7 @@ def receive_originals(admission_id: int, body: OriginalsIn, db: Session = Depend
     now = _now()
     rows = []
     for k in new_keys:
-        r = OriginalCertificateModel(user_id=adm.user_id, admission_id=adm.id, doc_key=k, label=J.ORIGINAL_LABELS[k],
+        r = OriginalCertificateModel(user_id=adm.user_id, admission_id=adm.id, doc_key=k, label=orig_labels[k],
                                      status="held", movements=[{"action": "received", "at": now.isoformat(), "by": office["name"], "note": None}])
         db.add(r)
         rows.append(r)
@@ -684,3 +705,70 @@ def update_fee_head(head_id: int, body: FeeHeadIn, db: Session = Depends(get_db)
         setattr(head, k, v)
     db.commit()
     return {"id": head.id}
+
+
+# ── Office: photocopy sets handed in ──────────────────────────────────────────
+class CopiesIn(BaseModel):
+    copies_received: int = Field(..., ge=0, le=10)
+
+
+@router.post("/office/documents/{doc_id}/copies", summary="Record how many photocopy sets (or photos) were handed in")
+def record_copies(doc_id: int, body: CopiesIn, db: Session = Depends(get_db), _office: dict = Depends(require_office)):
+    doc = db.query(AdmissionDocumentModel).filter(AdmissionDocumentModel.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    doc.copies_received = body.copies_received
+    db.commit()
+    return _admission_out(db, _get_admission(db, doc.admission_id), with_user=True)
+
+
+# ── Admin: which documents joinees must give ─────────────────────────────────
+class RuleIn(BaseModel):
+    label: str = Field(..., min_length=3, max_length=140)
+    hint: Optional[str] = Field(None, max_length=300)
+    when: Literal["always", "not_oc", "ews", "reimbursement", "other_board"] = "always"
+    images_only: bool = False
+    original: bool = False
+    copies: int = Field(3, ge=0, le=10)
+    copy_unit: Literal["sets", "photos"] = "sets"
+    issued_after: Optional[date] = None
+    active: bool = True
+    sort_order: int = Field(0, ge=0, le=1000)
+
+
+def _apply_rule(r: JoiningDocRuleModel, body: RuleIn) -> None:
+    r.label, r.hint, r.applies = body.label.strip(), (body.hint or "").strip() or None, body.when
+    r.images_only, r.original, r.copies, r.copy_unit = body.images_only, body.original, body.copies, body.copy_unit
+    r.issued_after, r.active = body.issued_after, body.active
+    if body.sort_order:
+        r.sort_order = body.sort_order
+
+
+@router.get("/admin/doc-rules", summary="Every joining document rule, including switched-off ones")
+def list_doc_rules(db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
+    return J.rules(db, include_inactive=True)
+
+
+@router.post("/admin/doc-rules", summary="Add a document the college collects at joining")
+def create_doc_rule(body: RuleIn, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
+    J.ensure_rules(db)
+    base = re.sub(r"[^a-z0-9]+", "_", body.label.lower()).strip("_")[:40] or "document"
+    key, n = base, 2
+    while db.query(JoiningDocRuleModel).filter(JoiningDocRuleModel.key == key).first():
+        key, n = f"{base}_{n}", n + 1
+    top = db.query(func.max(JoiningDocRuleModel.sort_order)).scalar() or 0
+    rule = JoiningDocRuleModel(key=key, label=body.label.strip(), sort_order=top + 10)
+    _apply_rule(rule, body)
+    db.add(rule)
+    db.commit()
+    return J.rule_out(rule)
+
+
+@router.put("/admin/doc-rules/{rule_id}", summary="Edit a joining document rule (its key never changes)")
+def update_doc_rule(rule_id: int, body: RuleIn, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
+    rule = db.query(JoiningDocRuleModel).filter(JoiningDocRuleModel.id == rule_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    _apply_rule(rule, body)
+    db.commit()
+    return J.rule_out(rule)

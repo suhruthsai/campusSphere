@@ -9,6 +9,7 @@ import {
 } from '../../components/joining/joiningUi.jsx';
 import { btnGhost, btnPrimary, fmtIst, inputCls, labelCls } from '../../components/services/requestUi.jsx';
 import { joiningApi } from '../../utils/api.js';
+import { fmtDay } from '../../utils/campus.js';
 
 const FILTERS = [
   ['submitted', 'To review'], ['needs_changes', 'Sent back'], ['verified', 'Verified'], ['enrolled', 'Enrolled'], ['draft', 'Drafts'], ['', 'All'],
@@ -21,7 +22,7 @@ const DETAIL_LABELS = {
   fee_reimbursement: 'Fee reimbursement', other_board: 'Other board',
 };
 
-function DocRow({ c, canReview, onView, onReview }) {
+function DocRow({ c, canReview, onView, onReview, onCopies }) {
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
   const up = c.upload;
@@ -30,8 +31,18 @@ function DocRow({ c, canReview, onView, onReview }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-white">{c.label} {!c.required && <span className="text-xs font-normal text-slate-500">(optional)</span>}</p>
-          {up ? <p className={`text-xs ${DOC_STATUS[up.status].cls}`}>{DOC_STATUS[up.status].label}{up.remarks ? ` — ${up.remarks}` : ''}{up.reviewed_by ? ` · ${up.reviewed_by}` : ''}</p>
+          {up ? <p className={`text-xs ${DOC_STATUS[up.status].cls}`}>{DOC_STATUS[up.status].label}{up.remarks ? ` — ${up.remarks}` : ''}{up.reviewed_by ? ` · ${up.reviewed_by}` : ''}{up.issued_on ? ` · dated ${fmtDay(up.issued_on)}` : ''}</p>
             : <p className="text-xs text-amber-300">Not uploaded</p>}
+          {up && c.copies > 0 && (
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+              {c.original && <span className="rounded-full border border-cyan-400/30 px-2 py-0.5 text-cyan-200">Original to keep</span>}
+              <label htmlFor={`cp-${c.key}`}>{c.copy_unit === 'photos' ? 'Photos' : 'Photocopy sets'} received</label>
+              <select id={`cp-${c.key}`} className={`${inputCls} !w-auto !py-0.5 !text-xs`} value={up.copies_received} onChange={(e) => onCopies(up.id, Number(e.target.value))}>
+                {Array.from({ length: Math.max(c.copies, up.copies_received) + 1 }, (_, n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <span className={up.copies_received >= c.copies ? 'text-emerald-300' : 'text-amber-300'}>of {c.copies}</span>
+            </p>
+          )}
         </div>
         {up && (
           <div className="flex gap-1.5">
@@ -57,7 +68,7 @@ function Application({ id, config, mentors, onBack }) {
   const [msg, setMsg] = useState({ text: '', bad: false });
   const [viewing, setViewing] = useState(null);
   const [remarks, setRemarks] = useState('');
-  const [originals, setOriginals] = useState(['tc']);
+  const [originals, setOriginals] = useState(null);      // null until the application loads: then every original still due is ticked
   const [enrol, setEnrol] = useState({ roll_no: '', section: '', mentor_id: '' });
 
   const load = useCallback(() => joiningApi.application(id).then(setApp).catch((e) => setMsg({ text: e.message, bad: true })), [id]);
@@ -66,9 +77,18 @@ function Application({ id, config, mentors, onBack }) {
     setMsg({ text: '', bad: false });
     try { const res = await fn(); setApp(res.application || res); if (ok) setMsg({ text: typeof ok === 'function' ? ok(res) : ok, bad: false }); } catch (e) { setMsg({ text: e.message, bad: true }); }
   };
+  useEffect(() => {
+    if (!app || originals !== null) return;
+    const have = new Set(app.originals.filter((o) => o.status !== 'returned').map((o) => o.doc_key));
+    setOriginals(app.checklist.filter((c) => c.original && c.required && !have.has(c.key)).map((c) => c.key));
+  }, [app, originals]);
   if (!app) return <p className="text-sm text-slate-400">Loading…</p>;
 
   const held = new Set(app.originals.filter((o) => o.status !== 'returned').map((o) => o.doc_key));
+  // Only the originals this student has to give (their category and options decide), plus anything already held
+  const dueKeys = new Set(app.checklist.filter((c) => c.original && c.required).map((c) => c.key));
+  const picked = originals || [];
+  const originalOptions =config.originals.filter((o) => dueKeys.has(o.key) || held.has(o.key));
   const d = app.details;
   return (
     <div className="space-y-4">
@@ -99,6 +119,7 @@ function Application({ id, config, mentors, onBack }) {
         <ul className="space-y-2">
           {app.checklist.map((c) => (
             <DocRow key={c.key} c={c} canReview={app.status === 'submitted'} onView={setViewing}
+              onCopies={(docId, n) => run(() => joiningApi.recordCopies(docId, n))}
               onReview={(docId, status, why) => run(() => joiningApi.review(docId, status, why))} />
           ))}
         </ul>
@@ -126,17 +147,17 @@ function Application({ id, config, mentors, onBack }) {
         {app.status === 'draft' || app.status === 'needs_changes' ? <p className="text-sm text-slate-400">Available once the student submits.</p> : (
           <>
             <div className="grid gap-2 sm:grid-cols-2">
-              {config.originals.map((o) => (
+              {originalOptions.map((o) => (
                 <label key={o.key} className={`flex items-center gap-2 rounded-lg border border-white/5 px-3 py-2 text-sm ${held.has(o.key) ? 'text-emerald-300' : 'text-slate-200'}`}>
-                  <input type="checkbox" disabled={held.has(o.key)} checked={held.has(o.key) || originals.includes(o.key)}
-                    onChange={(e) => setOriginals((list) => e.target.checked ? [...list, o.key] : list.filter((k) => k !== o.key))} />
+                  <input type="checkbox" disabled={held.has(o.key)} checked={held.has(o.key) || picked.includes(o.key)}
+                    onChange={(e) => setOriginals((list) => e.target.checked ? [...(list || []), o.key] : (list || []).filter((k) => k !== o.key))} />
                   {o.label}{held.has(o.key) && ' · with the college'}
                 </label>
               ))}
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              <button className={btnPrimary} disabled={!originals.some((k) => !held.has(k))}
-                onClick={() => run(() => joiningApi.receiveOriginals(app.id, originals.filter((k) => !held.has(k))), (res) => `Recorded · acknowledgement ${res.ack_no}`)}>
+              <button className={btnPrimary} disabled={!picked.some((k) => !held.has(k))}
+                onClick={() => run(() => joiningApi.receiveOriginals(app.id, picked.filter((k) => !held.has(k))), (res) => `Recorded · acknowledgement ${res.ack_no}`)}>
                 Record received
               </button>
               {[...new Set(app.originals.map((o) => o.ack_no).filter(Boolean))].map((a) => (

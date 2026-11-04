@@ -10,6 +10,7 @@ import { PLACE_NAMES, TestCheckout, rupees } from '../../components/joining/join
 import { btnGhost, btnPrimary, fmtIst, inputCls, labelCls } from '../../components/services/requestUi.jsx';
 import { leavingApi, servicesApi } from '../../utils/api.js';
 import { fmtDay } from '../../utils/campus.js';
+import { ExitChecklist } from './ExitPanels.jsx';
 
 export const UNIT_STATUS = {
   pending: { label: 'Waiting', icon: Clock3, card: 'border-amber-400/30 bg-amber-500/[0.06]', text: 'text-amber-300' },
@@ -180,6 +181,8 @@ export default function LeavingJourney() {
             </p>
           </section>
 
+          <ExitChecklist reload={exitRec.status + exitRec.counts.cleared + exitRec.originals.map((o) => o.status).join()} />
+
           <section>
             <h2 className="section-title mb-3">No-dues clearance</h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -220,7 +223,7 @@ export default function LeavingJourney() {
                   </ul>
                   {exitRec.originals.some((o) => o.status !== 'returned') && (
                     <p className="mt-2 text-xs text-slate-500">
-                      {cleared ? 'Collect them at the Admin Office with your No-Dues Certificate.' : 'They are handed back at the Admin Office after your clearance.'}
+                      Ask the Admin Office for them at any time: they are yours, and are returned whether or not any dues are pending.
                     </p>
                   )}
                 </>

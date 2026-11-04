@@ -22,7 +22,7 @@ function CoverageRing({ percent }) {
           <stop offset="0%" stopColor="#00E5FF" /><stop offset="100%" stopColor="#00FFB3" />
         </linearGradient>
       </defs>
-      <circle cx="64" cy="64" r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="10" />
+      <circle cx="64" cy="64" r={r} fill="none" stroke="var(--border)" strokeWidth="10" />
       <circle cx="64" cy="64" r={r} fill="none" stroke="url(#cov-grad)" strokeWidth="10" strokeLinecap="round"
               strokeDasharray={`${(percent / 100) * c} ${c}`} transform="rotate(-90 64 64)"
               style={{ transition: 'stroke-dasharray 900ms cubic-bezier(.4,0,.2,1)' }} />

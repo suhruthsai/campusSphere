@@ -12,8 +12,10 @@ from backend.app.core.security import get_current_user, require_admin
 from backend.app.db.session import get_db
 from backend.app.models.admissions import AdmissionModel, OriginalCertificateModel, PaymentModel
 from backend.app.models.campus import UserModel
-from backend.app.models.leaving import ClearanceItemModel, ClearanceOfficerModel, DocumentFeeModel, ExitModel
-from backend.app.models.services import StudentProfileModel
+from backend.app.models.leaving import (
+    ClearanceItemModel, ClearanceOfficerModel, DocumentFeeModel, ExitModel,
+)
+from backend.app.models.services import DocumentRequestModel, StudentProfileModel
 from backend.app.student_services import payments as P
 from backend.app.student_services.catalog import (
     CLEARANCE_UNITS, COURSE_COMPLETED, DOC_TYPES, EXIT_REASONS, UNIT_LABELS, unit_place,
@@ -338,3 +340,58 @@ def set_document_fee(doc_type: str, body: FeeIn, db: Session = Depends(get_db), 
         db.add(DocumentFeeModel(doc_type=doc_type, amount=body.amount))
     db.commit()
     return {"doc_type": doc_type, "amount": body.amount}
+
+
+# ── "My exit documents": everything the college gives a leaving student, in one list ────────────────────
+REQUEST_STATUS = {"in_review": "in_progress", "awaiting_payment": "in_progress", "processing": "in_progress", "approved": "done"}
+
+
+@router.get("/me/checklist", summary="What I get from the college when I leave, and where each document stands")
+def my_checklist(db: Session = Depends(get_db), current: dict = Depends(get_current_user)):
+    exit_rec = _my_exit(db, current)
+    if not exit_rec:
+        return None
+    completed = exit_rec.reason == COURSE_COMPLETED
+    cleared = exit_rec.status == "cleared"
+    items = _items(db, exit_rec)
+    counts = {s: sum(1 for i in items if i.status == s) for s in ("pending", "dues", "cleared")}
+    newest = {}
+    for r in db.query(DocumentRequestModel).filter(DocumentRequestModel.student_id == current["sub"]).order_by(DocumentRequestModel.created_at).all():
+        newest[r.doc_type] = r
+
+    out = [{"key": "no_dues", "label": "No-dues clearance", "kind": "step",
+            "status": "done" if cleared else "in_progress",
+            "detail": "Every unit has cleared you" if cleared else f"{counts['cleared']} of {len(items)} units cleared" + (f"; {counts['dues']} with dues to settle" if counts["dues"] else ""),
+            "link": "/leaving"},
+           {"key": "no_dues_certificate", "label": "No-Dues Certificate", "kind": "document",
+            "status": "done" if cleared else "blocked", "detail": "Ready to download" if cleared else "Available once every unit has cleared you",
+            "download": "/leaving/me/no-dues-certificate" if cleared else None}]
+
+    wanted = ["tc", "conduct"] + (["course_completion", "provisional", "cmm"] if completed else [])
+    for dt in wanted:
+        spec = DOC_TYPES[dt]
+        req = newest.get(dt)
+        if req and req.status in REQUEST_STATUS:
+            st = REQUEST_STATUS[req.status]
+            detail = "Approved: collect or download it" if st == "done" else "Waiting for approval"
+        elif req and req.status == "rejected":
+            st, detail = "todo", "Rejected: apply again from the Services page"
+        elif spec.get("needs_exit") == "cleared" and not cleared:
+            st, detail = "blocked", "You can apply once every unit has cleared you"
+        else:
+            st, detail = "todo", f"Apply at the {spec['counter_name']} (Services page)"
+        out.append({"key": dt, "label": spec["name"], "kind": "document", "status": st, "detail": detail, "link": "/services",
+                    "reference": req.ref_no if req and req.status == "approved" else None})
+
+    originals = db.query(OriginalCertificateModel).filter(OriginalCertificateModel.user_id == current["sub"]).all()
+    held = [o for o in originals if o.status in ("held", "out")]
+    out.append({"key": "originals", "label": "Your original certificates back", "kind": "step",
+                "status": "done" if originals and not held else "todo" if held else "info",
+                "detail": ("All returned to you" if originals and not held else
+                           f"{len(held)} still with the college: ask the Admin Office to hand them back. They are returned whether or not dues are pending" if held
+                           else "The college holds none of your originals"),
+                "items": [{"label": o.label, "status": o.status} for o in originals]})
+    if completed:
+        out.append({"key": "university", "label": "Original degree and migration certificate", "kind": "info", "status": "info",
+                    "detail": "These are issued by Osmania University, not the college. Ask the Exam Cell how to apply and what the university needs."})
+    return {"reason": exit_rec.reason, "completed": completed, "cleared": cleared, "items": out}

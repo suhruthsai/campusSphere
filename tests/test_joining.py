@@ -33,9 +33,10 @@ def call(method, path, token=None, body=None, raw=False):
         return e.code, json.loads(e.read() or b"null"), None
 
 
-def upload(token, key, filename, content):
+def upload(token, key, filename, content, issued_on=None):
     boundary = uuid.uuid4().hex
-    body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
+    fields = f"--{boundary}\r\nContent-Disposition: form-data; name=\"issued_on\"\r\n\r\n{issued_on}\r\n" if issued_on else ""
+    body = fields.encode() + (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
             f"Content-Type: application/octet-stream\r\n\r\n").encode() + content + f"\r\n--{boundary}--\r\n".encode()
     req = urllib.request.Request(f"{BASE}/joining/me/documents/{key}", method="POST", data=body,
                                  headers={"Content-Type": f"multipart/form-data; boundary={boundary}", "Authorization": f"Bearer {token}"})
@@ -109,7 +110,9 @@ try:
     s, d = upload(stu, "not_a_doc", "x.pdf", PDF)
     check("unknown document -> 404", s == 404, d)
     for key in req_keys:
-        s, d = upload(stu, key, f"{key}.{'png' if key == 'photo' else 'pdf'}", PNG if key == "photo" else PDF)
+        # the income certificate has a "must be of the current year" rule, so it needs the date printed on it
+        s, d = upload(stu, key, f"{key}.{'png' if key == 'photo' else 'pdf'}", PNG if key == "photo" else PDF,
+                      issued_on=__import__("datetime").date.today().isoformat() if key == "income_cert" else None)
         if s != 200:
             check(f"upload {key}", False, d)
     s, app, _ = call("GET", "/joining/me", stu)

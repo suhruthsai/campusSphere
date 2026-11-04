@@ -104,7 +104,7 @@ export default function TimeMachineBar({ onTimeChange }) {
 
 const styles = {
   bar: {
-    background: '#1E293B',
+    background: 'var(--surface-solid)',
     border: '1px solid #334155',
     borderRadius: 14,
     padding: '12px 20px',
@@ -118,12 +118,12 @@ const styles = {
   },
   left: { display: 'flex', alignItems: 'center', gap: 12 },
   icon: { fontSize: 24 },
-  title: { color: '#F8FAFC', fontWeight: 700, fontSize: 14 },
-  sub: { color: '#94A3B8', fontSize: 11, marginTop: 2 },
+  title: { color: 'var(--text)', fontWeight: 700, fontSize: 14 },
+  sub: { color: 'var(--text-2)', fontSize: 11, marginTop: 2 },
   controls: { display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' },
   modeToggle: {
     display: 'flex',
-    background: '#0F172A',
+    background: 'var(--surface-solid)',
     padding: 3,
     borderRadius: 10,
     border: '1px solid #334155',
@@ -131,7 +131,7 @@ const styles = {
   modeBtn: {
     background: 'transparent',
     border: 'none',
-    color: '#64748B',
+    color: 'var(--text-3)',
     padding: '6px 14px',
     borderRadius: 8,
     fontSize: 12,
@@ -143,19 +143,19 @@ const styles = {
   modeActiveSim: { background: '#8B5CF622', color: '#A78BFA', border: '1px solid #8B5CF644' },
   simInputs: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   inputDate: {
-    background: '#0F172A',
+    background: 'var(--surface-solid)',
     border: '1px solid #334155',
     borderRadius: 8,
-    color: '#F8FAFC',
+    color: 'var(--text)',
     padding: '5px 10px',
     fontSize: 12,
     outline: 'none',
   },
   presetGroup: { display: 'flex', gap: 4 },
   presetBtn: {
-    background: '#0F172A',
+    background: 'var(--surface-solid)',
     border: '1px solid #334155',
-    color: '#94A3B8',
+    color: 'var(--text-2)',
     borderRadius: 6,
     padding: '4px 8px',
     fontSize: 11,

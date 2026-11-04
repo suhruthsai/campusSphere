@@ -1,124 +1,31 @@
-// Shell.jsx — the top bar: each role's menus (navConfig.js, built from GET /auth/me/roles), account and logout
-import { Bot, ChevronDown, LogOut, Menu, X } from 'lucide-react';
+// Shell.jsx — the frame around every page: a left sidebar (the role's menus from navConfig.js, built from
+// GET /auth/me/roles) and a top bar. Guests (the open campus at "/") get the slim top bar with Sign in.
 import { motion, AnimatePresence } from 'framer-motion';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { roleColors } from '../../utils/auth.js';
 import { authApi } from '../../utils/api.js';
 import { getNavItems } from './navConfig.js';
+import LoginModal from '../auth/LoginModal.jsx';
+import Sidebar from './Sidebar.jsx';
+import TopBar from './TopBar.jsx';
 
-// ── Dropdown menu (Office, Management, Campus, ...) ───────────────────────────
-function NavDropdown({ label, icon: Icon, items, isActive }) {
-  const [open, setOpen]   = useState(false);
-  const ref               = useRef(null);
-  const btnRef            = useRef(null);
-  const location          = useLocation();
+const SIDEBAR_KEY = 'campussphere_sidebar';
+const WIDE = '268px';
+const SLIM = '76px';
 
-  useEffect(() => { setOpen(false); }, [location.pathname]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target) &&
-          btnRef.current && !btnRef.current.contains(e.target)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  return (
-    <div className="relative" style={{ position: 'relative', zIndex: 60 }}>
-      <button
-        ref={btnRef}
-        onClick={() => setOpen((v) => !v)}
-        title={label}
-        aria-label={label}
-        className={`flex items-center gap-1.5 rounded-xl px-2.5 2xl:px-3 py-2 text-xs font-medium transition-all select-none ${
-          isActive || open
-            ? 'bg-[rgba(123,97,255,0.12)] text-[#7B61FF]'
-            : 'text-slate-400 hover:bg-white/8 hover:text-white'
-        }`}
-      >
-        <Icon size={14} />
-        <span className="hidden 2xl:inline">{label}</span>
-        <ChevronDown size={11} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            ref={ref}
-            initial={{ opacity: 0, y: -6, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0,  scale: 1    }}
-            exit={{    opacity: 0, y: -6, scale: 0.97 }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-            style={{
-              position: 'absolute',
-              top: 'calc(100% + 10px)',
-              left: 0,
-              width: 220,
-              borderRadius: 16,
-              border: '1px solid rgba(255,255,255,0.12)',
-              background: 'rgba(4,9,26,0.97)',
-              backdropFilter: 'blur(32px)',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(123,97,255,0.06) inset',
-              padding: 8,
-              zIndex: 9999,
-            }}
-          >
-            {items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={() => setOpen(false)}
-                style={{ display: 'block', textDecoration: 'none' }}
-              >
-                {({ isActive: ia }) => (
-                  <div
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '8px 10px', borderRadius: 10, marginBottom: 2,
-                      fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                      background: ia ? 'rgba(255,255,255,0.08)' : 'transparent',
-                      color: ia ? '#fff' : '#94a3b8', transition: 'all 0.15s',
-                    }}
-                    onMouseEnter={(e) => { if (!ia) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#fff'; }}}
-                    onMouseLeave={(e) => { if (!ia) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}}
-                  >
-                    <span style={{
-                      display: 'grid', placeItems: 'center',
-                      width: 26, height: 26, borderRadius: 8, flexShrink: 0,
-                      background: item.color + '1a', color: item.color,
-                    }}>
-                      <item.icon size={13} />
-                    </span>
-                    <span style={{ flex: 1 }}>{item.label}</span>
-                    {ia && (
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
-                    )}
-                  </div>
-                )}
-              </NavLink>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ── Main Shell ────────────────────────────────────────────────────────────────
 export default function Shell({ children }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
   const { user, logout }            = useAuth();
   const navigate                    = useNavigate();
   const location                    = useLocation();
   const [roles, setRoles]           = useState(null);   // HOD, Principal, CoE, desks... (null while loading)
-  const navItems                    = getNavItems(user?.role, roles);
-  const rc                          = user ? (roleColors[user.role] ?? roleColors.student) : null;
+  const [collapsed, setCollapsed]   = useState(() => {
+    try { return localStorage.getItem(SIDEBAR_KEY) === 'collapsed'; } catch { return false; }
+  });
+  const [drawer, setDrawer]         = useState(false);  // the sidebar as a drawer on phones
+  const [signInOpen, setSignInOpen] = useState(false);  // the sign-in overlay (guests, top-right button)
+  // A guest has no menus: just the campus and the Sign in button
+  const navItems                    = user ? getNavItems(user.role, roles) : [];
 
   // What this person holds decides which desks appear; refreshed on each page change (a new desk shows at once)
   useEffect(() => {
@@ -126,244 +33,54 @@ export default function Shell({ children }) {
     authApi.roles().then(setRoles).catch(() => setRoles(null));
   }, [user?.id, user?.role, location.pathname]);
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  useEffect(() => { setDrawer(false); }, [location.pathname]);
+
+  const toggleCollapse = () => setCollapsed((c) => {
+    const next = !c;
+    try { localStorage.setItem(SIDEBAR_KEY, next ? 'collapsed' : 'wide'); } catch { /* not remembered */ }
+    return next;
+  });
+
+  // Signing out lands back on the open campus, not a login wall
+  const handleLogout = () => { logout(); navigate('/'); };
+
+  const sw = user ? (collapsed ? SLIM : WIDE) : '0px';
 
   return (
-    <div className="min-h-screen overflow-hidden text-white"
-         style={{ background: 'linear-gradient(160deg,#010408 0%,#04091a 35%,#020812 65%,#010408 100%)' }}>
-      {/* Aurora blobs */}
-      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-        <div className="absolute -top-32 -left-32 h-[600px] w-[600px] rounded-full opacity-30 animate-aurora"
-             style={{ background: 'radial-gradient(circle,rgba(0,229,255,0.28) 0%,transparent 70%)', filter: 'blur(60px)' }} />
-        <div className="absolute top-10 right-0 h-[500px] w-[500px] rounded-full opacity-25"
-             style={{ background: 'radial-gradient(circle,rgba(123,97,255,0.32) 0%,transparent 70%)', filter: 'blur(60px)', animation: 'aurora 16s ease-in-out infinite reverse' }} />
-        <div className="absolute bottom-0 left-1/2 h-[400px] w-[400px] -translate-x-1/2 rounded-full opacity-15"
-             style={{ background: 'radial-gradient(circle,rgba(0,255,179,0.22) 0%,transparent 70%)', filter: 'blur(60px)', animation: 'aurora 20s ease-in-out infinite' }} />
-      </div>
-      <ParticleField />
-
-      {/* ── Header ────────────────────────────────────────────────── */}
-      <header style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50, padding: '16px 24px 0' }}>
-        <nav style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          maxWidth: 1280, margin: '0 auto',
-          borderRadius: 16, padding: '10px 16px',
-          background: 'linear-gradient(135deg,rgba(255,255,255,0.10),rgba(255,255,255,0.04) 60%,rgba(0,229,255,0.04))',
-          border: '1px solid rgba(255,255,255,0.13)',
-          backdropFilter: 'blur(28px) saturate(160%)',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.28)',
-          overflow: 'visible',   /* ← KEY: must not clip dropdown */
-        }}>
-          {/* Logo */}
-          <NavLink to="/" style={{ display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none' }}>
-            <span style={{
-              display: 'grid', placeItems: 'center', width: 40, height: 40,
-              borderRadius: 12, background: 'rgba(0,229,255,0.1)',
-              border: '1px solid rgba(0,229,255,0.2)', color: '#00E5FF', flexShrink: 0,
-            }}>
-              <Bot size={20} />
-            </span>
-            <span className="hidden sm:block">
-              <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#fff', letterSpacing: '0.02em' }}>CampusSphere</span>
-              <span style={{ display: 'block', fontSize: 11, color: '#64748b' }}>Digital Twin Command</span>
-            </span>
-          </NavLink>
-
-          {/* Desktop nav links */}
-          <div className="hidden lg:flex" style={{ alignItems: 'center', gap: 2, flexWrap: 'nowrap' }}>
-            {navItems.map((item) => (
-              item.dropdown ? (
-                <NavDropdown key={item.label} label={item.label} icon={item.icon} items={item.items}
-                  isActive={item.items.some((sub) => (sub.to === '/' ? location.pathname === '/' : location.pathname.startsWith(sub.to)))} />
-              ) : (
-                <NavItem key={item.to} {...item} compact />
-              )
-            ))}
-          </div>
-
-          {/* Right controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* Live badge */}
-            <span className="hidden md:inline-flex" style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              fontSize: 10, fontWeight: 600, color: '#00FFB3',
-              background: 'rgba(0,255,179,0.08)', border: '1px solid rgba(0,255,179,0.2)',
-              borderRadius: 99, padding: '4px 10px',
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00FFB3', boxShadow: '0 0 6px #00FFB3', animation: 'blink 2s ease-in-out infinite' }} />
-              Live
-            </span>
-
-            {/* User info */}
-            {user && (
-              <div className="hidden md:flex" style={{ alignItems: 'center', gap: 8 }}>
-                <NavLink to="/account" title="My account · change password" style={{ textDecoration: 'none' }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)',
-                  background: 'rgba(255,255,255,0.05)', padding: '6px 12px',
-                }}>
-                  <span style={{
-                    display: 'grid', placeItems: 'center', width: 24, height: 24,
-                    borderRadius: '50%', fontSize: 11, fontWeight: 700,
-                    background: rc?.bg, color: rc?.text,
-                  }}>{user.avatar}</span>
-                  <div style={{ lineHeight: 1.3 }}>
-                    <p style={{ fontSize: 12, fontWeight: 600, color: '#fff', margin: 0, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {user.name.split(' ')[0]}
-                    </p>
-                    <p style={{ fontSize: 10, color: rc?.text, margin: 0, textTransform: 'capitalize' }}>{user.role}</p>
-                  </div>
-                </div>
-                </NavLink>
-                <button onClick={handleLogout} title="Logout" style={{
-                  display: 'grid', placeItems: 'center', width: 32, height: 32,
-                  borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)',
-                  background: 'rgba(255,255,255,0.05)', color: '#64748b', cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.3)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}>
-                  <LogOut size={14} />
-                </button>
-              </div>
-            )}
-
-            {/* Mobile menu button */}
-            <button
-              className="lg:hidden"
-              onClick={() => setMobileOpen((v) => !v)}
-              style={{
-                display: 'grid', placeItems: 'center', width: 36, height: 36,
-                borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)',
-                background: 'rgba(255,255,255,0.05)', color: '#94a3b8', cursor: 'pointer',
-              }}
-            >
-              {mobileOpen ? <X size={18} /> : <Menu size={18} />}
-            </button>
-          </div>
-        </nav>
-
-        {/* ── Mobile dropdown ─────────────────────────────── */}
-        <AnimatePresence>
-          {mobileOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0  }}
-              exit={{ opacity: 0, y: -10   }}
-              transition={{ duration: 0.2  }}
-              style={{
-                maxWidth: 1280, margin: '12px auto 0',
-                borderRadius: 16, padding: 12,
-                background: 'rgba(4,9,26,0.96)',
-                border: '1px solid rgba(255,255,255,0.10)',
-                backdropFilter: 'blur(28px)',
-                maxHeight: '80vh', overflowY: 'auto',
-              }}
-            >
-              {/* Core items */}
-              <div style={{ display: 'grid', gap: 4, marginBottom: 8 }}>
-                {navItems.map((item) => (
-                  item.dropdown ? (
-                    <div key={item.label}>
-                      <p style={{ padding: '8px 12px 4px', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#475569', margin: '4px 0 0' }}>{item.label}</p>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 4 }}>
-                        {item.items.map(sub => <NavItem key={sub.to} {...sub} onClick={() => setMobileOpen(false)} />)}
-                      </div>
-                    </div>
-                  ) : (
-                    <NavItem key={item.to} {...item} onClick={() => setMobileOpen(false)} />
-                  )
-                ))}
-              </div>
-
-              {/* User / logout */}
-              {user && (
-                <div style={{
-                  borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 8, paddingTop: 12,
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                }}>
-                  <NavLink to="/account" onClick={() => setMobileOpen(false)} title="My account · change password"
-                           style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
-                    <span style={{
-                      display: 'grid', placeItems: 'center', width: 28, height: 28,
-                      borderRadius: '50%', fontSize: 11, fontWeight: 700,
-                      background: rc?.bg, color: rc?.text,
-                    }}>{user.avatar}</span>
-                    <div>
-                      <p style={{ fontSize: 12, fontWeight: 600, color: '#fff', margin: 0 }}>{user.name}</p>
-                      <p style={{ fontSize: 10, color: rc?.text, margin: 0, textTransform: 'capitalize' }}>{user.role} · My account</p>
-                    </div>
-                  </NavLink>
-                  <button onClick={handleLogout} style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '6px 12px', borderRadius: 10, fontSize: 12, fontWeight: 500,
-                    background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
-                    color: '#ef4444', cursor: 'pointer',
-                  }}>
-                    <LogOut size={12} /> Logout
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </header>
-
-      <main className="relative z-10">{children}</main>
-
-      <footer className="relative z-10 border-t border-white/[0.07] px-5 py-10 text-center">
-        <p className="text-xs text-slate-500 tracking-wider uppercase">
-          CampusSphere — MVSR Engineering College · Intelligent campus orchestration
-        </p>
-      </footer>
-    </div>
-  );
-}
-
-/** compact: icon-only in the desktop bar below 2xl (the label stays as the tooltip). */
-function NavItem({ to, label, icon: Icon, onClick, compact = false }) {
-  return (
-    <NavLink
-      to={to}
-      end={to === '/'}
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      style={{ textDecoration: 'none' }}
-    >
-      {({ isActive }) => (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          padding: compact ? '7px 10px' : '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 500,
-          background: isActive ? 'rgba(0,229,255,0.10)' : 'transparent',
-          color: isActive ? '#00E5FF' : '#94a3b8',
-          cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
-        }}
-          onMouseEnter={(e) => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#fff'; }}}
-          onMouseLeave={(e) => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}}
-        >
-          <Icon size={14} />
-          <span className={compact ? 'hidden 2xl:inline' : undefined}>{label}</span>
-        </div>
+    <div className="min-h-screen" style={{ '--sw': sw, color: 'var(--text)' }}>
+      {user && (
+        <aside className="fixed inset-y-0 left-0 z-50 hidden transition-[width] duration-200 lg:block" style={{ width: 'var(--sw)' }}>
+          <Sidebar navItems={navItems} user={user} collapsed={collapsed} onToggleCollapse={toggleCollapse} onLogout={handleLogout} />
+        </aside>
       )}
-    </NavLink>
-  );
-}
 
-function ParticleField() {
-  return (
-    <div className="pointer-events-none fixed inset-0 z-0 opacity-60">
-      {Array.from({ length: 48 }).map((_, i) => (
-        <span key={i} className="absolute rounded-full" style={{
-          width: i % 4 === 0 ? '3px' : '2px', height: i % 4 === 0 ? '3px' : '2px',
-          left: `${(i * 37 + 11) % 100}%`, top: `${(i * 53 + 7) % 100}%`,
-          background: i % 3 === 0 ? '#00E5FF' : i % 3 === 1 ? '#7B61FF' : '#00FFB3',
-          boxShadow: i % 3 === 0 ? '0 0 10px rgba(0,229,255,0.8)' : i % 3 === 1 ? '0 0 8px rgba(123,97,255,0.8)' : '0 0 8px rgba(0,255,179,0.8)',
-          animation: `float ${5 + (i % 8)}s ease-in-out ${i * 0.11}s infinite`,
-          opacity: 0.4 + (i % 4) * 0.15,
-        }} />
-      ))}
+      <AnimatePresence>
+        {user && drawer && (
+          <>
+            <motion.div key="scrim" className="fixed inset-0 z-[60] backdrop-blur-sm lg:hidden" style={{ background: 'color-mix(in srgb, var(--bg) 60%, transparent)' }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDrawer(false)} />
+            <motion.aside key="drawer" className="fixed inset-y-0 left-0 z-[70] w-[284px] max-w-[86vw] lg:hidden"
+              initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}>
+              <Sidebar mobile navItems={navItems} user={user} collapsed={false} onNavigate={() => setDrawer(false)} onLogout={handleLogout} />
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      <TopBar user={user} navItems={navItems} onMenu={() => setDrawer(true)} onSignIn={() => setSignInOpen(true)} />
+
+      <div className="transition-[padding] duration-200 lg:pl-[var(--sw)]">
+        {/* No z-index here: popups opened inside a page must be able to rise above the sidebar and top bar */}
+        <main className="relative">{children}</main>
+
+        <footer className="relative z-10 border-t px-5 py-8 text-center" style={{ borderColor: 'var(--border)' }}>
+          <p className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>
+            CampusSphere — MVSR Engineering College
+          </p>
+        </footer>
+      </div>
+
+      <LoginModal open={signInOpen && !user} onClose={() => setSignInOpen(false)} />
     </div>
   );
 }

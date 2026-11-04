@@ -1,211 +1,61 @@
-// Login.jsx — CampusSphere Authentication
-import { Bot, Eye, EyeOff, Lock, LogIn, Mail } from 'lucide-react';
+// Login.jsx — the full-page sign-in, for links that need an account (e.g. /services) and old bookmarks.
+// The front door is the public campus at "/", where the same form opens as an overlay.
 import { motion } from 'framer-motion';
-import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext.jsx';
-
-const ROLES = [
-  { value: 'student', label: 'Student',    color: '#00E5FF' },
-  { value: 'faculty', label: 'Faculty',    color: '#F59E0B' },
-  { value: 'admin',   label: 'Admin',      color: '#ef4444' },
-];
+import { useLocation, useNavigate } from 'react-router-dom';
+import LoginCard from '../../components/auth/LoginCard.jsx';
+import BrandMark from '../../components/ui/BrandMark.jsx';
+import CampusBackdrop from '../../components/ui/CampusBackdrop.jsx';
+import ThemeToggle from '../../components/ui/ThemeToggle.jsx';
 
 export default function Login() {
-  const { login } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
   const from = location.state?.from?.pathname || '/';
   const notice = location.state?.notice;
 
-  const [selectedRole, setSelectedRole] = useState('student');
-  const [email,    setEmail]    = useState('');
-  const [password, setPassword] = useState('');
-  const [showPwd,  setShowPwd]  = useState(false);
-  const [error,    setError]    = useState('');
-  const [loading,  setLoading]  = useState(false);
-
-  // Role tabs only change the accent colour; the backend decides the actual role
-  const selectRole = (role) => {
-    setSelectedRole(role);
-    setError('');
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      await login(email, password);
-      navigate(from, { replace: true });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const activeRole = ROLES.find((r) => r.value === selectedRole);
-
   return (
-    <div
-      className="min-h-screen flex items-center justify-center px-4 py-12"
-      style={{
-        background:
-          'radial-gradient(ellipse 90% 55% at 8% -8%, rgba(0,229,255,0.2) 0%,transparent 52%),' +
-          'radial-gradient(ellipse 75% 45% at 92% 6%, rgba(123,97,255,0.24) 0%,transparent 50%),' +
-          'radial-gradient(ellipse 55% 45% at 50% 105%, rgba(0,255,179,0.1) 0%,transparent 58%),' +
-          'linear-gradient(160deg,#010408 0%,#04091a 35%,#020812 65%,#010408 100%)',
-      }}
-    >
-      {/* Floating blobs */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-32 -left-32 h-[500px] w-[500px] rounded-full opacity-25 animate-aurora"
-             style={{ background: 'radial-gradient(circle,rgba(0,229,255,0.28) 0%,transparent 70%)', filter: 'blur(60px)' }} />
-        <div className="absolute top-10 right-0 h-[400px] w-[400px] rounded-full opacity-20"
-             style={{ background: 'radial-gradient(circle,rgba(123,97,255,0.32) 0%,transparent 70%)', filter: 'blur(60px)', animation: 'aurora 16s ease-in-out infinite reverse' }} />
+    <div className="relative min-h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
+      {/* The campus, softly out of focus behind everything */}
+      <div className="absolute inset-0" style={{ filter: 'blur(3px) saturate(1.15)', transform: 'scale(1.04)' }}>
+        <CampusBackdrop />
       </div>
+      <div className="absolute inset-0" style={{ background: 'linear-gradient(100deg, color-mix(in srgb, var(--bg) 88%, transparent) 0%, color-mix(in srgb, var(--bg) 55%, transparent) 55%, color-mix(in srgb, var(--bg) 30%, transparent) 100%)' }} />
 
-      <motion.div
-        initial={{ opacity: 0, y: 28 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="relative z-10 w-full max-w-md"
-      >
-        {/* Card */}
-        <div className="rounded-3xl border border-white/10 p-8 shadow-2xl"
-             style={{ background: 'rgba(4,9,26,0.88)', backdropFilter: 'blur(32px)' }}>
-
-          {/* Logo */}
-          <div className="mb-8 flex items-center gap-3">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl border border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#00E5FF]">
-              <Bot size={24} />
-            </span>
-            <div>
-              <p className="font-display text-lg font-bold text-white">CampusSphere</p>
-              <p className="text-xs text-slate-400">MVSR Engineering College · Digital Twin</p>
-            </div>
-          </div>
-
-          <h1 className="mb-1 font-display text-2xl font-extrabold text-white">Welcome back</h1>
-          <p className="mb-6 text-sm text-slate-400">Sign in to your campus account</p>
-
-          {/* Role selector */}
-          <div className="mb-6 flex rounded-2xl border border-white/10 bg-white/5 p-1">
-            {ROLES.map((r) => (
-              <button
-                key={r.value}
-                type="button"
-                onClick={() => selectRole(r.value)}
-                className="flex-1 rounded-xl py-2 text-xs font-semibold transition-all"
-                style={
-                  selectedRole === r.value
-                    ? { background: r.color + '18', color: r.color, boxShadow: `0 0 12px ${r.color}22` }
-                    : { color: '#64748b' }
-                }
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-
-          {notice && (
-            <p className="mb-4 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/10 px-4 py-2.5 text-xs text-[#00E5FF]">
-              {notice}
-            </p>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email */}
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-400">Email or roll number</label>
-              <div className="relative">
-                <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="text"
-                  autoComplete="username"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  placeholder="you@suhruth.edu or 2451-24-737-001"
-                  className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-9 pr-4 text-sm text-white placeholder-slate-600 outline-none transition focus:border-[#00E5FF]/40 focus:bg-white/8"
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-400">Password</label>
-              <div className="relative">
-                <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  type={showPwd ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  placeholder="••••••••"
-                  className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-9 pr-11 text-sm text-white placeholder-slate-600 outline-none transition focus:border-[#00E5FF]/40 focus:bg-white/8"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPwd((v) => !v)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-                >
-                  {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Error */}
-            {error && (
-              <motion.p
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-xs text-red-400"
-              >
-                {error}
-              </motion.p>
-            )}
-
-            {/* Forgot password */}
-            <div className="text-right">
-              <Link to="/forgot-password" className="text-xs text-slate-400 hover:text-[#00E5FF] transition">
-                Forgot password?
-              </Link>
-            </div>
-
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-[#020814] transition-all active:scale-[0.98] disabled:opacity-60"
-              style={{
-                background: loading ? '#005566' : `linear-gradient(135deg, ${activeRole.color}, ${activeRole.color}cc)`,
-                boxShadow: `0 0 24px ${activeRole.color}30`,
-              }}
-            >
-              {loading ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#020814]/30 border-t-[#020814]" />
-              ) : (
-                <LogIn size={16} />
-              )}
-              {loading ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
-
-          {/* No public sign-up: the college creates every account */}
-          <p className="mt-5 text-center text-xs text-slate-500">
-            No login yet? Students get a login slip from their class in-charge; staff, from the Admin Office.
-          </p>
-          <p className="mt-2 text-center text-xs text-slate-500">
-            Visiting as a parent?{' '}
-            <Link to="/visit" className="font-medium text-[#00E5FF] hover:underline">
-              Explore the campus with Mitra
-            </Link>
-          </p>
+      <header className="relative z-10 flex items-center justify-between px-5 py-5 sm:px-10">
+        <span className="hidden lg:inline-flex"><BrandMark size={38} sub="MVSR Engineering College" /></span>
+        <div className="ml-auto flex items-center gap-3">
+          <span className="hidden text-xs sm:block" style={{ color: 'var(--text-2)' }}>
+            New here? Students: ask your class in-charge · Staff: the Admin Office
+          </span>
+          <ThemeToggle />
         </div>
-      </motion.div>
+      </header>
+
+      <main className="relative z-10 mx-auto grid max-w-7xl items-center gap-10 px-5 pb-12 pt-4 sm:px-10 lg:min-h-[calc(100vh-96px)] lg:grid-cols-[1.15fr_0.85fr]">
+        <motion.div
+          initial={{ opacity: 0, x: -24 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          className="hidden lg:block"
+        >
+          <p className="ds-eyebrow mb-4">MVSR Engineering College · Digital Twin</p>
+          <h2 className="max-w-xl font-display text-5xl font-extrabold leading-[1.08] tracking-tight xl:text-6xl" style={{ color: 'var(--text)' }}>
+            A smarter campus for a <span className="brand-text">brighter tomorrow.</span>
+          </h2>
+          <p className="mt-5 max-w-md text-base leading-relaxed" style={{ color: 'var(--text-2)' }}>
+            Your timetable, requests and campus map in one place. Real-time and always up to date.
+          </p>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 28 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          className="mx-auto w-full max-w-[440px]"
+        >
+          <LoginCard notice={notice} onSuccess={() => navigate(from, { replace: true })} />
+        </motion.div>
+      </main>
     </div>
   );
 }

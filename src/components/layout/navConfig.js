@@ -6,10 +6,11 @@ import {
   Archive, BarChart3, Building2, CalendarClock, CalendarDays, ChartNoAxesCombined, ClipboardCheck, DoorClosed,
   DoorOpen, FileCheck, FileText, Gauge, GraduationCap, Home, IndianRupee, Layers, ListChecks, Map, MapPinned,
   ScrollText, Settings, ShieldCheck, Timer, Users, BookOpen, Briefcase, LayoutGrid, Wrench, Megaphone, ClipboardList, Trophy,
-  MessageSquareText, Award, FlaskConical, Microscope, Landmark, BadgeCheck,
+  MessageSquareText, Award, FlaskConical, Microscope, Landmark, BadgeCheck, FolderLock,
 } from 'lucide-react';
 
 const NOTICES = { to: '/notices', label: 'Notices', icon: Megaphone };
+const LOCKER = { to: '/locker', label: 'My documents', icon: FolderLock };
 
 const CAMPUS = {
   dropdown: true, label: 'Campus', icon: Map,
@@ -42,6 +43,7 @@ function student(roles) {
     { to: '/attendance', label: 'Attendance', icon: ClipboardList },
     NOTICES,
     { to: '/services', label: 'Certificates', icon: FileText },
+    LOCKER,
     { to: '/feedback', label: 'Feedback', icon: MessageSquareText },
     roles.placements_open && { to: '/placements', label: 'Placements', icon: Trophy },
     CAMPUS,
@@ -58,6 +60,7 @@ function faculty(roles) {
     NOTICES,
     !(roles.management || roles.accreditation_team) && { to: '/feedback', label: 'Feedback', icon: MessageSquareText },
     { to: '/my-research', label: 'My research', icon: FlaskConical },
+    LOCKER,
     roles.approver && { to: '/services/approvals', label: 'Approvals', icon: FileCheck },
     {
       dropdown: true, label: 'Timetable & Rooms', icon: CalendarClock,
@@ -92,10 +95,12 @@ function staff(roles) {
         { to: '/joining/desk',       label: 'Admissions desk',    icon: ClipboardCheck, color: '#00E5FF' },
         { to: '/joining/originals',  label: 'Originals register', icon: Archive,        color: '#818CF8' },
         { to: '/services/roll-list', label: 'Roll list',          icon: Users,          color: '#38BDF8' },
+        { to: '/locker/office',      label: 'Student lockers',    icon: FolderLock,     color: '#A78BFA' },
         roles.clearance_officer && { to: '/leaving/desk', label: 'No-dues desk', icon: ListChecks, color: '#10B981' },
       ].filter(Boolean),
     },
     NOTICES,
+    LOCKER,
     CAMPUS,
   ];
 }
@@ -109,6 +114,7 @@ function admin() {
         { to: '/joining/desk',       label: 'Admissions desk',    icon: ClipboardCheck, color: '#00E5FF' },
         { to: '/joining/originals',  label: 'Originals register', icon: Archive,        color: '#818CF8' },
         { to: '/services/roll-list', label: 'Roll list',          icon: Users,          color: '#38BDF8' },
+        { to: '/locker/office',      label: 'Student lockers',    icon: FolderLock,     color: '#A78BFA' },
         { to: '/leaving/desk',       label: 'No-dues desk',       icon: ListChecks,     color: '#10B981' },
         { to: '/leaving/exam-cell',  label: 'Exam Cell',          icon: ScrollText,     color: '#EC4899' },
       ],
@@ -141,12 +147,14 @@ function admin() {
         { to: '/admin/substitutions', label: 'Substitutions',          icon: CalendarDays,  color: '#F472B6' },
         { to: '/services/setup',      label: 'Approvers & services',   icon: Settings,      color: '#F59E0B' },
         { to: '/joining/fees',        label: 'Fees',                   icon: IndianRupee,   color: '#F472B6' },
+        { to: '/joining/documents',   label: 'Joining documents',      icon: FileCheck,     color: '#34D399' },
         { to: '/admin/buildings',     label: 'Buildings',              icon: Building2,     color: '#10B981' },
         { to: '/classrooms',          label: 'Rooms',                  icon: Layers,        color: '#00E5FF' },
         { to: '/admin/knowledge',     label: "Mitra's knowledge",      icon: BookOpen,      color: '#00FFB3' },
       ],
     },
     NOTICES,
+    LOCKER,
     CAMPUS,
   ];
 }

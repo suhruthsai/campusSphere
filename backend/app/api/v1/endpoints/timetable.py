@@ -4,7 +4,7 @@ from typing import List, Optional
 from datetime import date, timedelta
 import io, csv
 from backend.app.db.session import get_db
-from backend.app.core.security import get_current_user, require_admin
+from backend.app.core.security import get_current_user, get_optional_user, require_admin
 from backend.app.core.realtime import broadcast_timetable
 from backend.app.core.campus_time import campus_now, campus_today, parse_campus_time
 from backend.app.models.campus import TimetableEntryModel, ClassroomModel, TimetableOverrideModel, TimetableAuditLogModel, SubstitutionModel
@@ -15,11 +15,30 @@ from backend.app.schemas.campus import (
 )
 
 router = APIRouter()
+public_router = APIRouter()   # the read-only timetable views the open campus map needs; teacher names are hidden from guests
 
 DAY_NAMES  = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 DAY_MAP    = {d.lower(): i for i, d in enumerate(DAY_NAMES)}
 DAY_ABBR   = {d[:3].lower(): i for i, d in enumerate(DAY_NAMES)}
 MAX_CSV_BYTES = 2 * 1024 * 1024
+
+# The campus map is public (the visitor view), so anonymous callers get the classes but never who teaches them
+def hide_staff_entry(e):
+    return e.model_copy(update={"faculty_id": None, "faculty_name": ""}) if e else e
+
+
+def hide_staff_current(resp: CurrentClassResponse) -> CurrentClassResponse:
+    return resp.model_copy(update={
+        "current_entry": hide_staff_entry(resp.current_entry), "next_entry": hide_staff_entry(resp.next_entry),
+        "substitution_original_faculty": None})
+
+
+def hide_staff_week(week: dict) -> dict:
+    for rows in week["schedule"].values():
+        for r in rows:
+            r["faculty_id"], r["faculty_name"] = None, ""
+    return week
+
 
 def _time_to_minutes(t: str) -> int:
     h, m = t.split(":")
@@ -139,7 +158,7 @@ def my_timetable(db: Session = Depends(get_db), current: dict = Depends(get_curr
     }
 
 
-@router.get("/", response_model=List[TimetableEntryOut])
+@public_router.get("/", response_model=List[TimetableEntryOut])
 def list_entries(
     classroom_id: Optional[str]  = Query(None),
     day_of_week:  Optional[int]  = Query(None),
@@ -148,7 +167,8 @@ def list_entries(
     department:   Optional[str]  = Query(None),
     semester:     Optional[int]  = Query(None),
     active_only:  bool           = Query(True),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current: Optional[dict] = Depends(get_optional_user),
 ):
     q = db.query(TimetableEntryModel)
     if classroom_id: q = q.filter(TimetableEntryModel.classroom_id == classroom_id)
@@ -158,7 +178,8 @@ def list_entries(
     if department:   q = q.filter(TimetableEntryModel.department == department)
     if semester:     q = q.filter(TimetableEntryModel.semester == semester)
     if active_only:  q = q.filter(TimetableEntryModel.is_active == True)
-    return q.order_by(TimetableEntryModel.day_of_week, TimetableEntryModel.period_number).all()
+    rows = q.order_by(TimetableEntryModel.day_of_week, TimetableEntryModel.period_number).all()
+    return rows if current else [hide_staff_entry(TimetableEntryOut.model_validate(r)) for r in rows]
 
 @router.post("/", response_model=TimetableEntryOut)
 def create_entry(payload: TimetableEntryCreate, db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
@@ -308,16 +329,18 @@ def current_class(db: Session, classroom_id: str, at_datetime: Optional[str] = N
     )
 
 
-@router.get("/classroom/{classroom_id}/current", response_model=CurrentClassResponse)
+@public_router.get("/classroom/{classroom_id}/current", response_model=CurrentClassResponse)
 def get_current_class(
     classroom_id: str,
     at_datetime: Optional[str] = Query(None, description="Optional campus (India) time, e.g. 2026-10-26T10:30"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current: Optional[dict] = Depends(get_optional_user),
 ):
-    return current_class(db, classroom_id, at_datetime)
+    resp = current_class(db, classroom_id, at_datetime)
+    return resp if current else hide_staff_current(resp)
 
-@router.get("/classroom/{classroom_id}/week")
-def get_week_schedule(classroom_id: str, db: Session = Depends(get_db)):
+@public_router.get("/classroom/{classroom_id}/week")
+def get_week_schedule(classroom_id: str, db: Session = Depends(get_db), current: Optional[dict] = Depends(get_optional_user)):
     room = db.query(ClassroomModel).filter(ClassroomModel.id == classroom_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Classroom not found")
@@ -328,7 +351,8 @@ def get_week_schedule(classroom_id: str, db: Session = Depends(get_db)):
     schedule = {d: [] for d in DAY_NAMES[:6]}
     for e in entries:
         schedule[DAY_NAMES[e.day_of_week]].append(TimetableEntryOut.model_validate(e).model_dump())
-    return {"classroom_id": classroom_id, "classroom_name": room.name, "schedule": schedule}
+    week = {"classroom_id": classroom_id, "classroom_name": room.name, "schedule": schedule}
+    return week if current else hide_staff_week(week)
 
 @router.get("/conflicts", response_model=ConflictReport)
 def detect_conflicts(db: Session = Depends(get_db)):

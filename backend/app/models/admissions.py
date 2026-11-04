@@ -73,6 +73,29 @@ class AdmissionDocumentModel(Base):
     reviewed_by   = Column(String, nullable=True)
     reviewed_at   = Column(DateTime, nullable=True)
     uploaded_at   = Column(DateTime, default=datetime.utcnow)
+    issued_on     = Column(Date, nullable=True)                       # the date on the certificate, for documents with a validity rule
+    copies_received = Column(Integer, default=0)                      # photocopy sets (or photos) handed in at the Admin Office
+
+
+class JoiningDocRuleModel(Base):
+    """One document a joinee may be asked for. The Admin Office edits these (labels, who needs what, copy sets,
+    validity dates) without a code change; the defaults live in student_services/joining.py.
+    """
+    __tablename__ = "joining_doc_rules"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    key           = Column(String, unique=True, nullable=False, index=True)    # stable id used by uploads: "ssc_memo"
+    label         = Column(String, nullable=False)
+    hint          = Column(Text, nullable=True)
+    applies       = Column(String, default="always")                           # always | not_oc | ews | reimbursement | other_board
+    images_only   = Column(Boolean, default=False)
+    original      = Column(Boolean, default=False)                             # the college keeps the original (originals register)
+    copies        = Column(Integer, default=3)                                 # photocopy sets (or photos) to hand in
+    copy_unit     = Column(String, default="sets")                             # sets | photos
+    issued_after  = Column(Date, nullable=True)                                # the certificate must be issued on or after this date
+    active        = Column(Boolean, default=True)
+    sort_order    = Column(Integer, default=0)
+    updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class FeeHeadModel(Base):

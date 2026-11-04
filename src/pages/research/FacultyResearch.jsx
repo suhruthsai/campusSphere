@@ -11,7 +11,7 @@ import { ItemRow, KINDS, yearNow } from './shared.jsx';
 
 const th = 'py-2 pr-3 text-left text-[11px] font-medium uppercase tracking-wider text-slate-500';
 const td = 'py-2 pr-3 text-slate-200';
-const tip = { background: '#04091a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 };
+const tip = { background: 'var(--surface-solid)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 11 };
 const v = (x, suffix = '') => (x === null || x === undefined ? '—' : `${x}${suffix}`);
 
 function Summary({ prog }) {
@@ -41,7 +41,7 @@ function Summary({ prog }) {
         <div className="h-60">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={ys} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-2)" />
               <XAxis dataKey="year" tick={{ fontSize: 10, fill: '#64748b' }} /><YAxis tick={{ fontSize: 10, fill: '#64748b' }} />
               <Tooltip contentStyle={tip} /><Legend wrapperStyle={{ fontSize: 10 }} />
               <Bar dataKey="indexed_journals" name="Indexed papers" fill="#00E5FF" radius={[4, 4, 0, 0]} />

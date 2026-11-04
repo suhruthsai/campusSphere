@@ -75,7 +75,7 @@ export default function ClassroomManagement() {
       {!loading && filtered.length === 0 && (
         <div style={s.center}>
           <div style={{fontSize:40}}>🏫</div>
-          <div style={{color:'#6B7280',marginTop:8}}>No classrooms found</div>
+          <div style={{color:'var(--text-3)',marginTop:8}}>No classrooms found</div>
         </div>
       )}
 
@@ -163,41 +163,41 @@ function StatPill({ color, label, count }) {
   return (
     <div style={{ background:`${color}22`, border:`1px solid ${color}44`, borderRadius:20, padding:'6px 14px', display:'flex', gap:8, alignItems:'center' }}>
       <span style={{ color, fontWeight:700, fontSize:20 }}>{count}</span>
-      <span style={{ color:'#9CA3AF', fontSize:12 }}>{label}</span>
+      <span style={{ color:'var(--text-2)', fontSize:12 }}>{label}</span>
     </div>
   );
 }
 
 const s = {
-  page:       { background:'#0F172A', minHeight:'100vh', color:'#E5E7EB', fontFamily:"'Inter',sans-serif", padding:'84px 0 40px' },
+  page:       { background:'var(--surface-solid)', minHeight:'100vh', color:'var(--text)', fontFamily:"'Inter',sans-serif", padding:'84px 0 40px' },
   header:     { display:'flex', justifyContent:'space-between', alignItems:'flex-start', padding:'28px 32px 0', flexWrap:'wrap', gap:16 },
-  title:      { color:'#F9FAFB', fontSize:26, fontWeight:800, margin:0 },
-  sub:        { color:'#6B7280', fontSize:13, marginTop:4 },
+  title:      { color:'var(--text)', fontSize:26, fontWeight:800, margin:0 },
+  sub:        { color:'var(--text-3)', fontSize:13, marginTop:4 },
   headerRight:{ display:'flex', flexDirection:'column', gap:8, alignItems:'flex-end' },
   stats:      { display:'flex', gap:10, flexWrap:'wrap' },
   filterRow:  { display:'flex', gap:12, padding:'20px 32px', flexWrap:'wrap', alignItems:'center' },
-  searchBox:  { background:'#1F2937', border:'1px solid #374151', borderRadius:10, color:'#E5E7EB', padding:'10px 16px', fontSize:13, flex:1, minWidth:200, outline:'none' },
-  sel:        { background:'#1F2937', border:'1px solid #374151', borderRadius:10, color:'#E5E7EB', padding:'10px 14px', fontSize:13 },
-  viewToggle: { display:'flex', gap:2, background:'#1F2937', borderRadius:10, padding:4, border:'1px solid #374151' },
-  viewBtn:    { background:'transparent', border:'none', color:'#6B7280', padding:'6px 12px', borderRadius:7, cursor:'pointer', fontSize:16 },
-  viewBtnActive:{ background:'#374151', color:'#E5E7EB' },
+  searchBox:  { background:'var(--surface-solid)', border:'1px solid #374151', borderRadius:10, color:'var(--text)', padding:'10px 16px', fontSize:13, flex:1, minWidth:200, outline:'none' },
+  sel:        { background:'var(--surface-solid)', border:'1px solid #374151', borderRadius:10, color:'var(--text)', padding:'10px 14px', fontSize:13 },
+  viewToggle: { display:'flex', gap:2, background:'var(--surface-solid)', borderRadius:10, padding:4, border:'1px solid #374151' },
+  viewBtn:    { background:'transparent', border:'none', color:'var(--text-3)', padding:'6px 12px', borderRadius:7, cursor:'pointer', fontSize:16 },
+  viewBtnActive:{ background:'#374151', color:'var(--text)' },
   grid:       { display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(210px, 1fr))', gap:20, padding:'8px 32px' },
-  card:       { background:'#1E293B', borderRadius:16, padding:'18px', cursor:'pointer', transition:'all 0.2s ease', border:'1px solid #334155', position:'relative' },
+  card:       { background:'var(--surface-solid)', borderRadius:16, padding:'18px', cursor:'pointer', transition:'all 0.2s ease', border:'1px solid #334155', position:'relative' },
   cardTop:    { display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 },
   cardIcon:   { fontSize:28 },
   statusDot:  { width:10, height:10, borderRadius:'50%', flexShrink:0 },
   cardId:     { color:'#818CF8', fontFamily:'monospace', fontSize:12, fontWeight:700, letterSpacing:1 },
-  cardName:   { color:'#E5E7EB', fontSize:14, fontWeight:600, marginTop:4, lineHeight:1.3 },
+  cardName:   { color:'var(--text)', fontSize:14, fontWeight:600, marginTop:4, lineHeight:1.3 },
   cardMeta:   { display:'flex', gap:8, marginTop:10, flexWrap:'wrap' },
-  metaPill:   { background:'#0F172A', border:'1px solid #334155', borderRadius:12, padding:'3px 8px', fontSize:11, color:'#9CA3AF' },
+  metaPill:   { background:'var(--surface-solid)', border:'1px solid #334155', borderRadius:12, padding:'3px 8px', fontSize:11, color:'var(--text-2)' },
   cardStatus: { borderRadius:12, padding:'4px 10px', fontSize:11, fontWeight:600, display:'inline-block', marginTop:10, textTransform:'capitalize' },
   cardHint:   { color:'#6366F1', fontSize:11, marginTop:10, opacity:0.7 },
   listWrap:   { padding:'16px 32px', overflowX:'auto' },
   table:      { width:'100%', borderCollapse:'collapse' },
-  th:         { background:'#1F2937', padding:'10px 14px', fontSize:12, color:'#9CA3AF', fontWeight:600, textAlign:'left', borderBottom:'1px solid #374151' },
+  th:         { background:'var(--surface-solid)', padding:'10px 14px', fontSize:12, color:'var(--text-2)', fontWeight:600, textAlign:'left', borderBottom:'1px solid #374151' },
   tr:         { borderBottom:'1px solid #1F2937', cursor:'pointer' },
-  td:         { padding:'12px 14px', fontSize:13, color:'#D1D5DB' },
+  td:         { padding:'12px 14px', fontSize:13, color:'var(--text-2)' },
   badge:      { borderRadius:20, padding:'3px 10px', fontSize:11, fontWeight:600, textTransform:'capitalize' },
   viewBtn2:   { background:'#1E3A8A22', border:'1px solid #3B82F666', color:'#60A5FA', borderRadius:8, padding:'5px 12px', fontSize:12, cursor:'pointer' },
-  center:     { textAlign:'center', padding:'60px 32px', color:'#6B7280' },
+  center:     { textAlign:'center', padding:'60px 32px', color:'var(--text-3)' },
 };

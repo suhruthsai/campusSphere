@@ -20,6 +20,19 @@ engine = create_engine(
     **({} if _is_sqlite else {"pool_size": 5, "max_overflow": 5})
 )
 
+if _is_sqlite:
+    from sqlalchemy import event
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_foreign_keys(dbapi_connection, _record):
+        """SQLite ignores foreign keys unless each connection asks for them, so ON DELETE CASCADE
+        does nothing by default: deleting a document used to leave its chunks behind. Postgres
+        enforces them anyway, which is why this only bit the local database."""
+        cur = dbapi_connection.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.close()
+
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

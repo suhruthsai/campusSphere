@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { BadgeCheck, ShieldX } from 'lucide-react';
 import { servicesApi } from '../../utils/api.js';
 import { fmtIst, inputCls, btnPrimary } from '../../components/services/requestUi.jsx';
+import PublicFrame from '../../components/layout/PublicFrame.jsx';
 
 export default function VerifyDocument() {
   const { code } = useParams();
@@ -20,9 +21,9 @@ export default function VerifyDocument() {
   }, [code]);
 
   return (
-    <div className="min-h-screen bg-[#070b12] px-4 py-12 text-white">
+    <PublicFrame>
       <div className="mx-auto max-w-xl">
-        <p className="text-center font-mono text-[11px] font-bold uppercase tracking-[0.3em] text-cyan-300">Document verification</p>
+        <p className="ds-eyebrow text-center">Document verification</p>
         <h1 className="mt-2 text-center font-serif text-3xl font-bold">MVSR Engineering College</h1>
         <p className="text-center text-sm text-slate-400">Nadergul, Hyderabad</p>
 
@@ -70,6 +71,6 @@ export default function VerifyDocument() {
           </div>
         )}
       </div>
-    </div>
+    </PublicFrame>
   );
 }

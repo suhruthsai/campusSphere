@@ -2,48 +2,31 @@ import { motion } from 'framer-motion';
 import { forwardRef } from 'react';
 
 /**
- * CampusSphere unified Button component
+ * CampusSphere unified Button component (colours follow the theme tokens in styles.css)
  *
  * variant:
- *   "primary"   – cyan gradient with glow, dark text
- *   "secondary" – violet/purple gradient glow
- *   "ghost"     – glass border, white text → cyan on hover
- *   "danger"    – red tint glass
- *   "icon"      – square icon button (glass)
+ *   "primary"   – brand gradient, white text
+ *   "secondary" – tinted violet
+ *   "ghost"     – quiet glass button
+ *   "danger"    – red tint
+ *   "icon"      – square icon button
  *
  * size: "sm" | "md" | "lg"
  */
 const variants = {
-  primary: {
-    base: 'relative overflow-hidden bg-gradient-to-r from-[#00E5FF] via-cyan-300 to-[#00E5FF] text-slate-950 font-bold shadow-[0_0_22px_rgba(0,229,255,0.35)] border border-[rgba(0,229,255,0.3)]',
-    hover: {},
-    tap: {},
-    shimmer: true,
-  },
-  secondary: {
-    base: 'relative overflow-hidden bg-gradient-to-r from-[#7B61FF] via-violet-400 to-[#7B61FF] text-white font-bold shadow-[0_0_22px_rgba(123,97,255,0.35)] border border-[rgba(123,97,255,0.35)]',
-    hover: {},
-    tap: {},
-    shimmer: true,
-  },
-  ghost: {
-    base: 'relative overflow-hidden bg-white/[0.06] border border-white/[0.13] text-white font-semibold backdrop-blur-md',
-    hover: {},
-    tap: {},
-    shimmer: false,
-  },
-  danger: {
-    base: 'relative overflow-hidden bg-red-500/10 border border-red-500/25 text-red-400 font-semibold backdrop-blur-md',
-    hover: {},
-    tap: {},
-    shimmer: false,
-  },
-  icon: {
-    base: 'relative overflow-hidden bg-white/[0.07] border border-white/[0.12] text-white backdrop-blur-md',
-    hover: {},
-    tap: {},
-    shimmer: false,
-  },
+  primary: 'border-0 text-white font-bold hover:brightness-110',
+  secondary: 'border font-bold text-[var(--text)] hover:brightness-110',
+  ghost: 'border font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)]',
+  danger: 'border font-semibold text-rose-500 hover:bg-rose-500/20',
+  icon: 'border text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]',
+};
+
+const variantStyle = {
+  primary: { background: 'var(--brand-grad)', boxShadow: '0 6px 20px rgba(99,102,241,0.32)' },
+  secondary: { background: 'color-mix(in srgb, var(--brand-2) 18%, transparent)', borderColor: 'color-mix(in srgb, var(--brand-2) 45%, transparent)' },
+  ghost: { background: 'var(--surface-2)', borderColor: 'var(--border-strong)' },
+  danger: { background: 'rgba(244,63,94,0.10)', borderColor: 'rgba(244,63,94,0.35)' },
+  icon: { background: 'var(--surface-2)', borderColor: 'var(--border)' },
 };
 
 const sizes = {
@@ -65,14 +48,14 @@ const Button = forwardRef(function Button(
     onClick,
     type = 'button',
     'aria-label': ariaLabel,
+    style,
     ...rest
   },
   ref,
 ) {
-  const v = variants[variant] ?? variants.primary;
-  const isIcon = variant === 'icon';
-  const sizeKey = isIcon ? `icon_${size}` : size;
-  const sizeClass = sizes[sizeKey] ?? sizes.md;
+  const key = variants[variant] ? variant : 'primary';
+  const isIcon = key === 'icon';
+  const sizeClass = sizes[isIcon ? `icon_${size}` : size] ?? sizes.md;
 
   return (
     <motion.button
@@ -81,41 +64,20 @@ const Button = forwardRef(function Button(
       aria-label={ariaLabel}
       disabled={disabled}
       onClick={onClick}
-      whileHover={disabled ? {} : { scale: 1.04, y: -1 }}
+      whileHover={disabled ? {} : { y: -1 }}
       whileTap={disabled ? {} : { scale: 0.97 }}
       transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+      style={{ ...variantStyle[key], ...style }}
       className={[
         'inline-flex items-center justify-center font-sans transition-all select-none',
         isIcon ? '' : 'tracking-tight',
         sizeClass,
-        v.base,
+        variants[key],
         disabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer',
-        // hover glow via group
-        variant === 'primary'   ? 'hover:shadow-[0_0_38px_rgba(0,229,255,0.55)]' : '',
-        variant === 'secondary' ? 'hover:shadow-[0_0_38px_rgba(123,97,255,0.55)]' : '',
-        variant === 'ghost'     ? 'hover:bg-white/[0.11] hover:border-white/25 hover:text-[#00E5FF]' : '',
-        variant === 'danger'    ? 'hover:bg-red-500/20 hover:border-red-500/40' : '',
-        variant === 'icon'      ? 'hover:bg-white/[0.13] hover:border-[rgba(0,229,255,0.3)] hover:text-[#00E5FF]' : '',
         className,
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      ].filter(Boolean).join(' ')}
       {...rest}
     >
-      {/* Shimmer sweep for primary/secondary */}
-      {v.shimmer && !disabled && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 -translate-x-full skew-x-[-20deg] bg-white/20 transition-transform duration-700 group-hover:translate-x-[200%]"
-        />
-      )}
-      {/* Ripple pulse for primary on hover */}
-      {variant === 'primary' && !disabled && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 rounded-inherit opacity-0 ring-2 ring-[#00E5FF] transition-opacity hover:opacity-30"
-        />
-      )}
       {children}
     </motion.button>
   );

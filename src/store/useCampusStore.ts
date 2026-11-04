@@ -1,6 +1,5 @@
 // Zustand Campus Store — State Management for 3D Digital Twin & Live Status
 import { create } from 'zustand';
-import { wsUrl } from '../utils/api.js';
 
 interface CampusState {
   cameraMode: 'orbit' | 'fpv' | 'topdown';
@@ -41,13 +40,6 @@ interface CampusState {
   fetchWeather: () => Promise<void>;
   toggleRain: () => void;
 
-  parkingData: {
-    total: number;
-    occupied: number;
-    spots: { id: string, occupied: boolean }[];
-  };
-  initParkingSpots: (spots: { id: string, occupied: boolean }[]) => void;
-  initWebSocket: () => void;
 }
 
 export const useCampusStore = create<CampusState>((set, get) => ({
@@ -91,12 +83,6 @@ export const useCampusStore = create<CampusState>((set, get) => ({
   },
   setGuideBubble: (text) => set({ guideBubble: text }),
 
-  parkingData: {
-    total: 60,
-    occupied: 0,
-    spots: []
-  },
-
   setCameraMode: (mode) => set({ cameraMode: mode }),
 
   toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
@@ -132,46 +118,6 @@ export const useCampusStore = create<CampusState>((set, get) => ({
   
   toggleRain: () => set((state) => ({ isRaining: !state.isRaining })),
 
-  initParkingSpots: (spots) => set({ 
-    parkingData: { 
-      total: spots.length, 
-      occupied: spots.filter(s => s.occupied).length, 
-      spots 
-    } 
-  }),
-
-  // Idempotent: one shared telemetry socket for the whole app. Previously every mount
-  // (and React StrictMode's double mount) opened another socket that was never closed.
-  initWebSocket: () => {
-    if (telemetrySocket && telemetrySocket.readyState <= WebSocket.OPEN) return;
-    if (reconnectTimer) return; // a reconnect is already scheduled
-
-    const ws = new WebSocket(wsUrl('/ws/telemetry'));
-    telemetrySocket = ws;
-    ws.onopen = () => { reconnectDelay = 3000; };
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.parking) {
-          set({ parkingData: data.parking });
-        }
-      } catch (err) {
-        console.error("WebSocket payload error:", err);
-      }
-    };
-    ws.onclose = () => {
-      if (telemetrySocket === ws) telemetrySocket = null;
-      // Back off (3s → 30s) so a down backend isn't hammered
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = null;
-        get().initWebSocket();
-      }, reconnectDelay);
-      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
-    };
-  },
 }));
 
-let telemetrySocket: WebSocket | null = null;
 let pendingArrival: (() => void) | null = null;   // resolves the current walkGuideTo()
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let reconnectDelay = 3000;

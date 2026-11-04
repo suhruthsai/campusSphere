@@ -93,10 +93,10 @@ export default function DepartmentReport() {
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={data.attendance.trend} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-2)" />
                     <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} />
                     <YAxis domain={[70, 100]} tick={{ fontSize: 10, fill: '#64748b' }} unit="%" />
-                    <Tooltip contentStyle={{ background: '#04091a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 }} />
+                    <Tooltip contentStyle={{ background: 'var(--surface-solid)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 11 }} />
                     <Legend wrapperStyle={{ fontSize: 10 }} />
                     {data.attendance.section_names.map((sec, i) => (
                       <Line key={sec} type="monotone" dataKey={sec} stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={1.5} dot={false} />

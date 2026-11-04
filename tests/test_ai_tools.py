@@ -66,6 +66,18 @@ check("slot: free rooms = timetabled - busy", set(got["free_timetabled_rooms"]) 
 now = tool("classes_now")
 check("now: answers with the IST time", "IST" in now.get("now", ""))
 
+# Visitors (the open campus at "/") get the classes, never who teaches them
+def visitor(tool_name, **args):
+    return t.run(db, None, tool_name, args)
+
+staff = {n for (n,) in c.execute("select distinct faculty_name from timetable_entries where is_active=1") if n}
+for label, args in (("slot", {"day": "Tuesday", "period": 3}), ("now", {})):
+    raw = visitor("classes_now", **args)
+    check(f"visitor {label}: no teacher names", '"faculty"' not in raw and '"substitute_for"' not in raw
+          and not any(n in raw for n in staff))
+check("visitor slot: still lists the classes", len(json.loads(visitor("classes_now", day="Tuesday", period=3))["classes"]) > 0)
+check("signed-in slot: teacher names kept", '"faculty"' in t.run(db, ADMIN, "classes_now", {"day": "Tuesday", "period": 3}))
+
 # Rooms and buildings
 code, name, floor = c.execute("select id, name, floor from classrooms where type='Lab' limit 1").fetchone()
 got = tool("find_room", query=code)

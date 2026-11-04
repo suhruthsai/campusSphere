@@ -89,7 +89,7 @@ export default function CrowdAnalytics() {
               </defs>
               <XAxis dataKey="hour" tick={{ fontSize: 9, fill: '#64748b' }} interval={3} />
               <YAxis tick={{ fontSize: 9, fill: '#64748b' }} />
-              <Tooltip contentStyle={{ background: '#04091a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 }} />
+              <Tooltip contentStyle={{ background: 'var(--surface-solid)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 11 }} />
               <Area type="monotone" dataKey="value" stroke="#F472B6" strokeWidth={2} fill="url(#crowdGrad)" dot={false} name="People" />
             </AreaChart>
           </ResponsiveContainer>
@@ -99,7 +99,7 @@ export default function CrowdAnalytics() {
             <BarChart data={crowd.weeklyPattern} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
               <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#64748b' }} />
               <YAxis tick={{ fontSize: 9, fill: '#64748b' }} />
-              <Tooltip contentStyle={{ background: '#04091a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 }} />
+              <Tooltip contentStyle={{ background: 'var(--surface-solid)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 11 }} />
               <Bar dataKey="count" fill="#F472B6" radius={[4, 4, 0, 0]} name="People" />
             </BarChart>
           </ResponsiveContainer>

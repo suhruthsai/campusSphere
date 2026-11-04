@@ -99,7 +99,7 @@ export default function FloorManagement() {
                 className="rounded-xl px-4 py-2 text-xs font-semibold transition"
                 style={selectedBuilding === id
                   ? { background: (b?.color ?? '#00E5FF') + '1a', color: b?.color ?? '#00E5FF', border: `1px solid ${(b?.color ?? '#00E5FF')}35` }
-                  : { background: 'rgba(255,255,255,0.04)', color: '#64748b', border: '1px solid rgba(255,255,255,0.08)' }}
+                  : { background: 'var(--surface-2)', color: 'var(--text-3)', border: '1px solid var(--border)' }}
               >
                 {name}
               </button>
@@ -121,7 +121,7 @@ export default function FloorManagement() {
                 className="w-full rounded-2xl border p-4 text-left transition"
                 style={selectedFloor === f.floor
                   ? { background: (bData?.color ?? '#00E5FF') + '12', borderColor: (bData?.color ?? '#00E5FF') + '40', boxShadow: `0 0 16px ${(bData?.color ?? '#00E5FF')}15` }
-                  : { background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }}
+                  : { background: 'var(--surface-2)', borderColor: 'var(--border)' }}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-bold text-white text-sm">{floorName(f.floor)}</span>
@@ -168,7 +168,7 @@ export default function FloorManagement() {
 
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {floorData.rooms.map((room) => {
-                    const rt = roomTypes[room.type] || { color: '#64748b', icon: '📦' };
+                    const rt = roomTypes[room.type] || { color: 'var(--text-3)', icon: '📦' };
                     return (
                       <motion.div
                         key={room.id}
@@ -176,8 +176,8 @@ export default function FloorManagement() {
                         onClick={() => setActiveRoomId(room.id || room.name)}
                         className="rounded-2xl border p-4 cursor-pointer transition"
                         style={{
-                          background: room.occupied ? rt.color + '0e' : 'rgba(255,255,255,0.04)',
-                          borderColor: room.occupied ? rt.color + '35' : 'rgba(255,255,255,0.08)',
+                          background: room.occupied ? rt.color + '0e' : 'var(--surface-2)',
+                          borderColor: room.occupied ? rt.color + '35' : 'var(--border)',
                         }}
                       >
                         <div className="flex items-start justify-between mb-2">
@@ -199,7 +199,7 @@ export default function FloorManagement() {
               </motion.div>
             ) : (
               <div className="flex h-64 items-center justify-center rounded-2xl border border-white/8 text-center"
-                   style={{ background: 'rgba(255,255,255,0.02)' }}>
+                   style={{ background: 'var(--surface-2)' }}>
                 <div>
                   <Layers size={36} className="mx-auto mb-3 text-slate-700" />
                   <p className="text-sm text-slate-500">Select a floor to view room layout</p>

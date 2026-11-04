@@ -64,7 +64,7 @@ export default function Analytics() {
                       return (
                         <td key={p.n} className="p-0.5">
                           <div className="rounded-md py-2 font-semibold text-white" title={`${n} classes`}
-                               style={{ background: n ? `rgba(0,229,255,${0.12 + 0.6 * (n / peak)})` : 'rgba(255,255,255,0.03)' }}>{n || '·'}</div>
+                               style={{ background: n ? `rgba(0,229,255,${0.12 + 0.6 * (n / peak)})` : 'var(--surface-2)' }}>{n || '·'}</div>
                         </td>
                       );
                     })}

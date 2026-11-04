@@ -99,7 +99,7 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
               {data?.floor !== undefined && <span style={styles.chip}>🏗️ Floor {data.floor}</span>}
               
               {isNonTimetableLoc ? (
-                <span style={{ ...styles.chip, background: '#374151', color: '#9CA3AF' }}>
+                <span style={{ ...styles.chip, background: 'var(--surface-2)', color: 'var(--text-2)' }}>
                   🏛️ {roomDetails?.type || 'Office / Admin Space'}
                 </span>
               ) : (
@@ -119,8 +119,8 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
               <button 
                 type="button"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(0,229,255,0.25), rgba(2,132,199,0.35))',
-                  border: '1.5px solid #00E5FF',
+                  background: 'var(--brand-grad)',
+                  border: '1px solid transparent',
                   color: '#FFFFFF',
                   borderRadius: 8,
                   padding: '6px 14px',
@@ -147,7 +147,7 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
         {/* Time-Aware Slot Selector */}
         {!isNonTimetableLoc && (
           <div style={styles.timeSelectorBox}>
-            <span style={{ color: '#9CA3AF', fontSize: 11, fontWeight: 700 }}>⏱ SELECT TIME:</span>
+            <span style={{ color: 'var(--text-2)', fontSize: 11, fontWeight: 700 }}>⏱ SELECT TIME:</span>
             <select
               value={selectedSlot}
               onChange={(e) => setSelectedSlot(e.target.value)}
@@ -181,10 +181,10 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
               {isNonTimetableLoc ? (
                 <div style={styles.officeCard}>
                   <div style={{ fontSize: 36 }}>🏛️</div>
-                  <div style={{ color: '#F3F4F6', fontSize: 15, fontWeight: 700, marginTop: 8 }}>
+                  <div style={{ color: 'var(--text)', fontSize: 15, fontWeight: 700, marginTop: 8 }}>
                     {roomDetails?.name || 'Administrative / Office Space'}
                   </div>
-                  <div style={{ color: '#9CA3AF', fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
+                  <div style={{ color: 'var(--text-2)', fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
                     This location is an administrative or staff office. It has no student teaching timetable assigned.
                   </div>
                 </div>
@@ -238,7 +238,7 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
                   <div style={{ color: '#10B981', fontSize: 16, fontWeight: 700, marginTop: 8 }}>
                     Free According to Timetable
                   </div>
-                  <div style={{ color: '#9CA3AF', fontSize: 12, marginTop: 4 }}>
+                  <div style={{ color: 'var(--text-2)', fontSize: 12, marginTop: 4 }}>
                     No class scheduled for this classroom/lab during this period.
                   </div>
                 </div>
@@ -249,8 +249,8 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
                 <div style={styles.nextSection}>
                   <div style={styles.nextLabel}>UPCOMING INFORMATION</div>
                   <div style={{ ...styles.card, ...styles.nextCard }}>
-                    <div style={{ fontWeight: 700, color: '#E5E7EB', fontSize: 14 }}>{next.subject_name}</div>
-                    <div style={{ color: '#9CA3AF', fontSize: 12, marginTop: 4 }}>
+                    <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 14 }}>{next.subject_name}</div>
+                    <div style={{ color: 'var(--text-2)', fontSize: 12, marginTop: 4 }}>
                       {next.faculty_name} · Section {next.section}
                     </div>
                     <div style={{ color: '#818CF8', fontSize: 12, marginTop: 4 }}>
@@ -304,7 +304,7 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
                     width: '100%',
                     padding: '12px 18px',
                     background: 'linear-gradient(135deg, rgba(0,229,255,0.2), rgba(30,58,138,0.4))',
-                    border: '1.5px solid #00E5FF',
+                    border: '1px solid transparent',
                     borderRadius: 12,
                     color: '#00E5FF',
                     fontWeight: 800,
@@ -329,7 +329,7 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
             <div>
               {isNonTimetableLoc ? (
                 <div style={styles.officeCard}>
-                  <div style={{ color: '#9CA3AF', fontSize: 13 }}>
+                  <div style={{ color: 'var(--text-2)', fontSize: 13 }}>
                     Administrative spaces do not have weekly class schedules.
                   </div>
                 </div>
@@ -346,12 +346,12 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
                           const c = getColor(e.subject_name);
                           return (
                             <div key={idx} style={{ ...styles.periodRow, borderLeft: `3px solid ${c}` }}>
-                              <div style={{ color: '#6B7280', fontSize: 11, width: 95, flexShrink: 0 }}>
+                              <div style={{ color: 'var(--text-3)', fontSize: 11, width: 95, flexShrink: 0 }}>
                                 P{e.period_number} ({e.start_time}–{e.end_time})
                               </div>
                               <div style={{ flex: 1 }}>
-                                <div style={{ color: '#E5E7EB', fontSize: 13, fontWeight: 600 }}>{e.subject_name}</div>
-                                <div style={{ color: '#9CA3AF', fontSize: 11 }}>
+                                <div style={{ color: 'var(--text)', fontSize: 13, fontWeight: 600 }}>{e.subject_name}</div>
+                                <div style={{ color: 'var(--text-2)', fontSize: 11 }}>
                                   {e.faculty_name} · Section {e.section}{e.batch ? ` (B${e.batch})` : ''}
                                 </div>
                               </div>
@@ -380,37 +380,37 @@ export default function ClassroomInfoPanel({ classroomId, simulatedDateTime: ext
 
 const styles = {
   overlay: { position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'flex-end', backdropFilter:'blur(6px)' },
-  panel:   { width:440, maxWidth:'95vw', height:'100vh', background:'#111827', display:'flex', flexDirection:'column', boxShadow:'-8px 0 40px rgba(0,0,0,0.7)' },
+  panel:   { width:440, maxWidth:'95vw', height:'100vh', background:'var(--surface-solid)', display:'flex', flexDirection:'column', boxShadow:'-8px 0 40px rgba(0,0,0,0.7)' },
   header:  { padding:'20px 18px 14px', position:'relative', display:'flex', justifyContent:'space-between', alignItems:'flex-start' },
   roomId:  { color:'#818CF8', fontSize:11, fontWeight:700, letterSpacing:2, textTransform:'uppercase', fontFamily:'monospace' },
-  roomName:{ color:'#F9FAFB', fontSize:18, fontWeight:800, marginTop:4 },
+  roomName:{ color:'var(--text)', fontSize:18, fontWeight:800, marginTop:4 },
   meta:    { display:'flex', gap:6, flexWrap:'wrap', marginTop:10 },
-  chip:    { background:'#1F2937', border:'1px solid #374151', borderRadius:20, padding:'3px 10px', fontSize:11, color:'#D1D5DB' },
-  closeBtn:{ background:'transparent', border:'none', color:'#6B7280', fontSize:20, cursor:'pointer', padding:4, lineHeight:1 },
-  timeSelectorBox: { padding:'10px 18px', background:'#1F2937', borderBottom:'1px solid #374151', display:'flex', alignItems:'center', justifyContent:'space-between' },
-  selectInput: { background:'#111827', border:'1px solid #4B5563', color:'#F3F4F6', borderRadius:6, padding:'4px 8px', fontSize:12, fontWeight:600 },
+  chip:    { background:'var(--surface-solid)', border:'1px solid var(--border)', borderRadius:20, padding:'3px 10px', fontSize:11, color:'var(--text-2)' },
+  closeBtn:{ background:'transparent', border:'none', color:'var(--text-3)', fontSize:20, cursor:'pointer', padding:4, lineHeight:1 },
+  timeSelectorBox: { padding:'10px 18px', background:'var(--surface-solid)', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' },
+  selectInput: { background:'var(--surface-solid)', border:'1px solid var(--border)', color:'var(--text)', borderRadius:6, padding:'4px 8px', fontSize:12, fontWeight:600 },
   tabs:    { display:'flex', borderBottom:'1px solid #1F2937' },
-  tab:     { flex:1, padding:'12px 0', background:'transparent', border:'none', color:'#6B7280', fontSize:12, cursor:'pointer', fontWeight:600 },
+  tab:     { flex:1, padding:'12px 0', background:'transparent', border:'none', color:'var(--text-3)', fontSize:12, cursor:'pointer', fontWeight:600 },
   tabActive:{ color:'#818CF8', borderBottom:'2px solid #6366F1', marginBottom:-1 },
   body:    { flex:1, overflowY:'auto', padding:'18px' },
-  card:    { background:'#1F2937', borderRadius:14, padding:'16px', marginBottom:14 },
-  officeCard: { background:'#1F2937', borderRadius:14, padding:'24px 18px', textAlign:'center', border:'1px solid #374151' },
-  cardSectionHeader: { color:'#6B7280', fontSize:10, fontWeight:800, letterSpacing:1.5, marginBottom:10, textTransform:'uppercase' },
+  card:    { background:'var(--surface-solid)', borderRadius:14, padding:'16px', marginBottom:14 },
+  officeCard: { background:'var(--surface-solid)', borderRadius:14, padding:'24px 18px', textAlign:'center', border:'1px solid var(--border)' },
+  cardSectionHeader: { color:'var(--text-3)', fontSize:10, fontWeight:800, letterSpacing:1.5, marginBottom:10, textTransform:'uppercase' },
   subjectBadge: (c) => ({ background:`${c}22`, color:c, borderRadius:20, padding:'4px 12px', fontSize:13, fontWeight:700, display:'inline-block', marginBottom:12 }),
-  row:     { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 0', borderBottom:'1px solid #374151' },
-  label:   { color:'#9CA3AF', fontSize:12 },
-  value:   { color:'#E5E7EB', fontSize:13, fontWeight:600, textAlign:'right' },
-  freeCard:{ background:'#1F2937', borderRadius:14, padding:'24px 20px', textAlign:'center', marginBottom:14, border:'1px solid #10B98144' },
+  row:     { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 0', borderBottom:'1px solid var(--border)' },
+  label:   { color:'var(--text-2)', fontSize:12 },
+  value:   { color:'var(--text)', fontSize:13, fontWeight:600, textAlign:'right' },
+  freeCard:{ background:'var(--surface-solid)', borderRadius:14, padding:'24px 20px', textAlign:'center', marginBottom:14, border:'1px solid #10B98144' },
   nextSection: { marginTop:16 },
-  nextLabel:   { color:'#6B7280', fontSize:10, letterSpacing:1.5, fontWeight:800, marginBottom:8 },
-  nextCard:    { opacity:0.85, border:'1px solid #374151' },
+  nextLabel:   { color:'var(--text-3)', fontSize:10, letterSpacing:1.5, fontWeight:800, marginBottom:8 },
+  nextCard:    { opacity:0.85, border:'1px solid var(--border)' },
   dayBlock:    { marginBottom:16 },
   dayHeader:   { color:'#818CF8', fontSize:12, fontWeight:700, letterSpacing:1, marginBottom:8, textTransform:'uppercase' },
-  noClass:     { color:'#4B5563', fontSize:12, padding:'6px 0', fontStyle:'italic' },
-  periodRow:   { display:'flex', gap:10, alignItems:'flex-start', padding:'8px 12px', background:'#1F2937', borderRadius:8, marginBottom:6 },
-  equipTag:    { background:'#0F172A', border:'1px solid #334155', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#9CA3AF' },
-  center:  { textAlign:'center', color:'#6B7280', padding:40 },
+  noClass:     { color:'var(--text-3)', fontSize:12, padding:'6px 0', fontStyle:'italic' },
+  periodRow:   { display:'flex', gap:10, alignItems:'flex-start', padding:'8px 12px', background:'var(--surface-solid)', borderRadius:8, marginBottom:6 },
+  equipTag:    { background:'var(--surface-solid)', border:'1px solid var(--border)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'var(--text-2)' },
+  center:  { textAlign:'center', color:'var(--text-3)', padding:40 },
   errBox:  { background:'#7F1D1D22', border:'1px solid #7F1D1D', borderRadius:8, padding:14, color:'#FCA5A5', fontSize:13 },
   footer:  { padding:'12px 18px', borderTop:'1px solid #1F2937' },
-  refreshBtn: { background:'#1F2937', border:'1px solid #374151', borderRadius:8, color:'#9CA3AF', cursor:'pointer', padding:'8px 16px', fontSize:12, width:'100%' },
+  refreshBtn: { background:'var(--surface-solid)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text-2)', cursor:'pointer', padding:'8px 16px', fontSize:12, width:'100%' },
 };

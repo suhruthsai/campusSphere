@@ -43,7 +43,7 @@ JOINEE = ("Demo Joinee", "demo.joinee@example.com")
 # Placeholder amounts only — MVSR's real fees must be entered in Services -> Fee settings
 DEMO_FEE_HEADS = [
     ("Special fee", 5500, False, 1),
-    ("CRT / placement training fee", 15000, False, 2),
+    ("Campus recruitment training (CRT) fee", 20000, False, 2),
     ("University (Osmania) fees", 3250, False, 3),
     ("College bus fee (optional)", 30000, True, 4),
 ]

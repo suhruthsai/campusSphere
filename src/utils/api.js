@@ -5,11 +5,22 @@
 export const API_ORIGIN = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 const BASE_URL = `${API_ORIGIN}/api/v1`;
 
-/** Absolute WebSocket URL for a backend path like '/ws/telemetry'. */
+/** Absolute WebSocket URL for a backend path like '/ws/timetable'. The token is deliberately not in
+ *  it: a query string ends up in the server's access log, the proxy's log and the browser's history. */
 export function wsUrl(path) {
   if (API_ORIGIN) return API_ORIGIN.replace(/^http/, 'ws') + path;
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}${path}`;
+}
+
+/** A signed-in WebSocket: connect, then send the token as the first frame (the server allows five
+ *  seconds for it). Returns null when nobody is signed in, so callers can skip the socket. */
+export function openSocket(path) {
+  const token = localStorage.getItem('campussphere_token');
+  if (!token) return null;
+  const ws = new WebSocket(wsUrl(path));
+  ws.addEventListener('open', () => ws.send(JSON.stringify({ token })), { once: true });
+  return ws;
 }
 
 const TOKEN_KEY = 'campussphere_token';
@@ -33,11 +44,12 @@ async function request(path, options = {}) {
   });
 
   // 401 with a token on any route except login/register means the session is gone. Without one
-  // it's a visitor (the public /visit page) calling a members-only route: just fail that call.
+  // it's a visitor (the public campus at "/") calling a members-only route: just fail that call.
   if (res.status === 401 && token && !path.startsWith('/auth/login') && !path.startsWith('/auth/register')) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem('campussphere_user');
-    if (!AUTH_PAGES.includes(window.location.pathname)) {
+    // On the campus ("/") an expired session simply becomes the guest view, with the Sign in button
+    if (!AUTH_PAGES.includes(window.location.pathname) && window.location.pathname !== '/') {
       window.location.href = '/login';
     }
     throw new Error('Session expired. Please sign in again.');
@@ -277,9 +289,10 @@ export const servicesApi = {
 };
 
 /** Upload one file (multipart; the browser sets the boundary header). */
-async function uploadFile(path, file) {
+async function uploadFile(path, file, fields = {}) {
   const fd = new FormData();
   fd.append('file', file);
+  Object.entries(fields).forEach(([k, v]) => { if (v) fd.append(k, v); });
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
@@ -482,7 +495,7 @@ export const joiningApi = {
   saveDetails:   (data)        => put('/joining/me', data),
   submit:        ()            => post('/joining/me/submit'),
   removeDoc:     (key)         => request(`/joining/me/documents/${key}`, { method: 'DELETE' }),
-  uploadDoc:     (key, file)   => uploadFile(`/joining/me/documents/${key}`, file),
+  uploadDoc:     (key, file, issuedOn) => uploadFile(`/joining/me/documents/${key}`, file, { issued_on: issuedOn }),
   docBlob:       (docId)       => requestBlob(`/joining/documents/${docId}/file`),
   createPayment: (data)        => post('/joining/me/payments', data),
   completeTest:  (id, outcome) => post(`/joining/me/payments/${id}/test-complete`, { outcome }),
@@ -501,6 +514,11 @@ export const joiningApi = {
   lend:          (id, dueBack, note) => post(`/joining/office/originals/${id}/lend`, { due_back: dueBack, note }),
   redeposit:     (id, note)    => post(`/joining/office/originals/${id}/redeposit`, { note }),
   returnOriginal:(id, note)    => post(`/joining/office/originals/${id}/return`, { note }),
+  recordCopies:  (docId, n)    => post(`/joining/office/documents/${docId}/copies`, { copies_received: n }),
+  // Admin: which documents joinees must give
+  docRules:      ()            => request('/joining/admin/doc-rules'),
+  addDocRule:    (data)        => post('/joining/admin/doc-rules', data),
+  saveDocRule:   (id, data)    => put(`/joining/admin/doc-rules/${id}`, data),
   // Admin fee settings
   feeHeads:      ()            => request('/joining/admin/fee-heads'),
   addFeeHead:    (data)        => post('/joining/admin/fee-heads', data),
@@ -525,7 +543,38 @@ export const leavingApi = {
   officers:      ()            => request('/leaving/admin/officers'),
   addOfficer:    (data)        => post('/leaving/admin/officers', data),
   removeOfficer: (id)          => request(`/leaving/admin/officers/${id}`, { method: 'DELETE' }),
+  // What I get from the college when I leave
+  checklist:     ()            => request('/leaving/me/checklist'),
   documentFees:  ()            => request('/leaving/admin/document-fees'),
   setDocumentFee:(docType, amount) => put(`/leaving/admin/document-fees/${docType}`, { amount }),
 };
 
+
+// ── CampusLocker: my documents, share links, the access log ──────────────────────
+const lockerForm = async (path, fields, file) => {
+  const fd = new FormData();
+  Object.entries(fields).forEach(([k, v]) => fd.append(k, v ?? ''));
+  fd.append('file', file);
+  const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {}, body: fd });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+  return body;
+};
+
+export const lockerApi = {
+  mine:       ()                       => request('/locker/'),
+  upload:     (file, title, category)  => lockerForm('/locker/files', { title, category }, file),
+  remove:     (id)                     => request(`/locker/files/${id}`, { method: 'DELETE' }),
+  blob:       (ref)                    => requestBlob(`/locker/items/${encodeURIComponent(ref)}/file`),
+  share:      (ref, hours)             => post(`/locker/items/${encodeURIComponent(ref)}/share`, { hours }),
+  shares:     ()                       => request('/locker/shares'),
+  revoke:     (id)                     => request(`/locker/shares/${id}`, { method: 'DELETE' }),
+  activity:   ()                       => request('/locker/activity'),
+  lookup:     (rollNo)                 => request('/locker/office/lookup?' + new URLSearchParams({ roll_no: rollNo })),
+  officeAdd:  (rollNo, file, title, category) => lockerForm('/locker/office/files', { roll_no: rollNo, title, category }, file),
+  sharedInfo: (token)                  => request(`/locker/shared/${token}`),
+  sharedBlob: (token)                  => requestBlob(`/locker/shared/${token}/file`),
+  college:        ()                   => request('/locker/college'),
+  collegeBlob:    (id)                 => requestBlob(`/locker/college/${id}/file`),
+  collegeRefresh: ()                   => post('/locker/college/refresh'),
+};

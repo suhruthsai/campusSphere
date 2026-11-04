@@ -745,12 +745,14 @@ def seed_all(only_if_empty: bool = False):
     finally:
         db.close()
 
-ACTIVITY_CODES = {"COUNSELLING", "CRT", "LIBRARY", "SPORTS"}
+ACTIVITY_CODES = {"COUNSELLING", "CRT", "LIBRARY", "SPORTS", "TUTORIAL"}
 
 
 def sync_subjects(db=None) -> int:
     """Fill the subjects list from the subject codes used in the timetable (adds missing ones only,
-    never changes existing subjects). Codes shared by several different slots (e.g. TUTORIAL) are left out."""
+    never changes existing subjects). A code used with different names in different slots (TUTORIAL is
+    "Tutorial (OS)" in one class and "Tutorial (DS)" in another) is an activity, and gets one plain name:
+    the timetable rows point at it, so leaving it out left a reference to a subject that did not exist."""
     own = db is None
     db = db or SessionLocal()
     try:
@@ -764,9 +766,9 @@ def sync_subjects(db=None) -> int:
         have = {r[0] for r in db.query(SubjectModel.id).all()}
         added = 0
         for code, ns in names.items():
-            if code in have or len(ns) != 1:
+            if code in have or (len(ns) != 1 and code not in ACTIVITY_CODES):
                 continue
-            name = next(iter(ns))
+            name = next(iter(ns)) if len(ns) == 1 else code.replace("_", " ").title()
             low = name.lower()
             kind = ("activity" if code in ACTIVITY_CODES else "lab" if "lab" in low else
                     "project" if "project" in low else "theory")

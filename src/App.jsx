@@ -3,6 +3,7 @@ import { lazy, Suspense } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { ThemeProvider } from './context/ThemeContext.jsx';
 import Shell from './components/layout/Shell.jsx';
 import ProtectedRoute from './components/layout/ProtectedRoute.jsx';
 import { HOME_FOR } from './components/layout/navConfig.js';
@@ -15,9 +16,11 @@ import ForgotPassword from './pages/auth/ForgotPassword.jsx';
 // Pages are code-split: each loads on first visit, so the login screen and
 // lighter pages don't wait for the large 3D bundle.
 // Core pages
-const Home = lazy(() => import('./pages/Home.jsx'));
+const loadHome = () => import('./pages/Home.jsx');
+const Home = lazy(loadHome);
+// The 3D campus is the front door: start downloading it now, in parallel with the sign-in check, not after it
+if (typeof window !== 'undefined' && window.location.pathname === '/') loadHome();
 const Navigation = lazy(() => import('./pages/Navigation.jsx'));
-const Visit = lazy(() => import('./pages/Visit.jsx'));
 const StudentDashboard = lazy(() => import('./pages/StudentDashboard.jsx'));
 const FacultyDashboard = lazy(() => import('./pages/FacultyDashboard.jsx'));
 const Analytics = lazy(() => import('./pages/Analytics.jsx'));
@@ -49,6 +52,7 @@ const JoiningJourney = lazy(() => import('./pages/joining/JoiningJourney.jsx'));
 const AdmissionsDesk = lazy(() => import('./pages/joining/AdmissionsDesk.jsx'));
 const OriginalsRegister = lazy(() => import('./pages/joining/OriginalsRegister.jsx'));
 const FeeSettings = lazy(() => import('./pages/joining/FeeSettings.jsx'));
+const JoiningDocRules = lazy(() => import('./pages/joining/JoiningDocRules.jsx'));
 const MyAccount = lazy(() => import('./pages/auth/MyAccount.jsx'));
 // Leaving the college (V3)
 const LeavingJourney = lazy(() => import('./pages/leaving/LeavingJourney.jsx'));
@@ -72,6 +76,10 @@ const PublicFeedback = lazy(() => import('./pages/feedback/PublicFeedback.jsx'))
 const Placements = lazy(() => import('./pages/placements/Placements.jsx'));
 const PlacementCell = lazy(() => import('./pages/placements/PlacementCell.jsx'));
 const DeskWall = lazy(() => import('./pages/admin/DeskWall.jsx'));
+// CampusLocker: everyone signed in has one; the Admin Office adds official documents; share links open without login
+const Locker = lazy(() => import('./pages/locker/Locker.jsx'));
+const LockerOffice = lazy(() => import('./pages/locker/LockerOffice.jsx'));
+const SharedDocument = lazy(() => import('./pages/locker/SharedDocument.jsx'));
 const ADMIN = ['admin'];
 
 // Old links to pages that left the menus (sample data, the old assistant): go to the person's own home page
@@ -98,10 +106,13 @@ function NotFound() {
   );
 }
 
-function PageFallback() {
+function PageFallback({ label }) {
   return (
     <div className="grid min-h-[60vh] place-items-center">
-      <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-[#00E5FF]" />
+      <div className="flex flex-col items-center gap-3">
+        <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-[#00E5FF]" />
+        {label && <span className="text-xs tracking-wide text-slate-400">{label}</span>}
+      </div>
     </div>
   );
 }
@@ -119,18 +130,23 @@ function AppRoutes() {
         {/* Public: anyone holding a certificate's QR code can check it, no account needed */}
         <Route path="/verify"       element={<Suspense fallback={<PageFallback />}><VerifyDocument /></Suspense>} />
         <Route path="/verify/:code" element={<Suspense fallback={<PageFallback />}><VerifyDocument /></Suspense>} />
-        {/* Public: parents and visitors explore the 3D campus with Mitra, the walking guide */}
         {/* Public: alumni, employers and parents answer feedback forms by the IQAC's link */}
         <Route path="/f/:code"      element={<Suspense fallback={<PageFallback />}><PublicFeedback /></Suspense>} />
-        <Route path="/visit"        element={<Suspense fallback={<PageFallback />}><Visit /></Suspense>} />
+        {/* Public: whoever holds a live CampusLocker share link can view that one document */}
+        <Route path="/shared/:token" element={<Suspense fallback={<PageFallback />}><SharedDocument /></Suspense>} />
+        {/* The visitor view moved to the front door ("/"): old /visit links and QR codes land there */}
+        <Route path="/visit"        element={<Navigate to="/" replace />} />
 
+        {/* "/" is open to everyone: guests see the 3D campus and Mitra (public information only) and a
+            Sign in button; every other page needs an account. Same tree for both, so the map stays
+            mounted when someone signs in over it. */}
         <Route path="/*" element={
-          <ProtectedRoute>
+          <ProtectedRoute publicPaths={['/']}>
           <Shell>
             {/* Keyed here (not on the outer Routes) so navigating only swaps the page —
                 previously the whole Shell was torn down and rebuilt on every click. */}
             <PageErrorBoundary key={location.pathname}>
-            <Suspense fallback={<PageFallback />}>
+            <Suspense fallback={<PageFallback label={location.pathname === '/' ? 'Loading the 3D campus…' : undefined} />}>
             <AnimatePresence mode="wait">
             <Routes location={location} key={location.pathname}>
               {/* Core */}
@@ -193,9 +209,12 @@ function AppRoutes() {
               <Route path="/joining/desk"       element={<ProtectedRoute allowedRoles={['admin', 'staff']}><AdmissionsDesk /></ProtectedRoute>} />
               <Route path="/joining/originals"  element={<ProtectedRoute allowedRoles={['admin', 'staff']}><OriginalsRegister /></ProtectedRoute>} />
               <Route path="/joining/fees"       element={<ProtectedRoute allowedRoles={ADMIN}><FeeSettings /></ProtectedRoute>} />
+              <Route path="/joining/documents"  element={<ProtectedRoute allowedRoles={ADMIN}><JoiningDocRules /></ProtectedRoute>} />
               <Route path="/leaving"            element={<ProtectedRoute allowedRoles={['student']}><LeavingJourney /></ProtectedRoute>} />
               <Route path="/leaving/desk"       element={<ProtectedRoute allowedRoles={['faculty', 'staff', 'admin']}><ClearanceDesk /></ProtectedRoute>} />
               <Route path="/leaving/exam-cell"  element={<ProtectedRoute allowedRoles={['faculty', 'staff', 'admin']}><ExamCellDesk /></ProtectedRoute>} />
+              <Route path="/locker"             element={<Locker />} />
+              <Route path="/locker/office"      element={<ProtectedRoute allowedRoles={['admin', 'staff']}><LockerOffice /></ProtectedRoute>} />
               <Route path="/account"            element={<MyAccount />} />
               {/* Anything else inside the app */}
               <Route path="*" element={<NotFound />} />
@@ -212,8 +231,10 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

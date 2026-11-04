@@ -1,9 +1,12 @@
 // Home.jsx — the MVSR digital twin, with a strip of the real campus buildings below it
 // (from the database). Clicking a building flies the 3D camera to it.
+// This is also the front door for guests (not signed in): the same campus, with Mitra open and public
+// information only (the API hides staff names from guests; the Route finder needs an account).
 import { ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext.jsx';
 import SuhruthDigitalTwin from '../components/three/SuhruthDigitalTwin.jsx';
 import GuidePanel from '../components/GuidePanel.jsx';
 import PageTransition from '../components/PageTransition.jsx';
@@ -13,7 +16,10 @@ import { istNow, liveSessionsByBuilding } from '../components/three/twinExtras.j
 import { useCampusStore } from '../store/useCampusStore.js';
 
 export default function Home() {
+  const { user } = useAuth();
   const openMitra = Boolean(useLocation().state?.openMitra);   // "Ask Mitra" on the Morning Brief
+  // Guests on a big screen meet Mitra open; on a phone she starts as the small button so the campus stays in view
+  const [wide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches);
   const [buildings, setBuildings] = useState([]);
   const [live, setLive] = useState({});
   const [selected, setSelected] = useState(null);
@@ -34,10 +40,10 @@ export default function Home() {
   return (
     <PageTransition className="relative min-h-screen">
       {/* ── Full 3D Digital Twin Hero Section ──────────────────────────────── */}
-      <section className="pt-[76px] px-4 sm:px-6">
+      <section className="keep-dark pt-[76px] px-4 sm:px-6" style={{ color: 'inherit' }}>
         <SuhruthDigitalTwin />
       </section>
-      <GuidePanel defaultOpen={openMitra} />
+      <GuidePanel defaultOpen={openMitra || (!user && wide)} />
 
       {/* ── Building Selector Strip ────────────────────────────────────────── */}
       <section className="px-4 pb-20 pt-6 sm:px-6">
@@ -47,9 +53,11 @@ export default function Home() {
               Campus Buildings
               <span className="ml-2 text-sm font-normal text-slate-400">— click to fly there</span>
             </h2>
-            <LinkButton to="/navigation" variant="ghost" size="sm">
-              Route finder <ChevronRight size={14} />
-            </LinkButton>
+            {user && (
+              <LinkButton to="/navigation" variant="ghost" size="sm">
+                Route finder <ChevronRight size={14} />
+              </LinkButton>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -74,8 +82,12 @@ function BuildingCard({ building, classesNow, active, onClick, delay }) {
       whileHover={{ y: -3, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
-      className="relative overflow-hidden rounded-xl border p-3 text-left transition-all"
-      style={{ background: active ? color + '14' : 'rgba(255,255,255,0.04)', borderColor: active ? color + '55' : 'rgba(255,255,255,0.1)' }}
+      className="relative overflow-hidden rounded-2xl border p-3.5 text-left transition-all"
+      style={{
+        background: active ? `color-mix(in srgb, ${color} 14%, var(--surface-solid))` : 'var(--surface)',
+        borderColor: active ? color : 'var(--border)',
+        boxShadow: active ? `0 8px 26px color-mix(in srgb, ${color} 30%, transparent)` : 'var(--shadow)',
+      }}
     >
       <div className="mb-2 flex items-center justify-between">
         <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />

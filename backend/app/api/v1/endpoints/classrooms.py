@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from backend.app.db.session import get_db
-from backend.app.core.security import require_admin
+from backend.app.core.security import get_optional_user, require_admin
 from backend.app.models.campus import ClassroomModel, TimetableEntryModel
 from backend.app.schemas.campus import ClassroomCreate, ClassroomUpdate, ClassroomOut, CurrentClassResponse, TimetableEntryOut
 
 router = APIRouter()
+public_router = APIRouter()   # read-only room data the open campus map needs; teacher names are hidden from guests
 
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -14,7 +15,7 @@ def _time_to_minutes(t: str) -> int:
     h, m = t.split(":")
     return int(h) * 60 + int(m)
 
-@router.get("/", response_model=List[ClassroomOut])
+@public_router.get("/", response_model=List[ClassroomOut])
 def list_classrooms(
     building: Optional[str] = Query(None),
     floor: Optional[int] = Query(None),
@@ -67,17 +68,19 @@ def delete_classroom(classroom_id: str, db: Session = Depends(get_db), _admin: d
     db.commit()
     return {"message": "Deleted"}
 
-@router.get("/{classroom_id}/current", response_model=CurrentClassResponse)
+@public_router.get("/{classroom_id}/current", response_model=CurrentClassResponse)
 def get_current_class(
     classroom_id: str,
     at_datetime: Optional[str] = Query(None, description="Optional campus (India) time, e.g. 2026-10-26T10:30"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current: Optional[dict] = Depends(get_optional_user),
 ):
-    from backend.app.api.v1.endpoints.timetable import current_class
-    return current_class(db, classroom_id, at_datetime)
+    from backend.app.api.v1.endpoints.timetable import current_class, hide_staff_current
+    resp = current_class(db, classroom_id, at_datetime)
+    return resp if current else hide_staff_current(resp)
 
-@router.get("/{classroom_id}/week")
-def get_week_schedule(classroom_id: str, db: Session = Depends(get_db)):
+@public_router.get("/{classroom_id}/week")
+def get_week_schedule(classroom_id: str, db: Session = Depends(get_db), current: Optional[dict] = Depends(get_optional_user)):
     room = db.query(ClassroomModel).filter(ClassroomModel.id == classroom_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Classroom not found")
@@ -91,4 +94,8 @@ def get_week_schedule(classroom_id: str, db: Session = Depends(get_db)):
         if day not in schedule:
             schedule[day] = []
         schedule[day].append(TimetableEntryOut.model_validate(e).model_dump())
-    return {"classroom_id": classroom_id, "classroom_name": room.name, "schedule": schedule}
+    week = {"classroom_id": classroom_id, "classroom_name": room.name, "schedule": schedule}
+    if not current:
+        from backend.app.api.v1.endpoints.timetable import hide_staff_week
+        week = hide_staff_week(week)
+    return week

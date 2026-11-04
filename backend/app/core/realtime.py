@@ -14,8 +14,8 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
+    def join(self, websocket: WebSocket):
+        """The endpoint accepts the socket and signs it in; this only starts the broadcasts."""
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):

@@ -11,7 +11,7 @@ import { btnGhost, btnPrimary, inputCls, labelCls } from '../../components/servi
 
 const th = 'py-2 pr-3 text-left text-[11px] font-medium uppercase tracking-wider text-slate-500';
 const td = 'py-2 pr-3 text-slate-200';
-const tip = { background: '#04091a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 };
+const tip = { background: 'var(--surface-solid)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 11 };
 const fmt = (v) => (v === null || v === undefined ? '—' : Number(v).toFixed(2));
 const lvlCls = (v, target = 2) => (v === null || v === undefined ? 'text-slate-500' : v >= target ? 'text-emerald-300' : 'text-amber-300');
 
@@ -45,7 +45,7 @@ function Attainment({ prog, years, onOpenCourse }) {
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={[...pos, ...psos]} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-2)" />
               <XAxis dataKey="code" tick={{ fontSize: 10, fill: '#64748b' }} />
               <YAxis domain={[0, 3]} tick={{ fontSize: 10, fill: '#64748b' }} />
               <Tooltip contentStyle={tip} formatter={(v) => [fmt(v), 'Attainment']} labelFormatter={(c) => `${c} · ${r.outcomes.find((o) => o.code === c)?.title || ''}`} />

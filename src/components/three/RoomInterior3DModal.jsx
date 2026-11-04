@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { X, Video, Users, Calendar, GraduationCap, BookOpen, Clock } from 'lucide-react';
-import { classroomsApi, wsUrl } from '../../utils/api';
+import { classroomsApi, openSocket } from '../../utils/api';
 
 const TIME_SLOTS = [
   { label: 'Real-Time (Now)', value: '' },
@@ -148,7 +148,8 @@ export default function RoomInterior3DModal({ room, classroomId, simulatedDateTi
   }, [simulatedDateTime]);
 
   useEffect(() => {
-    const ws = new WebSocket(wsUrl('/ws/timetable'));
+    const ws = openSocket('/ws/timetable');
+    if (!ws) return undefined;              // signed out: no live timetable updates to listen for
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);

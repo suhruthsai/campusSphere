@@ -12,7 +12,7 @@ import { DRIVE_STATUS, MY_STATUS } from './Placements.jsx';
 const fmt = (iso) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 const th = 'py-2 pr-3 text-left text-[11px] font-medium uppercase tracking-wider text-slate-500';
 const td = 'py-2 pr-3 text-slate-200';
-const tip = { background: '#04091a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 };
+const tip = { background: 'var(--surface-solid)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 11 };
 
 function Tile({ label, value, sub, tone = 'text-white' }) {
   return (
@@ -60,7 +60,7 @@ function Report({ dept }) {
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trend} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-2)" />
                 <XAxis dataKey="batch" tick={{ fontSize: 10, fill: '#64748b' }} />
                 <YAxis domain={[40, 100]} unit="%" tick={{ fontSize: 10, fill: '#64748b' }} />
                 <Tooltip contentStyle={tip} />
@@ -76,7 +76,7 @@ function Report({ dept }) {
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={r.bands} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-2)" />
                 <XAxis dataKey="band" tick={{ fontSize: 10, fill: '#64748b' }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#64748b' }} />
                 <Tooltip contentStyle={tip} />

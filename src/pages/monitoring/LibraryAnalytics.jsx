@@ -107,7 +107,7 @@ export default function LibraryAnalytics() {
             </defs>
             <XAxis dataKey="hour" tick={{ fontSize: 9, fill: '#64748b' }} interval={3} />
             <YAxis tick={{ fontSize: 9, fill: '#64748b' }} />
-            <Tooltip contentStyle={{ background: '#04091a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 }} />
+            <Tooltip contentStyle={{ background: 'var(--surface-solid)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 11 }} />
             <Area type="monotone" dataKey="value" stroke="#7B61FF" strokeWidth={2} fill="url(#libGrad)" dot={false} name="Visitors" />
           </AreaChart>
         </ResponsiveContainer>
@@ -119,7 +119,7 @@ export default function LibraryAnalytics() {
           <BarChart data={library.weeklyVisitors} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
             <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#64748b' }} />
             <YAxis tick={{ fontSize: 9, fill: '#64748b' }} />
-            <Tooltip contentStyle={{ background: '#04091a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 }} />
+            <Tooltip contentStyle={{ background: 'var(--surface-solid)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 11 }} />
             <Bar dataKey="visitors" fill="#7B61FF" radius={[4, 4, 0, 0]} name="Visitors" />
           </BarChart>
         </ResponsiveContainer>

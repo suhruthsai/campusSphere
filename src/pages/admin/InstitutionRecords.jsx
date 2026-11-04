@@ -12,13 +12,16 @@ const td = 'py-2 pr-3 text-slate-200';
 const yearNow = () => { const d = new Date(); const y = d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1; return `${y}-${String((y + 1) % 100).padStart(2, '0')}`; };
 const KIND = { higher_studies: 'Higher studies', exam: 'Competitive exam', startup: 'Startup', award: 'Award', event: 'Event', alumni_contribution: 'Alumni contribution' };
 const spin = <p className="flex items-center gap-2 text-slate-400"><Loader2 className="animate-spin" size={16} /> Loading…</p>;
+// The API refuses these records to anyone outside the IQAC team; show what it said instead of spinning for ever.
+const refused = (e) => <p className="rounded-xl bg-amber-400/10 px-4 py-3 text-sm text-amber-200">{e}</p>;
 
 function Progression() {
   const [f, setF] = useState({ year: '', kind: '' });
   const [rows, setRows] = useState(null);
   const [n, setN] = useState({ kind: 'higher_studies', programme: 'IT', year: yearNow(), student_name: '', title: '', level: 'state', category: 'technical', participants: '', amount_lakh: '' });
   const [msg, setMsg] = useState('');
-  const load = useCallback(() => api.achievements({ programme: 'IT', ...f }).then(setRows), [f]);
+  const [err, setErr] = useState('');
+  const load = useCallback(() => api.achievements({ programme: 'IT', ...f }).then(setRows).catch((e) => setErr(e.message)), [f]);
   useEffect(() => { load(); }, [load]);
   const set = (k) => (e) => setN((s) => ({ ...s, [k]: e.target.value }));
   const add = async (e) => {
@@ -49,7 +52,7 @@ function Progression() {
           <select className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white" value={f.kind} onChange={(e) => setF((s) => ({ ...s, kind: e.target.value }))}><option value="">All</option>{Object.entries(KIND).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
           <input className="w-28 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white" placeholder="2025-26" value={f.year} onChange={(e) => setF((s) => ({ ...s, year: e.target.value }))} />
         </div>
-        {!rows ? spin : (
+        {err ? refused(err) : !rows ? spin : (
           <div className="max-h-[32rem] overflow-y-auto"><table className="w-full text-sm">
             <thead><tr><th className={th}>Year</th><th className={th}>Type</th><th className={th}>Details</th><th className={th} /></tr></thead>
             <tbody>{rows.map((a) => (
@@ -67,8 +70,10 @@ function Progression() {
 function Figures() {
   const [d, setD] = useState(null);
   const [msg, setMsg] = useState('');
-  const load = () => api.stats().then(setD);
+  const [err, setErr] = useState('');
+  const load = () => api.stats().then(setD).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, []);
+  if (err) return refused(err);
   if (!d) return spin;
   const years = d.years.slice(-6);
   const save = async (k, y, raw) => {
@@ -120,8 +125,10 @@ function Meetings() {
   const [body, setBody] = useState('');
   const [n, setN] = useState({ body: 'iqac', programme: 'IT', held_on: '', attendees: '', agenda: '', decisions: '' });
   const [msg, setMsg] = useState('');
-  const load = useCallback(() => api.meetings(body).then(setD), [body]);
+  const [err, setErr] = useState('');
+  const load = useCallback(() => api.meetings(body).then(setD).catch((e) => setErr(e.message)), [body]);
   useEffect(() => { load(); }, [load]);
+  if (err) return refused(err);
   if (!d) return spin;
   const perProg = ['bos', 'dab', 'pac'].includes(n.body);
   const add = async (e) => {

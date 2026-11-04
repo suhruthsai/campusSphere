@@ -63,8 +63,10 @@ def user_roles(db: Session, current: dict) -> dict:
         exit_rec = db.query(ExitModel).filter(ExitModel.user_id == uid).first()
         # Joining: an application still in progress, or a new account with no academic details yet (a joinee)
         out["joining_open"] = bool(admission and admission.status != "enrolled") or (not admission and not (profile and profile.year))
-        # Leaving: once the exit has started, or in the final year
-        out["leaving_open"] = bool(exit_rec) or bool(profile and profile.year == 4)
+        # Leaving: once the exit has started, in the final year, or as a first-year joinee (the one who may withdraw,
+        # so the link must not be hidden from them)
+        new_joinee = bool(admission and admission.status == "enrolled" and (not profile or profile.year in (None, 1)))
+        out["leaving_open"] = bool(exit_rec) or bool(profile and profile.year == 4) or new_joinee
         # Placements: final years (jobs) and pre-final years (internships)
         out["placements_open"] = bool(profile and profile.year in (3, 4))
     return out

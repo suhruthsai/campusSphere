@@ -12,7 +12,7 @@ const pct = (v) => `${Math.round(v * 100)}%`;
 
 // Seat utilization → cell colour
 function utilColor(u) {
-  if (u === undefined) return 'rgba(255,255,255,0.04)';
+  if (u === undefined) return 'var(--surface-2)';
   if (u > 1) return '#ef4444';
   if (u >= 0.85) return '#F59E0B';
   if (u >= 0.55) return '#00FFB3';
@@ -168,7 +168,7 @@ function Recommendations({ rec }) {
 
       {rec.downsize.length > 0 && (
         <Section title="Smaller room would do" accent="#94a3b8" items={rec.downsize} render={(d, i) => (
-          <Row key={i} tone="#cbd5e1"
+          <Row key={i} tone="var(--text-2)"
             left={<><p className="text-sm font-semibold text-white">{d.classroom_id} · {d.slot}</p>
                     <p className="text-xs text-slate-400">{d.class}</p></>}
             right={<p className="text-white font-semibold">~{d.predicted_present} / {d.capacity}</p>}
@@ -191,7 +191,7 @@ function Heatmap({ report }) {
   return (
     <MCard title="Predicted seat utilization by room and period" accent="#00FFB3">
       <div className="mb-3 flex flex-wrap gap-3 text-[10px] text-slate-400">
-        {[['< 30%', '#7B61FF'], ['30–55%', '#38BDF8'], ['55–85%', '#00FFB3'], ['85–100%', '#F59E0B'], ['over capacity', '#ef4444'], ['free', 'rgba(255,255,255,0.08)']]
+        {[['< 30%', '#7B61FF'], ['30–55%', '#38BDF8'], ['55–85%', '#00FFB3'], ['85–100%', '#F59E0B'], ['over capacity', '#ef4444'], ['free', 'var(--border)']]
           .map(([l, c]) => <span key={l} className="flex items-center gap-1"><span className="h-3 w-3 rounded" style={{ background: c }} />{l}</span>)}
       </div>
       <div className="overflow-x-auto">
@@ -214,7 +214,7 @@ function Heatmap({ report }) {
                         <td key={p} title={h ? `${d} P${p} · ${h.sections.join(', ')} · ${h.subjects.join(' / ')}\n~${h.predicted_present} of ${h.capacity} seats (${pct(h.seat_utilization)})`
                                              : `${d} P${p} · free`}
                             className="h-4 w-4 rounded-[3px]"
-                            style={{ background: h ? utilColor(h.seat_utilization) : 'rgba(255,255,255,0.05)', opacity: h ? 0.9 : 1 }} />
+                            style={{ background: h ? utilColor(h.seat_utilization) : 'var(--surface-2)', opacity: h ? 0.9 : 1 }} />
                       );
                     })}
                   </Fragment>

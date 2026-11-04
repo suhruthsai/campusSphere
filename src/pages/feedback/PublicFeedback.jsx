@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { feedbackApi } from '../../utils/api.js';
 import FeedbackForm from './FeedbackForm.jsx';
+import PublicFrame from '../../components/layout/PublicFrame.jsx';
 
 const ROLES = { alumni: [['alumni', 'Alumnus / alumna']], employer: [['employer', 'Employer']], parent: [['parent', 'Parent / guardian']] };
 
@@ -12,9 +13,9 @@ export default function PublicFeedback() {
   const [error, setError] = useState('');
   useEffect(() => { feedbackApi.publicForm(code).then(setForm).catch((e) => setError(e.message)); }, [code]);
   return (
-    <div className="min-h-screen px-4 py-12" style={{ background: 'linear-gradient(160deg,#010408 0%,#04091a 50%,#020812 100%)' }}>
+    <PublicFrame>
       <div className="mx-auto max-w-2xl space-y-5">
-        <p className="text-xs uppercase tracking-wider text-cyan-300">MVSR Engineering College · CampusSphere</p>
+        <p className="ds-eyebrow">MVSR Engineering College · CampusSphere</p>
         {error && <p className="rounded-2xl bg-white/5 p-5 text-slate-300">{error}</p>}
         {form && (
           <>
@@ -26,6 +27,6 @@ export default function PublicFeedback() {
           </>
         )}
       </div>
-    </div>
+    </PublicFrame>
   );
 }
