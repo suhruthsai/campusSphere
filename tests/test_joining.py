@@ -60,8 +60,8 @@ def login(email, pw):
 def first_login(email, pw):
     """Sign in a freshly made account and choose a password, as its owner must before the API serves them."""
     token = login(email, pw)
-    call("POST", "/auth/change-password", token, body={"current_password": pw, "new_password": pw + "-own"})
-    return token
+    # the change signs out the old token and hands back a fresh one
+    return call("POST", "/auth/change-password", token, body={"current_password": pw, "new_password": pw + "-own"})[1]["access_token"]
 
 
 # Only an admin can create accounts (no public sign-up)

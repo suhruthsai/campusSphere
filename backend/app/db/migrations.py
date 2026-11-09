@@ -25,6 +25,7 @@ ADDED_COLUMNS = {
     "substitutions": [("pilot_run", "VARCHAR")],
     "users": [                      # temporary passwords (created accounts, admin resets) must be changed
         ("must_change_password", "BOOLEAN DEFAULT 0"),
+        ("token_version", "INTEGER DEFAULT 0"),   # a password change or reset signs out every older login
     ],
     "admission_documents": [        # joining: the date on a certificate, and copy sets handed in
         ("issued_on", "DATE"),

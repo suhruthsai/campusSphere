@@ -46,6 +46,8 @@ def _resolve_user(token: str, db: Session) -> Optional[dict]:
     user = db.query(UserModel).filter(UserModel.id == payload["sub"]).first()
     if not user or user.status != "active":
         return None
+    if payload.get("tv", 0) != (user.token_version or 0):   # signed in before the last password change or reset
+        return None
     return {
         "sub":        user.id,
         "role":       user.role,

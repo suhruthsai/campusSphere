@@ -79,7 +79,9 @@ export const authApi = {
   setStatus:(id, status)       => request(`/auth/users/${id}/status?new_status=${status}`, { method: 'PATCH' }),
   updateUser:(id, data)        => request(`/auth/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   resetPassword:(id)           => request(`/auth/users/${id}/reset-password`, { method: 'POST' }),
-  changePassword:(current, next) => request('/auth/change-password', { method: 'POST', body: JSON.stringify({ current_password: current, new_password: next }) }),
+  /** Changing the password signs out every other device; this browser keeps going on the fresh token it returns. */
+  changePassword:(current, next) => request('/auth/change-password', { method: 'POST', body: JSON.stringify({ current_password: current, new_password: next }) })
+    .then((d) => { if (d?.access_token) localStorage.setItem(TOKEN_KEY, d.access_token); return d; }),
   deleteUser:(id)              => request(`/auth/users/${id}`, { method: 'DELETE' }),
 };
 

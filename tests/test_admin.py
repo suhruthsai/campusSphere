@@ -99,8 +99,14 @@ try:
         check("temporary password: /auth/me and roles allowed", call("GET", "/auth/me", temp)[0] == 200
               and call("GET", "/auth/me/roles", temp)[0] == 200)
         check("temporary password: other routes -> 403", call("GET", "/services/requests/mine", temp)[0] == 403)
-        s2, _ = call("POST", "/auth/change-password", temp, {"current_password": probe["password"], "new_password": "Probe-own-456"})
-        check("after changing it, the same token works", s2 == 200 and call("GET", "/services/requests/mine", temp)[0] == 200)
+        s2, ch = call("POST", "/auth/change-password", temp, {"current_password": probe["password"], "new_password": "Probe-own-456"})
+        fresh = ch.get("access_token") if s2 == 200 else None
+        check("after changing it, the fresh token works", bool(fresh) and call("GET", "/services/requests/mine", fresh)[0] == 200)
+        # A password change or an admin reset signs out every older login
+        check("password change retires the old token -> 401", call("GET", "/auth/me", temp)[0] == 401)
+        s2, d2 = call("POST", f"/auth/users/{d['id']}/reset-password", tok)
+        check("admin reset -> temporary password", s2 == 200 and bool(d2.get("temporary_password")), d2)
+        check("admin reset retires the user's current token -> 401", call("GET", "/auth/me", fresh)[0] == 401)
         con.execute("DELETE FROM users WHERE id = ?", (d["id"],))
         con.commit()
 finally:

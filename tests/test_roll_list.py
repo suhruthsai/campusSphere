@@ -105,8 +105,9 @@ for i in (1, 2):
     temp.append(u["id"])
 t1 = login(f"rolltest1.{tag}@example.com", f"Rt-{tag}-pass")
 t2 = login(f"rolltest2.{tag}@example.com", f"Rt-{tag}-pass")
-for t in (t1, t2):   # new accounts choose their own password before the API serves them
-    call("POST", "/auth/change-password", t, b={"current_password": f"Rt-{tag}-pass", "new_password": f"Rt-{tag}-own"})
+# New accounts choose their own password before the API serves them; the change hands back a fresh token
+t1, t2 = (call("POST", "/auth/change-password", t, b={"current_password": f"Rt-{tag}-pass", "new_password": f"Rt-{tag}-own"})[1]["access_token"]
+          for t in (t1, t2))
 wrong_sec = "Z" if target[4] != "Z" else "Y"
 base = {"roll_no": target[0], "parent_name": "Test Parent", "gender": "other"}
 try:
