@@ -180,8 +180,9 @@ async def _ws_sign_in(websocket: WebSocket):
         user = _resolve_user(token, db)
     finally:
         db.close()
-    if not user:
+    if not user or user["must_change_password"]:   # temporary passwords get My account only
         await websocket.close(code=1008)
+        return None
     return user
 
 

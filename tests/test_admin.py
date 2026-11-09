@@ -93,6 +93,14 @@ try:
     s, d = call("POST", "/auth/register", tok, probe)
     check("admin creates account -> 201, must change password", s == 201 and d.get("must_change_password") is True, d)
     if s == 201:
+        # Until the temporary password is changed the API serves only who they are and the password change
+        s2, login = call("POST", "/auth/login", None, {"email": probe["email"], "password": probe["password"]})
+        temp = login.get("access_token") if s2 == 200 else None
+        check("temporary password: /auth/me and roles allowed", call("GET", "/auth/me", temp)[0] == 200
+              and call("GET", "/auth/me/roles", temp)[0] == 200)
+        check("temporary password: other routes -> 403", call("GET", "/services/requests/mine", temp)[0] == 403)
+        s2, _ = call("POST", "/auth/change-password", temp, {"current_password": probe["password"], "new_password": "Probe-own-456"})
+        check("after changing it, the same token works", s2 == 200 and call("GET", "/services/requests/mine", temp)[0] == 200)
         con.execute("DELETE FROM users WHERE id = ?", (d["id"],))
         con.commit()
 finally:

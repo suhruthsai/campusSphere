@@ -14,6 +14,7 @@ reportlab>=4.2          # student-services certificates (PDF + QR code)
 beautifulsoup4>=4.12    # Mitra's knowledge base: reading the college website
 pypdf>=4.2              # ... and the PDFs it hosts
 edge-tts>=7.0           # Mitra's fallback voice: Microsoft neural Telugu / Hindi / English (no key)
+openpyxl>=3.1           # Excel: readiness export, OBE marks import / export
 
 # AI & Machine Learning
 pandas>=2.2.1

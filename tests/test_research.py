@@ -55,6 +55,13 @@ def login(email, pw):
     return call("POST", "/auth/login", body={"email": email, "password": pw})[1]["access_token"]
 
 
+def first_login(email, pw):
+    """Sign in a freshly made account and choose a password, as its owner must before the API serves them."""
+    token = login(email, pw)
+    call("POST", "/auth/change-password", token, body={"current_password": pw, "new_password": pw + "-own"})
+    return token
+
+
 con = sqlite3.connect(db_path)
 admin = login("admin@suhruth.edu", admin_pw)
 tag = uuid.uuid4().hex[:6]
@@ -65,7 +72,7 @@ con.commit()
 try:
     s, u = call("POST", "/auth/register", admin, {"name": f"Test Teacher {tag}", "email": email, "password": pw, "role": "faculty", "department": "IT"})
     uid = u["id"]
-    teacher = login(email, pw)
+    teacher = first_login(email, pw)
     check("teacher without a service record is told so", call("GET", "/research/mine", teacher)[1]["record"] is None)
 
     base = {"profile_id": prof_id, "name": f"Test Teacher {tag}", "department": "IT", "designation": "Assistant Professor",

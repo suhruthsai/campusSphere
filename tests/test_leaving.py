@@ -53,6 +53,13 @@ def login(email, pw):
     return call("POST", "/auth/login", body={"email": email, "password": pw})[1]["access_token"]
 
 
+def first_login(email, pw):
+    """Sign in a freshly made account and choose a password, as its owner must before the API serves them."""
+    token = login(email, pw)
+    call("POST", "/auth/change-password", token, body={"current_password": pw, "new_password": pw + "-own"})
+    return token
+
+
 def approve_all(req_id, roles):
     for role in roles:
         s, d = call("POST", f"/services/requests/{req_id}/approve", T[role], {"remarks": "OK"})
@@ -76,7 +83,7 @@ s, d = call("POST", "/auth/register", ADMIN, body={"name": "Temp Leaver", "email
 check("register temp student", s == 201, d)
 user_id = d["id"]
 try:
-    T = {"student": login(email, pw)}
+    T = {"student": first_login(email, pw)}
     for k in ("office", "hod", "coe", "principal", "mentor"):
         T[k] = login(emails[k], demo_pw)
     s, d = call("PUT", "/services/me/profile", T["student"], {"roll_no": "1602-22-733-077", "year": 4, "section": "A",

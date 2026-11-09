@@ -42,6 +42,13 @@ def login(email, pw):
     return call("POST", "/auth/login", body={"email": email, "password": pw})[1]["access_token"]
 
 
+def first_login(email, pw):
+    """Sign in a freshly made account and choose a password, as its owner must before the API serves them."""
+    token = login(email, pw)
+    call("POST", "/auth/change-password", token, body={"current_password": pw, "new_password": pw + "-own"})
+    return token
+
+
 con = sqlite3.connect(db_path)
 admin = login("admin@suhruth.edu", admin_pw)
 tag = uuid.uuid4().hex[:6]
@@ -56,7 +63,7 @@ try:
     s, d = call("PUT", f"/services/admin/students/{uid}/profile", admin,
                 {"roll_no": ROLL, "year": 4, "section": "A", "parent_name": "Test Parent", "gender": "other"})
     check("temp final-year student linked", s == 200, d)
-    stu = login(email, pw)
+    stu = first_login(email, pw)
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     def drive(company, ctc, **kw):

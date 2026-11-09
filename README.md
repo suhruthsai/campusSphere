@@ -52,8 +52,8 @@ and **ReportLab**. The AI assistant runs on **Groq** (server-side key).
   తెలుగు ("Where does my daughter collect her bonafide certificate?"); she answers aloud, walks the real
   paths to the Admin Office with the camera following, points at the building and explains what to do there.
   Tours of up to four stops. Voice through Sarvam AI (`SARVAM_API_KEY`), browser voices otherwise.
-- **Visitor view** at `/visit` (no account, linked from the login page): parents explore the campus with Mitra.
-  Visitors only get public information (buildings, rooms, services, classes now), rate-limited per IP.
+- **Visitor view** is the front page `/` (no account; old `/visit` links redirect there): parents explore the campus
+  with Mitra. Visitors only get public information (buildings, rooms, services, classes now), rate-limited per IP.
 
 ### 🛠️ Admin
 - Users (add, edit, CSV import/export, password reset), buildings, approver roles, clearance officers,
@@ -171,7 +171,7 @@ Copy `.env.example` to `.env` in the project root and fill in `SECRET_KEY`, `ADM
 - If `ADMIN_PASSWORD` is empty, a random admin password is generated and printed **once** on first startup.
 - The Groq key is used **only by the backend** (`/api/v1/ai/chat`); never expose it as a `VITE_` variable.
 - Login is rate-limited: 5 failed attempts per account per IP (or 20 per IP, or 50 per account overall) lock further attempts for 15 minutes. Behind a reverse proxy, set `TRUSTED_PROXY_HOPS` (Render: `1`) so real client IPs are used.
-- Public sign-ups can create **student** accounts (active immediately) or **faculty** accounts (pending until an admin approves them in *Admin → Users*). Admin and staff accounts can only be created by an admin.
+- There is no public sign-up: the college creates every account (roll lists, the faculty list, or an admin in *Admin → Users*). New accounts and admin password resets get a temporary password, and until it is changed under *My account* the API answers only `/auth/me`, `/auth/me/roles` and `/auth/change-password` (403 everywhere else).
 
 ### 3. Backend Setup (FastAPI + SQLite)
 Run these from the **project root** (the code imports `backend.app...`):

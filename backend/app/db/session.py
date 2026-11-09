@@ -30,6 +30,11 @@ if _is_sqlite:
         enforces them anyway, which is why this only bit the local database."""
         cur = dbapi_connection.cursor()
         cur.execute("PRAGMA foreign_keys=ON")
+        # The crawler, the document scraper and model training write from background threads while requests
+        # run: WAL lets readers carry on during a write, and busy_timeout waits for a lock instead of failing
+        # with "database is locked".
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=15000")
         cur.close()
 
 
