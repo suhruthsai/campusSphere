@@ -67,7 +67,7 @@ if not entries or not roster:
 whole = next(e for e in entries if not e[4] and e[2])
 fac_email = con.execute("SELECT email FROM faculty_profiles WHERE id = ?", (whole[2],)).fetchone()[0]
 # The teacher may already have an account (create_faculty_accounts.py): borrow it with a temporary password
-existing_teacher = con.execute("SELECT id, hashed_password FROM users WHERE lower(email) = lower(?)", (fac_email,)).fetchone()
+existing_teacher = con.execute("SELECT id, hashed_password, must_change_password FROM users WHERE lower(email) = lower(?)", (fac_email,)).fetchone()
 used = {r for (r,) in con.execute("SELECT roll_no FROM student_profiles WHERE roll_no IS NOT NULL")}
 roll = next(r for r in roster if r not in used)
 other = next(r for r in roster if r != roll)
@@ -81,7 +81,7 @@ users = {"teacher": (f"u_att_t_{tag}", fac_email, "faculty", "CIVIL"),
          "admin": (f"u_att_a_{tag}", f"att.admin.{tag}@example.com", "admin", "Administration")}
 if existing_teacher:
     users["teacher"] = (existing_teacher[0], fac_email, "faculty", "CIVIL")
-    con.execute("UPDATE users SET hashed_password = ? WHERE id = ?", (hashed, existing_teacher[0]))
+    con.execute("UPDATE users SET hashed_password = ?, must_change_password = 0 WHERE id = ?", (hashed, existing_teacher[0]))
 for k, (uid, email, role, dept) in users.items():
     if k == "teacher" and existing_teacher:
         continue
@@ -188,7 +188,8 @@ finally:
         con.execute("DELETE FROM attendance_sessions WHERE id IN (%s)" % ",".join(map(str, sids)))
     con.execute("DELETE FROM attendance_groups WHERE section = 'Civil-3'")
     if existing_teacher:
-        con.execute("UPDATE users SET hashed_password = ? WHERE id = ?", (existing_teacher[1], existing_teacher[0]))
+        con.execute("UPDATE users SET hashed_password = ?, must_change_password = ? WHERE id = ?",
+                    (existing_teacher[1], existing_teacher[2], existing_teacher[0]))
     ids = [u[0] for u in users.values() if not (existing_teacher and u[0] == existing_teacher[0])]
     con.execute("DELETE FROM approver_assignments WHERE user_id IN (%s)" % ",".join("?" * len(ids)), ids)
     con.execute("DELETE FROM student_profiles WHERE user_id IN (%s)" % ",".join("?" * len(ids)), ids)

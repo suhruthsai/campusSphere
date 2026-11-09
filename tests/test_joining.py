@@ -57,6 +57,13 @@ def login(email, pw):
     return call("POST", "/auth/login", body={"email": email, "password": pw})[1]["access_token"]
 
 
+def first_login(email, pw):
+    """Sign in a freshly made account and choose a password, as its owner must before the API serves them."""
+    token = login(email, pw)
+    # the change signs out the old token and hands back a fresh one
+    return call("POST", "/auth/change-password", token, body={"current_password": pw, "new_password": pw + "-own"})[1]["access_token"]
+
+
 # Only an admin can create accounts (no public sign-up)
 admin_pw = next(l.split("=", 1)[1].strip() for l in (project / ".env").read_text(encoding="utf-8").splitlines()
                 if l.startswith("ADMIN_PASSWORD="))
@@ -68,7 +75,7 @@ check("register temp student", s == 201, d)
 user_id = d["id"]
 admission_id = None
 try:
-    stu = login(email, pw)
+    stu = first_login(email, pw)
     office = login(emails["office"], demo_pw)
     other_student = login(emails["student"], demo_pw)
 

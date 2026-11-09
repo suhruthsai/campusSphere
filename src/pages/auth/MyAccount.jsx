@@ -24,7 +24,7 @@ export default function MyAccount() {
     try {
       await authApi.changePassword(form.current, form.next);
       setForm({ current: '', next: '', again: '' });
-      setMsg({ ok: true, text: 'Password changed. Use the new password next time you sign in.' });
+      setMsg({ ok: true, text: 'Password changed. Any other device signed in to your account has been signed out.' });
       if (mustChange) await refreshUser();   // the rest of the app opens up
     } catch (err) {
       setMsg({ ok: false, text: err.message });

@@ -106,16 +106,20 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     db.add(SignInEventModel(user_id=user.id))
     db.commit()
 
-    token = create_access_token(
+    return {"access_token": _token_for(user), "token_type": "bearer"}
+
+
+def _token_for(user: UserModel) -> str:
+    return create_access_token(
         subject=user.id,
         extra={
             "role":       user.role,
             "name":       user.name,
             "department": user.department,
             "email":      user.email,
+            "tv":         user.token_version or 0,   # a later password change or reset retires this token
         }
     )
-    return {"access_token": token, "token_type": "bearer"}
 
 # ── Me (current user profile) ──────────────────────────────────────────────────
 @router.get("/me", response_model=UserOut, summary="Get current user profile")
@@ -145,8 +149,10 @@ def change_password(payload: PasswordChange, current: dict = Depends(get_current
         raise HTTPException(status_code=400, detail="Choose a password different from the current one.")
     user.hashed_password = get_password_hash(payload.new_password)
     user.must_change_password = False
+    user.token_version = (user.token_version or 0) + 1   # sign out every other device
     db.commit()
-    return {"message": "Password updated."}
+    # This browser stays signed in with a fresh token; every older one stops working
+    return {"message": "Password updated.", "access_token": _token_for(user), "token_type": "bearer"}
 
 # ── List users (admin only) ────────────────────────────────────────────────────
 @router.get("/users", summary="List all users (admin only)")
@@ -220,6 +226,7 @@ def reset_password(user_id: str, db: Session = Depends(get_db), _admin: dict = D
     temp = secrets.token_urlsafe(9)   # 12 characters; the user changes it under My account
     user.hashed_password = get_password_hash(temp)
     user.must_change_password = True
+    user.token_version = (user.token_version or 0) + 1   # whoever was signed in as them is signed out
     db.commit()
     return {"email": user.email, "temporary_password": temp}
 

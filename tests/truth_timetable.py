@@ -56,6 +56,7 @@ email, spw = f"tmp.tt.{secrets.token_hex(3)}@example.com", secrets.token_urlsafe
 u = call("POST", "/auth/register", tok, b={"name": "TT Probe", "email": email, "password": spw, "role": "student", "department": "IT"})
 try:
     st = call("POST", "/auth/login", b={"email": email, "password": spw})["access_token"]
+    st = call("POST", "/auth/change-password", st, b={"current_password": spw, "new_password": spw + "-own"})["access_token"]
     mine = call("GET", "/timetable/mine", st)
     check("student without profile -> reason", bool(mine["reason"]) and not mine["entries"], mine["reason"])
     call("PUT", "/services/me/profile", st, {"roll_no": "1602-24-737-001", "year": 2, "section": "B", "parent_name": "Probe Parent", "gender": "male"})

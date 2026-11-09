@@ -18,6 +18,7 @@ class UserModel(Base):
     staff_id = Column(String, nullable=True)
     status = Column(String, default="active")
     must_change_password = Column(Boolean, default=False)   # a temporary password was handed out: ask for a new one
+    token_version = Column(Integer, default=0)              # bumped on a password change or reset: older logins stop working
     joined_at = Column(String, default=lambda: datetime.utcnow().strftime("%Y-%m-%d"))
     last_active = Column(String, default=lambda: datetime.utcnow().strftime("%Y-%m-%d"))
 

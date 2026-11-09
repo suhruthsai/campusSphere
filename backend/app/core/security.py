@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, Union, Optional
 from jose import jwt, JWTError
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from backend.app.core.config import settings
@@ -46,15 +46,24 @@ def _resolve_user(token: str, db: Session) -> Optional[dict]:
     user = db.query(UserModel).filter(UserModel.id == payload["sub"]).first()
     if not user or user.status != "active":
         return None
+    if payload.get("tv", 0) != (user.token_version or 0):   # signed in before the last password change or reset
+        return None
     return {
         "sub":        user.id,
         "role":       user.role,
         "name":       user.name,
         "department": user.department,
         "email":      user.email,
+        "must_change_password": bool(user.must_change_password),
     }
 
+# Someone still on a temporary password (handed out by the Admin Office) may only see who they are and
+# change it; the frontend sends them to My account, and the API holds the same line for direct calls.
+TEMP_PASSWORD_PATHS = {f"{settings.API_V1_STR}/auth/{p}" for p in ("me", "me/roles", "change-password")}
+TEMP_PASSWORD_MSG = "Change your temporary password under My account first."
+
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ):
@@ -64,16 +73,20 @@ def get_current_user(
     current = _resolve_user(credentials.credentials, db)
     if not current:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
-    return current  # {sub: user_id, role, name, department, email}
+    if current["must_change_password"] and request.url.path.rstrip("/") not in TEMP_PASSWORD_PATHS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=TEMP_PASSWORD_MSG)
+    return current  # {sub: user_id, role, name, department, email, must_change_password}
 
 def get_optional_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> Optional[dict]:
-    """Like get_current_user, but returns None for anonymous requests."""
+    """Like get_current_user, but returns None for anonymous requests. A temporary-password holder
+    counts as a visitor here, so public routes (Mitra) can't act on their account either."""
     if not credentials:
         return None
-    return _resolve_user(credentials.credentials, db)
+    current = _resolve_user(credentials.credentials, db)
+    return None if current and current["must_change_password"] else current
 
 def require_roles(*roles: str):
     """Dependency factory — the logged-in user must have one of `roles`."""

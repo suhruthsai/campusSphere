@@ -45,6 +45,13 @@ def login(email, pw):
     return call("POST", "/auth/login", body={"email": email, "password": pw})[1]["access_token"]
 
 
+def first_login(email, pw):
+    """Sign in a freshly made account and choose a password, as its owner must before the API serves them."""
+    token = login(email, pw)
+    # the change signs out the old token and hands back a fresh one
+    return call("POST", "/auth/change-password", token, body={"current_password": pw, "new_password": pw + "-own"})[1]["access_token"]
+
+
 def answers(form, value=4):
     return {q["id"]: value for q in form["questions"] if q["type"] == "rating"}
 
@@ -62,7 +69,7 @@ try:
                                                  "password": f"Fb-{tag}-pass", "role": "student", "department": "IT"})
     uid = u["id"]
     call("PUT", f"/services/admin/students/{uid}/profile", admin, {"roll_no": ROLL, "year": 4, "section": "A", "parent_name": "Test Parent", "gender": "other"})
-    stu = login(f"fb.test.{tag}@example.com", f"Fb-{tag}-pass")
+    stu = first_login(f"fb.test.{tag}@example.com", f"Fb-{tag}-pass")
 
     s, f = call("POST", "/feedback/forms", admin, {"kind": "curriculum", "programme": "IT", "year": YEAR, "study_year": 4, "title": f"Test curriculum {tag}"})
     check("curriculum form created (draft)", s == 200 and f["status"] == "draft" and len(f["questions"]) == 9, f)
