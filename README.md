@@ -171,6 +171,11 @@ Copy `.env.example` to `.env` in the project root and fill in `SECRET_KEY`, `ADM
 - If `ADMIN_PASSWORD` is empty, a random admin password is generated and printed **once** on first startup.
 - The Groq key is used **only by the backend** (`/api/v1/ai/chat`); never expose it as a `VITE_` variable.
 - Login is rate-limited: 5 failed attempts per account per IP (or 20 per IP, or 50 per account overall) lock further attempts for 15 minutes. Behind a reverse proxy, set `TRUSTED_PROXY_HOPS` (Render: `1`) so real client IPs are used.
+- **Forgot password** emails a 6-digit code (10 minutes, one use, 5 guesses) to the address on the account; the
+  person sets a new password and every device is signed out. The page never says whether an account exists.
+  Set `EMAIL_PROVIDER` to `brevo` or `resend` with `EMAIL_API_KEY` and a verified `EMAIL_FROM`; locally the default
+  `console` prints the code in the server log, and `off` sends people to the Admin Office. Demo and placeholder
+  accounts on reserved domains (`example.com`, `*.example`, `*.test`) are never emailed.
 - There is no public sign-up: the college creates every account (roll lists, the faculty list, or an admin in *Admin → Users*). New accounts and admin password resets get a temporary password, and until it is changed under *My account* the API answers only `/auth/me`, `/auth/me/roles` and `/auth/change-password` (403 everywhere else).
 
 ### 3. Backend Setup (FastAPI + SQLite)

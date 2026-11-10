@@ -79,6 +79,9 @@ export const authApi = {
   setStatus:(id, status)       => request(`/auth/users/${id}/status?new_status=${status}`, { method: 'PATCH' }),
   updateUser:(id, data)        => request(`/auth/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   resetPassword:(id)           => request(`/auth/users/${id}/reset-password`, { method: 'POST' }),
+  /** Forgot password (no login): email a 6-digit code, then set a new password with it. */
+  forgotPassword:(login)        => request('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ login }) }),
+  resetWithCode:(login, code, password) => request('/auth/reset-password', { method: 'POST', body: JSON.stringify({ login, code, new_password: password }) }),
   /** Changing the password signs out every other device; this browser keeps going on the fresh token it returns. */
   changePassword:(current, next) => request('/auth/change-password', { method: 'POST', body: JSON.stringify({ current_password: current, new_password: next }) })
     .then((d) => { if (d?.access_token) localStorage.setItem(TOKEN_KEY, d.access_token); return d; }),

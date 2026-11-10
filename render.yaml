@@ -35,6 +35,12 @@ services:
         sync: false   # set in the Render dashboard
       - key: SARVAM_API_KEY
         sync: false   # optional: Mitra's Telugu / Hindi voice (sarvam.ai)
+      - key: EMAIL_PROVIDER
+        value: "off"   # "brevo" or "resend" once EMAIL_API_KEY and EMAIL_FROM are set: password-reset codes by email
+      - key: EMAIL_API_KEY
+        sync: false   # the Brevo or Resend API key
+      - key: EMAIL_FROM
+        sync: false   # a sender address verified with that service
       - key: CORS_ORIGINS
         sync: false   # e.g. https://campussphere.vercel.app (comma-separated, no trailing slash)
 

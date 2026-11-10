@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     SARVAM_SPEAKER: str = "priya"             # a bulbul:v3 voice; it speaks all three languages
     SARVAM_STT_MODEL: str = "saaras:v4"
 
+    # Email for password-reset codes. "brevo" or "resend" send through that service (EMAIL_API_KEY);
+    # "console" prints the code in the server log (development only); "off" sends nothing, and people
+    # are told to ask the Admin Office instead.
+    EMAIL_PROVIDER: str = "console"
+    EMAIL_API_KEY: Optional[str] = None
+    EMAIL_FROM: str = ""                       # an address the service has verified, e.g. no-reply@yourdomain.in
+    EMAIL_FROM_NAME: str = "CampusSphere · MVSR"
+
     @property
     def cors_origins(self) -> List[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
@@ -69,6 +77,11 @@ settings = Settings()
 # Test mode lets students mark their own fees as paid, so it must never reach real students.
 if settings.ENVIRONMENT == "production" and settings.PAYMENT_MODE == "test":
     raise RuntimeError("PAYMENT_MODE=test is not allowed in production. Set PAYMENT_MODE=off until a live gateway is wired up.")
+
+# Reset codes in the server log would let anyone who reads the logs take over an account.
+if settings.ENVIRONMENT == "production" and settings.EMAIL_PROVIDER == "console":
+    print("⚠️  EMAIL_PROVIDER=console is development only; password-reset email is off. Set EMAIL_PROVIDER=brevo or resend.")
+    settings.EMAIL_PROVIDER = "off"
 
 if not settings.SECRET_KEY:
     if settings.ENVIRONMENT == "production":

@@ -170,6 +170,20 @@ class SignInEventModel(Base):
     pilot_run = Column(String, nullable=True, index=True)
 
 
+class PasswordResetModel(Base):
+    """A 6-digit code emailed to someone who forgot their password. Only a keyed hash is kept; a code works
+    once, for 10 minutes, and a few wrong guesses retire it."""
+    __tablename__ = "password_resets"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    user_id    = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    code_hash  = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    attempts   = Column(Integer, default=0)
+    used_at    = Column(DateTime, nullable=True)   # set when used, replaced by a newer code, or out of guesses
+
+
 class AnnouncementModel(Base):
     """Faculty/admin announcements."""
     __tablename__ = "announcements"
