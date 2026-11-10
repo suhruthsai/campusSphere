@@ -6,6 +6,7 @@ import io, csv
 from backend.app.db.session import get_db
 from backend.app.core.security import get_current_user, get_optional_user, require_admin
 from backend.app.core.realtime import broadcast_timetable
+from backend.app.core.roles import sees_analytics
 from backend.app.core.campus_time import campus_now, campus_today, parse_campus_time
 from backend.app.models.campus import TimetableEntryModel, ClassroomModel, TimetableOverrideModel, TimetableAuditLogModel, SubstitutionModel
 from backend.app.schemas.campus import (
@@ -105,9 +106,10 @@ def timetable_stats(db: Session = Depends(get_db), current: dict = Depends(get_c
     for e in entries:
         slot_times.setdefault(e.period_number, f"{e.start_time}–{e.end_time}")
 
-    # Faculty load
+    # Faculty load: every teacher's periods is for HODs, the Principal and admins (the count stays in the totals)
     load = Counter((e.faculty_id, e.faculty_name) for e in entries if e.faculty_id)
-    faculty_rows = [{"id": fid, "name": name, "periods_per_week": n} for (fid, name), n in load.most_common()]
+    faculty_rows = [{"id": fid, "name": name, "periods_per_week": n} for (fid, name), n in load.most_common()] \
+        if sees_analytics(db, current) else []
 
     return {
         "totals": {"classes_per_week": len(entries), "sections": len({e.section for e in entries}),
