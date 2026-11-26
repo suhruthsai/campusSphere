@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.accreditation import catalog as C
 from backend.app.accreditation import workspace as W
+from backend.app.core import storage
 from backend.app.models.accreditation import AccrEvidenceModel, AccrValueModel, InstitutionFactModel
 from backend.app.student_services.workflow import academic_year
 
@@ -186,10 +187,13 @@ def evidence_zip(db: Session, framework: str, programme: str = "") -> bytes:
                                                     AccrEvidenceModel.removed == False).order_by(AccrEvidenceModel.code, AccrEvidenceModel.year):  # noqa: E712
             crit = C.criterion_of(e.code)
             if e.kind == "file" and e.filename:
-                path = W.evidence_path(e.filename)
-                if path.exists():
+                try:
+                    data = storage.read_bytes(W.evidence_key(e.filename))
+                except FileNotFoundError:
+                    data = None
+                if data is not None:
                     arc = f"Criterion {crit}/{e.code}/{e.year}/{(e.original or e.filename).replace('/', '_')}"
-                    z.write(path, arc)
+                    z.writestr(arc, data)
                     rows.append(f'{e.code},{e.year},"{e.title}",file,"{arc}",{"yes" if e.signed else "no"}')
             elif e.url:
                 rows.append(f'{e.code},{e.year},"{e.title}",link,"{e.url}",no')

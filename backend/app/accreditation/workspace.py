@@ -15,8 +15,6 @@ academic year, where each value came from, the evidence behind it, and whether i
   who        admins, the Principal and the IQAC Coordinator: everything (and lock); a criterion in-charge: their
              NAAC criterion; an NBA coordinator: their programme; a metric owner: their metric; management: read
 """
-import hashlib
-import os
 import uuid
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -26,12 +24,11 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from backend.app.accreditation import catalog as C
+from backend.app.core import storage
 from backend.app.core.roles import user_roles
 from backend.app.models.accreditation import AccrEvidenceModel, AccrRoleModel, AccrValueModel
 from backend.app.student_services.workflow import academic_year
 
-ROOT_DIR = Path(__file__).resolve().parents[3]
-EVIDENCE_DIR = Path(os.getenv("PRIVATE_UPLOADS_DIR", ROOT_DIR / "private_uploads")) / "accreditation"
 MAX_EVIDENCE_BYTES = 20 * 1024 * 1024
 SIGNATURES = [(b"%PDF-", "application/pdf", ".pdf"), (b"\xff\xd8\xff", "image/jpeg", ".jpg"),
               (b"\x89PNG\r\n\x1a\n", "image/png", ".png")]
@@ -221,28 +218,19 @@ def save_evidence_file(upload) -> dict:
     if not match:
         raise EvidenceError("Upload a PDF, JPG, PNG, Excel (.xlsx) or Word (.docx) file")
     ctype, ext = match
-    EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     stored = f"{uuid.uuid4().hex}{ext}"
-    path = EVIDENCE_DIR / stored
-    digest = hashlib.sha256(head)
-    size = len(head)
-    with open(path, "wb") as f:
-        f.write(head)
-        while chunk := upload.file.read(1024 * 1024):
-            size += len(chunk)
-            if size > MAX_EVIDENCE_BYTES:
-                f.close()
-                path.unlink(missing_ok=True)
-                raise EvidenceError("Evidence files must be 20 MB or smaller")
-            digest.update(chunk)
-            f.write(chunk)
-    return {"filename": stored, "mime": ctype, "size": size, "sha256": digest.hexdigest()}
+    try:
+        saved = storage.save_upload(evidence_key(stored), head, upload.file, MAX_EVIDENCE_BYTES, ctype)
+    except storage.TooLarge:
+        raise EvidenceError("Evidence files must be 20 MB or smaller") from None
+    return {"filename": stored, "mime": ctype, "size": saved["size"], "sha256": saved["sha256"]}
 
 
-def evidence_path(stored: str) -> Path:
+def evidence_key(stored: str) -> str:
+    """Storage key of an evidence file (local disk or the R2 bucket: backend/app/core/storage.py)."""
     if not stored or "/" in stored or "\\" in stored or ".." in stored:
         raise EvidenceError("Invalid file reference")
-    return EVIDENCE_DIR / stored
+    return storage.key("accreditation", stored)
 
 
 def evidence_out(e: AccrEvidenceModel) -> dict:

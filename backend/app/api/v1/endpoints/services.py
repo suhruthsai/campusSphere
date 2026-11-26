@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
-from fastapi.responses import FileResponse
+from backend.app.core import storage
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -347,11 +347,8 @@ def download_pdf(req_id: int, db: Session = Depends(get_db), current: dict = Dep
         raise HTTPException(status_code=400, detail="The document is not approved yet")
     filename = req.ref_no.replace("/", "-") + ".pdf"
     if req.fulfilment == "upload":
-        path = J.issued_path(req.issued_file)
-        if not path.exists():
-            raise HTTPException(status_code=410, detail="The document file is no longer available")
-        return FileResponse(path, media_type="application/pdf", filename=filename,
-                            headers={"Cache-Control": "private, no-store"})
+        return storage.send(J.issued_key(req.issued_file), "application/pdf", {"Cache-Control": "private, no-store"},
+                            filename=filename, missing_status=410, missing_detail="The document file is no longer available")
     return Response(render_pdf(req), media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{filename}"'})
 

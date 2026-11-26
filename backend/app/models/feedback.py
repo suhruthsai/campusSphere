@@ -99,7 +99,8 @@ class BatchOutcomeModel(Base):
     batch               = Column(Integer, nullable=False)         # year of admission, 2021
     intake              = Column(Integer, nullable=False)         # sanctioned (AICTE)
     admitted            = Column(Integer, nullable=False)         # first year
-    lateral             = Column(Integer, nullable=False, default=0)   # second-year lateral entry
+    # second-year lateral entry. LATERAL is a reserved word in Postgres that SQLAlchemy doesn't quote by itself
+    lateral             = Column("lateral", Integer, nullable=False, default=0, quote=True)
     graduated_clean     = Column(Integer, nullable=True)          # in the stipulated period, without backlogs
     graduated_backlog   = Column(Integer, nullable=True)          # in the stipulated period, with backlogs cleared
     cgpa_2nd            = Column(Float, nullable=True)            # mean CGPA of students passing 2nd year

@@ -2,7 +2,6 @@ import asyncio
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from backend.app.core.config import settings
 from backend.app.api.v1.router import api_router
 from backend.app.db.session import engine, Base, SessionLocal
@@ -22,7 +21,7 @@ from backend.app.models import locker as _locker_models  # CampusLocker: documen
 from backend.app.models import college_docs as _college_docs_models  # documents read from the college website
 from backend.app.core.security import get_password_hash, verify_password
 from backend.app.core.realtime import timetable_manager
-from backend.app.api.v1.endpoints.media import MEDIA_DIR
+from backend.app.core import storage
 from sqlalchemy import text
 import secrets
 import datetime
@@ -104,14 +103,16 @@ def warm_utilization_model():
 
     threading.Thread(target=run, daemon=True, name="utilization-warmup").start()
 
-warm_utilization_model()
+if settings.WARM_UTILIZATION_MODEL:
+    warm_utilization_model()
 
 # Mitra's college knowledge base: load the search index, crawl mvsrec.edu.in on first run and weekly
 from backend.app.knowledge.service import start_background as start_knowledge
-start_knowledge()
+start_knowledge(crawl=settings.BACKGROUND_CRAWLS)
 # The documents the college website publishes, kept for CampusLocker (first run, then weekly)
-from backend.app.college_docs.scraper import start_background as start_college_docs
-start_college_docs()
+if settings.BACKGROUND_CRAWLS:
+    from backend.app.college_docs.scraper import start_background as start_college_docs
+    start_college_docs()
 
 
 
@@ -135,8 +136,13 @@ app.add_middleware(
 # Include API v1 router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# Uploaded room media (note: on hosts with ephemeral disks, e.g. Render free tier, uploads are lost on redeploy)
-app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
+# Uploaded room media. On hosts that wipe their disk (Render free), set STORAGE_BACKEND=s3 so they survive.
+@app.get("/media/{filename}", include_in_schema=False)
+def media_file(filename: str):
+    """Room photos and videos (public, as before): ./media_uploads locally, or the R2 bucket."""
+    import mimetypes
+    return storage.send(storage.key("media", filename), mimetypes.guess_type(filename)[0],
+                        {"Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff"})
 
 @app.get("/health", include_in_schema=False)
 def health():

@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
-from fastapi.responses import FileResponse
+from backend.app.core import storage
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -369,11 +369,9 @@ def document_file(doc_id: int, db: Session = Depends(get_db), current: dict = De
     adm = _get_admission(db, doc.admission_id)
     if adm.user_id != current["sub"] and not _is_office(current):
         raise HTTPException(status_code=403, detail="Not allowed")
-    path = J.document_path(adm.id, doc.stored_name)
-    if not path.exists():
-        raise HTTPException(status_code=410, detail="The file is no longer available")
-    return FileResponse(path, media_type=doc.content_type,
-                        headers={"Content-Disposition": "inline", "Cache-Control": "private, no-store"})
+    return storage.send(J.document_key(adm.id, doc.stored_name), doc.content_type,
+                        {"Content-Disposition": "inline", "Cache-Control": "private, no-store"},
+                        missing_status=410, missing_detail="The file is no longer available")
 
 
 # ── Student: fees ──────────────────────────────────────────────────────────────

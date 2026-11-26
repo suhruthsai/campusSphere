@@ -6,7 +6,7 @@ circulars, policies...) and lists every document they link. It follows the same 
 crawler (backend/app/knowledge/crawler.py): robots.txt is obeyed, it identifies itself, waits between requests,
 and stays on the college's own sites.
 
-  * a PDF hosted on mvsrec.edu.in is downloaded and kept (private_uploads/college) so it opens inside the app;
+  * a PDF hosted on mvsrec.edu.in is downloaded and kept (storage key college/..., local disk or R2) so it opens inside the app;
   * a Google Drive document is recorded by name and link only: Drive's robots.txt forbids automated downloads,
     so students open those at Drive;
   * anything else (Word / Excel files, very large PDFs) is recorded by name and link.
@@ -16,18 +16,16 @@ The app also runs it the first time and then weekly (service.start_background), 
 """
 import hashlib
 import logging
-import os
 import re
 import threading
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 from urllib.parse import unquote, urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 from sqlalchemy.orm import Session
 
-from backend.app.core.config import ROOT_DIR
+from backend.app.core import storage
 from backend.app.db.session import SessionLocal
 from backend.app.knowledge.crawler import HOSTS, ROOT, Crawler, anchor_name, drive_id
 from backend.app.models.college_docs import CollegeDocumentModel
@@ -35,7 +33,11 @@ from backend.app.models.knowledge import KbDocumentModel
 
 log = logging.getLogger("college_docs")
 
-COLLEGE_DIR = Path(os.getenv("PRIVATE_UPLOADS_DIR", ROOT_DIR / "private_uploads")) / "college"
+
+
+def college_key(stored_name: str) -> str:
+    """Storage key of a kept college PDF (backend/app/core/storage.py)."""
+    return storage.key("college", stored_name)
 MAX_FILE_BYTES = 15 * 1024 * 1024
 MAX_PAGES = 90
 REFRESH_EVERY = timedelta(days=7)
@@ -132,7 +134,6 @@ class Scraper:
     def __init__(self, db: Session, delay: float = 0.8, say=print):
         self.db, self.say = db, say
         self.crawler = Crawler(delay=delay, log=say)
-        COLLEGE_DIR.mkdir(parents=True, exist_ok=True)
         self.stats = {"pages": 0, "found": 0, "files_saved": 0, "files_kept": 0, "links": 0, "skipped_robots": 0, "failed": 0}
 
     # ── Which pages to read ──────────────────────────────────────────────
@@ -240,9 +241,9 @@ class Scraper:
             return
         data, digest = got
         stored = f"{digest[:32]}.pdf"
-        path = COLLEGE_DIR / stored
-        if not path.exists():
-            path.write_bytes(data)
+        k = college_key(stored)
+        if not storage.exists(k):
+            storage.save_bytes(k, data, "application/pdf")
         row.kind, row.stored_name, row.content_type, row.size_bytes, row.sha256 = "file", stored, "application/pdf", len(data), digest
         self.stats["files_saved"] += 1
 

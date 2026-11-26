@@ -1,6 +1,9 @@
-# Render blueprint — backend API + Postgres.
+# Render blueprint — the backend API on Render's free plan.
+# Database: Postgres on Neon (free, doesn't expire; Render's free Postgres is deleted after 30 days).
+# Files: a Backblaze B2 bucket (Render's disk is wiped on every restart and deploy). Any S3-compatible bucket works.
 # The frontend is deployed separately on Vercel (see vercel.json); set VITE_API_URL there
-# to this service's URL, and add the Vercel URL to CORS_ORIGINS below.
+# to this service's URL, and add the Vercel URL to CORS_ORIGINS and FRONTEND_URL below.
+# Step-by-step: README.md, "Deployment".
 services:
   - type: web
     name: campussphere-backend
@@ -23,12 +26,18 @@ services:
         value: "off"   # "test" is refused in production; online fee payment shows "not configured"
       - key: TRUSTED_PROXY_HOPS
         value: "1"   # Render's proxy appends the real client IP to X-Forwarded-For
+      # Free plan = 512 MB RAM. Measured locally with these settings: ~160 MB idle, ~330 MB at most with the
+      # analytics model loaded and every page in use (it was ~430 MB with the crawl running at boot).
+      - key: WARM_UTILIZATION_MODEL
+        value: "false"   # pandas + scikit-learn load on the first analytics request instead of at boot
+      - key: BACKGROUND_CRAWLS
+        value: "false"   # admins refresh Mitra's knowledge base / college documents from the app instead
+      - key: MALLOC_ARENA_MAX
+        value: "2"       # glibc: stop each thread keeping its own memory pool (big saving for threaded Python)
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        fromDatabase:
-          name: campussphere-db
-          property: connectionString
+        sync: false   # Neon: the connection string (postgresql://...?sslmode=require) from the Neon dashboard
       - key: ADMIN_PASSWORD
         sync: false   # set in the Render dashboard before the first deploy
       - key: GROQ_API_KEY
@@ -43,9 +52,19 @@ services:
         sync: false   # a sender address verified with that service
       - key: CORS_ORIGINS
         sync: false   # e.g. https://campussphere.vercel.app (comma-separated, no trailing slash)
-
-databases:
-  - name: campussphere-db
-    databaseName: campussphere
-    user: campussphere_user
-    plan: free
+      - key: FRONTEND_URL
+        sync: false   # the Vercel URL: certificate QR codes link to {FRONTEND_URL}/verify/<code>
+      # Files (uploads, issued PDFs, evidence, room media, college documents) in Backblaze B2 — see
+      # backend/app/core/storage.py. Same five values as in your .env.
+      - key: STORAGE_BACKEND
+        value: s3
+      - key: S3_ENDPOINT_URL
+        sync: false   # https://s3.<region>.backblazeb2.com (the bucket's "Endpoint", with https://)
+      - key: S3_REGION
+        sync: false   # the <region> part of the endpoint, e.g. us-east-005 (R2 would use "auto")
+      - key: S3_BUCKET
+        sync: false   # the bucket name (private)
+      - key: S3_ACCESS_KEY_ID
+        sync: false   # the B2 application key's keyID (Read and Write, this bucket only)
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false   # ... and its applicationKey

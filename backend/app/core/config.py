@@ -63,6 +63,22 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = ""                       # an address the service has verified, e.g. no-reply@yourdomain.in
     EMAIL_FROM_NAME: str = "CampusSphere · MVSR"
 
+    # Small servers (Render free: 512 MB). WARM_UTILIZATION_MODEL loads pandas + scikit-learn and the
+    # classroom-utilization model at startup (~110 MB) instead of on the first analytics request.
+    # BACKGROUND_CRAWLS reads the college website on first boot and weekly (Mitra's knowledge base and
+    # the college documents); the crawl is the memory peak. Off = an admin starts it from the app.
+    WARM_UTILIZATION_MODEL: bool = True
+    BACKGROUND_CRAWLS: bool = True
+
+    # Where files live (see backend/app/core/storage.py). "local" = the server's disk; "s3" = an S3-compatible
+    # bucket such as Cloudflare R2, needed on hosts whose disk is wiped on restart (Render free).
+    STORAGE_BACKEND: str = "local"
+    S3_ENDPOINT_URL: str = ""                  # R2: https://<account id>.r2.cloudflarestorage.com
+    S3_BUCKET: str = ""
+    S3_ACCESS_KEY_ID: str = ""
+    S3_SECRET_ACCESS_KEY: str = ""
+    S3_REGION: str = "auto"                    # R2 uses "auto"
+
     @property
     def cors_origins(self) -> List[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
