@@ -1,14 +1,20 @@
+import hashlib
+import hmac
 import re
+import secrets
 import uuid
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from datetime import datetime, timedelta
+from html import escape as html_escape
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
 from backend.app.db.session import get_db
-from backend.app.models.campus import SignInEventModel, UserModel
+from backend.app.core import email as mail
+from backend.app.core.config import settings
+from backend.app.models.campus import PasswordResetModel, SignInEventModel, UserModel
 from backend.app.schemas.campus import UserLogin, UserCreate, UserOut, Token, PasswordChange
 from backend.app.core.security import (
     verify_password, get_password_hash, create_access_token,
@@ -86,9 +92,7 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     if waits:
         raise too_many(LOCKED_MSG, max(waits))
 
-    user = db.query(UserModel).filter(UserModel.email == email).first()
-    if not user and ROLL_LOGIN.match(email):   # students may sign in with their roll number
-        user = db.query(UserModel).filter(UserModel.roll_no == email.upper(), UserModel.role == "student").first()
+    user = _find_account(db, email)
     password_ok = verify_password(payload.password, user.hashed_password if user else _DUMMY_HASH)
     if not user or not password_ok:
         for limiter, key in keys:
@@ -107,6 +111,14 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     db.commit()
 
     return {"access_token": _token_for(user), "token_type": "bearer"}
+
+
+def _find_account(db: Session, login: str) -> Optional[UserModel]:
+    """The account for an email, or for a student's roll number."""
+    user = db.query(UserModel).filter(UserModel.email == login).first()
+    if not user and ROLL_LOGIN.match(login):   # students may sign in with their roll number
+        user = db.query(UserModel).filter(UserModel.roll_no == login.upper(), UserModel.role == "student").first()
+    return user
 
 
 def _token_for(user: UserModel) -> str:
@@ -153,6 +165,94 @@ def change_password(payload: PasswordChange, current: dict = Depends(get_current
     db.commit()
     # This browser stays signed in with a fresh token; every older one stops working
     return {"message": "Password updated.", "access_token": _token_for(user), "token_type": "bearer"}
+
+# ── Forgot password: a 6-digit code by email ───────────────────────────────────
+# The answer never says whether an account exists, and the email goes out after the response, so the
+# timing doesn't tell either. Without an email service people are sent to the Admin Office, as before.
+RESET_CODE_MINUTES = 10
+RESET_MAX_GUESSES = 5
+reset_request_ip  = SlidingWindowLimiter(limit=10, window=LOCKOUT_WINDOW)   # one network asking for codes
+reset_request_acc = SlidingWindowLimiter(limit=3,  window=60 * 60)          # one account's inbox, per hour
+reset_wrong_ip    = SlidingWindowLimiter(limit=20, window=LOCKOUT_WINDOW)   # guessing codes from one network
+
+RESET_SENT = "If an account matches, a 6-digit code is on its way to that account's email. It works for 10 minutes."
+RESET_OFFICE = "Email reset isn't set up yet. Ask the Admin Office to reset your password; they'll give you a temporary one."
+RESET_BAD_CODE = "That code is wrong or has expired. Ask for a new one."
+
+
+class ForgotIn(BaseModel):
+    login: str = Field(..., min_length=3, max_length=120)   # email or roll number
+
+
+class ResetIn(BaseModel):
+    login: str = Field(..., min_length=3, max_length=120)
+    code: str = Field(..., pattern=r"^\d{6}$")
+    new_password: str = Field(..., min_length=8, max_length=72)
+
+
+def _code_hash(user_id: str, code: str) -> str:
+    return hmac.new(settings.SECRET_KEY.encode(), f"{user_id}:{code}".encode(), hashlib.sha256).hexdigest()
+
+
+def _send_code(to: str, name: str, code: str):
+    first = (name or "").split(" ")[0].title() or "there"
+    text = (f"Hello {first},\n\nYour CampusSphere password reset code is {code}. It works for {RESET_CODE_MINUTES} minutes.\n\n"
+            "If you didn't ask for it, ignore this email: your password stays the same.\n\nMVSR Engineering College")
+    html = (f"<p>Hello {html_escape(first)},</p><p>Your CampusSphere password reset code is</p>"
+            f"<p style=\"font-size:28px;font-weight:700;letter-spacing:6px\">{code}</p>"
+            f"<p>It works for {RESET_CODE_MINUTES} minutes. If you didn't ask for it, ignore this email: your password stays the same.</p>"
+            "<p>MVSR Engineering College</p>")
+    mail.send(to, f"{code} is your CampusSphere reset code", text, html)
+
+
+@router.post("/forgot-password", summary="Email a 6-digit reset code (no login)")
+def forgot_password(body: ForgotIn, request: Request, tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    if not mail.enabled():
+        return {"delivery": "office", "message": RESET_OFFICE}
+    login = body.login.strip().lower()
+    reset_request_ip.check_and_hit(client_ip(request), "Too many reset requests from this network.")
+    reset_request_acc.check_and_hit(login, "Too many codes asked for this account.")
+    user = _find_account(db, login)
+    if user and user.status == "active" and (settings.EMAIL_PROVIDER == "console" or mail.deliverable(user.email)):
+        now = datetime.utcnow()
+        db.query(PasswordResetModel).filter(PasswordResetModel.user_id == user.id, PasswordResetModel.used_at.is_(None)) \
+            .update({"used_at": now}, synchronize_session=False)   # only the newest code works
+        code = f"{secrets.randbelow(10 ** 6):06d}"
+        db.add(PasswordResetModel(user_id=user.id, code_hash=_code_hash(user.id, code), created_at=now,
+                                  expires_at=now + timedelta(minutes=RESET_CODE_MINUTES)))
+        db.commit()
+        tasks.add_task(_send_code, user.email, user.name, code)
+    return {"delivery": "email", "message": RESET_SENT}
+
+
+@router.post("/reset-password", summary="Set a new password with the emailed code (no login)")
+def reset_with_code(body: ResetIn, request: Request, db: Session = Depends(get_db)):
+    ip = client_ip(request)
+    wait = reset_wrong_ip.retry_after(ip)
+    if wait is not None:
+        raise too_many("Too many wrong codes.", wait)
+    login = body.login.strip().lower()
+    user = _find_account(db, login)
+    now = datetime.utcnow()
+    pending = db.query(PasswordResetModel).filter(
+        PasswordResetModel.user_id == user.id, PasswordResetModel.used_at.is_(None), PasswordResetModel.expires_at > now,
+    ).order_by(PasswordResetModel.id.desc()).first() if user else None
+    if not pending or not hmac.compare_digest(pending.code_hash, _code_hash(user.id, body.code)):
+        reset_wrong_ip.hit(ip)
+        if pending:
+            pending.attempts = (pending.attempts or 0) + 1
+            if pending.attempts >= RESET_MAX_GUESSES:
+                pending.used_at = now      # out of guesses: they ask for a new code
+            db.commit()
+        raise HTTPException(status_code=400, detail=RESET_BAD_CODE)
+    pending.used_at = now
+    user.hashed_password = get_password_hash(body.new_password)
+    user.must_change_password = False             # they chose this one themselves
+    user.token_version = (user.token_version or 0) + 1   # sign out every device
+    db.commit()
+    for limiter, key in ((login_fail_ip_email, f"{ip}|{login}"), (login_fail_email, login)):
+        limiter.reset(key)                        # a locked-out owner can sign in straight away
+    return {"message": "Password changed. Sign in with your new password."}
 
 # ── List users (admin only) ────────────────────────────────────────────────────
 @router.get("/users", summary="List all users (admin only)")

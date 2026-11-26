@@ -74,5 +74,22 @@ check("joinee: an enrolled first-year can reach Leaving (withdrawal)",
       r["leaving_open"] == (jexit or jyear == 4 or bool(adm and adm[0] == "enrolled" and jyear in (None, 1))), (r, adm, jyear, jexit))
 con.close()
 
+# College-wide analytics (every teacher's load, room forecasts): HODs, the Principal and admins only
+def token(key):
+    return call("/auth/login", body={"email": emails[key], "password": pw})[1]["access_token"]
+
+
+hod_t, mentor_t, student_t = token("hod"), token("mentor"), token("student")
+check("analytics flag: HOD yes, teacher no", call("/auth/me/roles", hod_t)[1]["analytics"] is True
+      and call("/auth/me/roles", mentor_t)[1]["analytics"] is False)
+s, st = call("/timetable/stats", mentor_t)
+check("teacher: timetable summary yes, every teacher's load no", s == 200 and st["departments"] and st["faculty"] == [], (s, str(st)[:200]))
+s, st = call("/timetable/stats", hod_t)
+check("HOD: every teacher's load", s == 200 and len(st["faculty"]) > 0, s)
+for path in ("/ai/utilization/model", "/ai/utilization/report"):
+    check(f"teacher: {path} -> 403", call(path, mentor_t)[0] == 403)
+    check(f"student: {path} -> 403", call(path, student_t)[0] == 403)
+check("HOD: room forecast model -> 200", call("/ai/utilization/model", hod_t)[0] == 200)
+
 print(f"\n{len(failures)} failure(s)" if failures else "\nAll roles checks passed")
 sys.exit(1 if failures else 0)

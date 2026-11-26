@@ -3,23 +3,22 @@
 #     requests), the documents I uploaded when joining, and files I add myself (ID proofs, mark sheets, offer letters).
 #   * The Admin Office can add official documents (marked "Added by the college") to a student's locker.
 #   * Any item can be shared through an expiring link that anyone can open without an account (revocable), and the
-#     owner sees an access log. Files live in private_uploads/locker, never in the public /media folder.
+#     owner sees an access log. Files live under the key locker/<user>/ (backend/app/core/storage.py: the local
+#     private_uploads folder or the R2 bucket), never in the public /media folder.
 import os
 import re
 import secrets
 import threading
 import uuid
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend.app.core.config import ROOT_DIR
+from backend.app.core import storage
 from backend.app.core.rate_limit import SlidingWindowLimiter, client_ip
 from backend.app.college_docs import scraper
 from backend.app.core.security import get_current_user, require_admin, require_roles
@@ -36,7 +35,6 @@ from backend.app.student_services.pdf import render_pdf
 router = APIRouter()          # mounted under /locker, login required
 public_router = APIRouter()   # mounted under /locker, no login (share links)
 
-LOCKER_DIR = Path(os.getenv("PRIVATE_UPLOADS_DIR", ROOT_DIR / "private_uploads")) / "locker"
 MAX_FILE_BYTES = 10 * 1024 * 1024
 QUOTA_BYTES = 50 * 1024 * 1024          # per person, for the files they add themselves
 MAX_FILES = 200
@@ -53,10 +51,12 @@ bad_link_limiter = SlidingWindowLimiter(limit=15, window=600)       # wrong or e
 
 
 # ── Storage ───────────────────────────────────────────────────────────────────
-def _folder(user_id: str) -> Path:
+def _key(user_id: str, stored_name: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", user_id or ""):
         raise HTTPException(status_code=400, detail="Invalid account")
-    return LOCKER_DIR / user_id
+    if "/" in stored_name or "\\" in stored_name or ".." in stored_name:
+        raise HTTPException(status_code=400, detail="Invalid file reference")
+    return storage.key("locker", user_id, stored_name)
 
 
 def _save(user_id: str, upload: UploadFile) -> dict:
@@ -66,27 +66,16 @@ def _save(user_id: str, upload: UploadFile) -> dict:
     if not match:
         raise HTTPException(status_code=422, detail="Upload a PDF, JPG or PNG file")
     ctype, ext = match
-    folder = _folder(user_id)
-    folder.mkdir(parents=True, exist_ok=True)
     stored = f"{uuid.uuid4().hex}{ext}"
-    path = folder / stored
-    size = len(head)
-    with open(path, "wb") as f:
-        f.write(head)
-        while chunk := upload.file.read(1024 * 1024):
-            size += len(chunk)
-            if size > MAX_FILE_BYTES:
-                f.close()
-                path.unlink(missing_ok=True)
-                raise HTTPException(status_code=422, detail="Each file must be 10 MB or smaller")
-            f.write(chunk)
-    return {"stored_name": stored, "content_type": ctype, "size_bytes": size}
+    try:
+        saved = storage.save_upload(_key(user_id, stored), head, upload.file, MAX_FILE_BYTES, ctype)
+    except storage.TooLarge:
+        raise HTTPException(status_code=422, detail="Each file must be 10 MB or smaller") from None
+    return {"stored_name": stored, "content_type": ctype, "size_bytes": saved["size"]}
 
 
-def _file_path(f: LockerFileModel) -> Path:
-    if "/" in f.stored_name or "\\" in f.stored_name or ".." in f.stored_name:
-        raise HTTPException(status_code=400, detail="Invalid file reference")
-    return _folder(f.user_id) / f.stored_name
+def _file_key(f: LockerFileModel) -> str:
+    return _key(f.user_id, f.stored_name)
 
 
 def _title(raw: str, upload: UploadFile) -> str:
@@ -109,7 +98,7 @@ def _resolve(db: Session, ref: str, user_id: str) -> Optional[dict]:
     if kind == "file":
         f = db.get(LockerFileModel, n)
         if f and f.user_id == user_id:
-            return {"title": f.title, "content_type": f.content_type, "filename": f.original_name or f.title, "path": _file_path(f)}
+            return {"title": f.title, "content_type": f.content_type, "filename": f.original_name or f.title, "key": _file_key(f)}
     elif kind == "req":
         r = db.get(DocumentRequestModel, n)
         # Generated pilot data is never a valid certificate, so it never appears here
@@ -117,14 +106,14 @@ def _resolve(db: Session, ref: str, user_id: str) -> Optional[dict]:
             name = DOC_TYPES.get(r.doc_type, {}).get("name", "Certificate")
             filename = (r.ref_no or f"request-{r.id}").replace("/", "-") + ".pdf"
             if r.fulfilment == "upload":
-                return {"title": name, "content_type": "application/pdf", "filename": filename, "path": J.issued_path(r.issued_file)}
+                return {"title": name, "content_type": "application/pdf", "filename": filename, "key": J.issued_key(r.issued_file)}
             return {"title": name, "content_type": "application/pdf", "filename": filename, "data": lambda r=r: render_pdf(r)}
     elif kind == "adm":
         d = db.get(AdmissionDocumentModel, n)
         adm = db.get(AdmissionModel, d.admission_id) if d else None
         if d and adm and adm.user_id == user_id:
             return {"title": J.labels(db).get(d.doc_key, "Joining document"), "content_type": d.content_type or "application/octet-stream",
-                    "filename": d.original_name or d.doc_key, "path": J.document_path(adm.id, d.stored_name)}
+                    "filename": d.original_name or d.doc_key, "key": J.document_key(adm.id, d.stored_name)}
     return None
 
 
@@ -133,10 +122,8 @@ def _send(item: dict) -> Response:
                "Content-Disposition": f'inline; filename="{item["filename"].replace(chr(34), "")[:100]}"'}
     if "data" in item:
         return Response(item["data"](), media_type=item["content_type"], headers=headers)
-    path: Path = item["path"]
-    if not path.exists():
-        raise HTTPException(status_code=410, detail="The file is no longer available")
-    return FileResponse(path, media_type=item["content_type"], headers=headers)
+    return storage.send(item["key"], item["content_type"], headers, missing_status=410,
+                        missing_detail="The file is no longer available")
 
 
 def _iso(d: Optional[datetime]) -> Optional[str]:
@@ -208,7 +195,7 @@ def add_file(file: UploadFile = File(...), title: str = Form(""), category: str 
         raise HTTPException(status_code=400, detail=f"Your locker holds up to {MAX_FILES} files; delete some first")
     saved = _save(uid, file)
     if own[0] + saved["size_bytes"] > QUOTA_BYTES:
-        _folder(uid).joinpath(saved["stored_name"]).unlink(missing_ok=True)
+        storage.delete(_key(uid, saved["stored_name"]))
         raise HTTPException(status_code=400, detail=f"Not enough space: your locker holds {QUOTA_BYTES // (1024 * 1024)} MB of your own files")
     row = LockerFileModel(user_id=uid, title=_title(title, file), category=category, source="self",
                           original_name=(file.filename or "")[:120], added_by=uid, **saved)
@@ -230,7 +217,7 @@ def delete_file(file_id: int, db: Session = Depends(get_db), current: dict = Dep
     now = datetime.utcnow()
     for s in db.query(LockerShareModel).filter(LockerShareModel.item_ref == ref, LockerShareModel.user_id == f.user_id, LockerShareModel.revoked_at.is_(None)):
         s.revoked_at = now
-    _file_path(f).unlink(missing_ok=True)
+    storage.delete(_file_key(f))
     _log(db, f.user_id, ref, f.title, "deleted")
     db.delete(f)
     db.commit()
@@ -330,12 +317,10 @@ def college_file(doc_id: int, db: Session = Depends(get_db), _current: dict = De
     d = db.get(CollegeDocumentModel, doc_id)
     if not d or d.kind != "file" or not d.stored_name or "/" in d.stored_name or ".." in d.stored_name:
         raise HTTPException(status_code=404, detail="Document not found")
-    path = scraper.COLLEGE_DIR / d.stored_name
-    if not path.exists():
-        raise HTTPException(status_code=410, detail="The file is no longer available")
     name = re.sub(r"[^A-Za-z0-9 ._\-]", "", d.title)[:80] or "college-document"
-    return FileResponse(path, media_type="application/pdf",
-                        headers={"Content-Disposition": f'inline; filename="{name}.pdf"', "X-Content-Type-Options": "nosniff"})
+    return storage.send(scraper.college_key(d.stored_name), "application/pdf",
+                        {"Content-Disposition": f'inline; filename="{name}.pdf"', "X-Content-Type-Options": "nosniff"},
+                        missing_status=410, missing_detail="The file is no longer available")
 
 
 @router.post("/college/refresh", summary="Read the college website again (admin)")

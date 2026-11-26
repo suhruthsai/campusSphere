@@ -12,7 +12,7 @@ from datetime import date, datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from backend.app.core import storage
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -233,10 +233,8 @@ def item_evidence_file(item_id: int, db: Session = Depends(get_db), current: dic
         raise HTTPException(status_code=403, detail="Not yours to see")
     if not i.evidence:
         raise HTTPException(status_code=404, detail="No file attached")
-    path = W.evidence_path(i.evidence)
-    if not path.exists():
-        raise HTTPException(status_code=410, detail="The file is no longer available")
-    return FileResponse(path, filename=i.evidence_name or i.evidence, headers={"Cache-Control": "private, no-store"})
+    return storage.send(W.evidence_key(i.evidence), None, {"Cache-Control": "private, no-store"}, filename=i.evidence_name or i.evidence,
+                        missing_status=410, missing_detail="The file is no longer available")
 
 
 @router.delete("/items/{item_id}", summary="Delete an unverified item")

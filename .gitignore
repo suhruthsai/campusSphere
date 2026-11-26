@@ -68,3 +68,6 @@ outputs/
 # database backups, never commit (personal data)
 campussphere.db*
 *.db.backup*
+
+# Role check report (tests/ui_roles.py)
+tests/ui_roles_report.json

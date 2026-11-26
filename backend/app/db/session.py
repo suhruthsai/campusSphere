@@ -2,10 +2,18 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from backend.app.core.config import settings
 
-DATABASE_URL = settings.DATABASE_URL
-# Some hosts (Heroku, older Render URLs) hand out "postgres://", which SQLAlchemy 2 rejects
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
+def normalize_url(url: str) -> str:
+    """Postgres URLs as hosts hand them out -> one SQLAlchemy can use with psycopg2 (in requirements.txt).
+    Some hosts (Heroku, older Render URLs) say "postgres://", which SQLAlchemy 2 rejects, and SQLAlchemy 2.1
+    reads a bare "postgresql://" as psycopg 3, which isn't installed."""
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg2://" + url[len("postgresql://"):]
+    return url
+
+
+DATABASE_URL = normalize_url(settings.DATABASE_URL)
 
 _is_sqlite = DATABASE_URL.startswith("sqlite")
 
@@ -16,8 +24,9 @@ engine = create_engine(
         else {"connect_timeout": 5}   # fail fast if PostgreSQL isn't up yet
     ),
     pool_pre_ping=True,
-    # Kept small: free-tier Postgres plans allow very few connections
-    **({} if _is_sqlite else {"pool_size": 5, "max_overflow": 5})
+    # Kept small: free-tier Postgres plans allow very few connections. Serverless Postgres (Neon) closes idle
+    # connections and suspends when unused, so connections are replaced after 5 minutes instead of going stale.
+    **({} if _is_sqlite else {"pool_size": 5, "max_overflow": 5, "pool_recycle": 300})
 )
 
 if _is_sqlite:

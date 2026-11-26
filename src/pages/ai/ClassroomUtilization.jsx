@@ -2,7 +2,8 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Gauge, Info, RefreshCw, Repeat } from 'lucide-react';
 import MonitoringLayout, { AlertPill, HBar, MCard } from '../../components/monitoring/MonitoringLayout.jsx';
-import { utilizationApi } from '../../utils/api.js';
+import PageTransition from '../../components/PageTransition.jsx';
+import { authApi, utilizationApi } from '../../utils/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -28,13 +29,16 @@ export default function ClassroomUtilization() {
   const [error, setError] = useState('');
   const [training, setTraining] = useState(false);
 
+  const [allowed, setAllowed] = useState(null);
   const load = () => {
     setError('');
     Promise.all([utilizationApi.report(), utilizationApi.model()])
       .then(([r, m]) => { setReport(r); setModel(m); })
       .catch((e) => setError(e.message));
   };
-  useEffect(load, []);
+  // Room forecasts are for HODs, the Principal and admins
+  useEffect(() => { authApi.roles().then((r) => setAllowed(!!r.analytics)).catch(() => setAllowed(false)); }, []);
+  useEffect(() => { if (allowed) load(); }, [allowed]);
 
   const retrain = async () => {
     setTraining(true);
@@ -52,6 +56,10 @@ export default function ClassroomUtilization() {
     { label: 'Timetable clashes', value: s.timetable_clashes, icon: '⚠️', unit: '' },
     { label: 'Overflow risks', value: s.overflow_risks, icon: '🚪', unit: '' },
   ] : [];
+
+  if (allowed === false) {
+    return <PageTransition className="mx-auto max-w-7xl px-4 pt-28"><p className="text-slate-400">Room utilisation forecasts are for HODs, the Principal and admins.</p></PageTransition>;
+  }
 
   return (
     <MonitoringLayout

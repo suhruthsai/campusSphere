@@ -171,6 +171,11 @@ Copy `.env.example` to `.env` in the project root and fill in `SECRET_KEY`, `ADM
 - If `ADMIN_PASSWORD` is empty, a random admin password is generated and printed **once** on first startup.
 - The Groq key is used **only by the backend** (`/api/v1/ai/chat`); never expose it as a `VITE_` variable.
 - Login is rate-limited: 5 failed attempts per account per IP (or 20 per IP, or 50 per account overall) lock further attempts for 15 minutes. Behind a reverse proxy, set `TRUSTED_PROXY_HOPS` (Render: `1`) so real client IPs are used.
+- **Forgot password** emails a 6-digit code (10 minutes, one use, 5 guesses) to the address on the account; the
+  person sets a new password and every device is signed out. The page never says whether an account exists.
+  Set `EMAIL_PROVIDER` to `brevo` or `resend` with `EMAIL_API_KEY` and a verified `EMAIL_FROM`; locally the default
+  `console` prints the code in the server log, and `off` sends people to the Admin Office. Demo and placeholder
+  accounts on reserved domains (`example.com`, `*.example`, `*.test`) are never emailed.
 - There is no public sign-up: the college creates every account (roll lists, the faculty list, or an admin in *Admin → Users*). New accounts and admin password resets get a temporary password, and until it is changed under *My account* the API answers only `/auth/me`, `/auth/me/roles` and `/auth/change-password` (403 everywhere else).
 
 ### 3. Backend Setup (FastAPI + SQLite)
@@ -251,20 +256,56 @@ They create throwaway accounts and records and remove them afterwards. Point the
 
 ---
 
-## ☁️ Deployment (Render backend + Vercel frontend)
+## ☁️ Deployment (free: Vercel + Render + Neon + Backblaze B2)
 
-**1. Backend on Render** — create a Blueprint from this repo; `render.yaml` provisions the API and a Postgres database.
-In the Render dashboard set:
+| Part | Service (free plan) | Why |
+|---|---|---|
+| Frontend | **Vercel** | Static Vite build on a CDN; `vercel.json` is ready |
+| Backend API | **Render** web service | `render.yaml` is ready. 512 MB RAM, sleeps after 15 min idle |
+| Database | **Neon** Postgres | Doesn't expire (Render's free Postgres is deleted after 30 days) |
+| Files | **Backblaze B2** bucket | Render wipes its disk on every restart; the bucket keeps uploads, issued PDFs, evidence, room media and college documents. 10 GB free, no card needed. Cloudflare R2 or any other S3-compatible bucket works too |
+
+**1. Database on Neon** — create a project (region: Singapore, next to Render's) and copy its connection string
+(`postgresql://…?sslmode=require`). To start from the data on your computer (accounts, timetable, requests,
+attendance, …), add it to `.env` as `TARGET_DATABASE_URL=…` (not `DATABASE_URL`, which would move your local
+backend too), stop the local backend, and run:
+```bash
+python -m backend.app.db.copy_to_postgres            # checks both databases, lists what would be copied
+python -m backend.app.db.copy_to_postgres --copy     # copies every table in one transaction, then checks the counts
+```
+It refuses a target that already has data; `--replace` empties it first (e.g. if the deployed server already
+started on it and seeded its own admin account). Skip this step to start fresh: the backend creates the tables
+and seeds the admin account and timetable on its first start.
+
+**2. Files on Backblaze B2** — *Buckets → Create a Bucket* with files **Private** (bucket names are unique across
+B2). On the bucket, *Lifecycle Settings → Keep only the last version of the file*, and note its **Endpoint**
+(`s3.<region>.backblazeb2.com`). Then *Application Keys → Add a New Application Key*: that bucket only, **Read and
+Write**. The keyID and applicationKey are shown once. Put five values in `.env`:
+`S3_ENDPOINT_URL=https://s3.<region>.backblazeb2.com`, `S3_REGION=<region>`, `S3_BUCKET`, `S3_ACCESS_KEY_ID` (keyID)
+and `S3_SECRET_ACCESS_KEY` (applicationKey). To copy the files already on your computer (locker, joining documents,
+issued PDFs, evidence, room media, college documents), run:
+```bash
+python -m backend.app.core.storage_migrate           # lists what would be copied
+python -m backend.app.core.storage_migrate --copy    # copies them; files already in the bucket are skipped
+```
+Include the college documents (~240 MB): on Render the website crawl is off (`BACKGROUND_CRAWLS=false`), so
+the server won't fetch them by itself.
+
+**3. Backend on Render** — *New → Blueprint* from this repo. In the Render dashboard set:
 | Variable | Value |
 |---|---|
+| `DATABASE_URL` | The Neon connection string |
+| `S3_ENDPOINT_URL`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | From step 2 (the same values as in `.env`) |
 | `ADMIN_PASSWORD` | Password for the first admin account (set **before** the first deploy) |
 | `GROQ_API_KEY` | Groq key for the AI assistant |
 | `SARVAM_API_KEY` | Optional: Sarvam AI key for Mitra's Telugu / Hindi / English voice |
-| `CORS_ORIGINS` | Your Vercel URL, e.g. `https://campussphere.vercel.app` (comma-separate several) |
+| `CORS_ORIGINS`, `FRONTEND_URL` | Your Vercel URL, e.g. `https://campussphere.vercel.app` (fill in after step 4, then redeploy) |
 
 `SECRET_KEY` is generated automatically. Render checks `/health` to confirm the API and database are up.
+`render.yaml` also sets the small-server options (`WARM_UTILIZATION_MODEL=false`, `BACKGROUND_CRAWLS=false`,
+`MALLOC_ARENA_MAX=2`) that keep the API at ~160 MB idle and ~330 MB at most, well inside 512 MB.
 
-**2. Frontend on Vercel** — import the repo (framework: Vite) and set one environment variable:
+**4. Frontend on Vercel** — import the repo (framework: Vite) and set one environment variable:
 | Variable | Value |
 |---|---|
 | `VITE_API_URL` | The Render service URL, e.g. `https://campussphere-backend.onrender.com` |
@@ -278,9 +319,16 @@ docker run -p 8000:8000 --env-file .env campussphere-backend
 ```
 
 **Free-tier caveats**
-- Render's free web service sleeps after inactivity; the first request after that takes ~1 minute.
-- The filesystem is ephemeral: uploaded room media (`media_uploads/`) and joining documents / issued PDFs (`private_uploads/`) are lost on every redeploy. Use object storage (S3, Cloudinary, …) or a paid persistent disk for real uploads.
-- Render's free Postgres database expires after a limited period; check Render's current terms and back up your data.
+- Render's free web service sleeps after 15 minutes without requests; the first request after that takes ~1 minute.
+  A free uptime monitor (UptimeRobot, cron-job.org) calling `/health` every 10 minutes keeps it awake.
+- The disk is wiped on every restart, so files must go to the bucket (`STORAGE_BACKEND=s3`, set in `render.yaml`).
+  The trained classroom-utilization model is on that disk too: after a restart, the first analytics request
+  retrains it (~20 s).
+- With `BACKGROUND_CRAWLS=false`, Mitra's knowledge base (Admin → Knowledge base) and the college documents
+  (CampusLocker → College documents) are refreshed by an admin from the app, not weekly by themselves.
+- B2's free plan (no card) has daily caps on file reads, about 2,500 a day; past the cap files stop loading until
+  the next day instead of being charged. Adding a card in B2 raises the caps.
+- Free plans change; check each provider's current limits (Neon storage, B2 10 GB, Vercel's non-commercial terms).
 
 ---
 

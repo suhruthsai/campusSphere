@@ -162,8 +162,9 @@ def status(db) -> dict:
     }
 
 
-def start_background():
-    """Load the index now; crawl in the background on first run and then once a week."""
+def start_background(crawl: bool = True):
+    """Load the index now; crawl in the background on first run and then once a week.
+    crawl=False (BACKGROUND_CRAWLS off) only loads the index; an admin starts a crawl from the app."""
     def loop():
         db = SessionLocal()
         try:
@@ -173,6 +174,8 @@ def start_background():
             print(f"⚠️  Knowledge base not loaded: {e}")
         finally:
             db.close()
+        if not crawl:
+            return
         time.sleep(90)   # let the server finish starting (and a restarting dev server settle) before crawling
         while True:
             db = SessionLocal()

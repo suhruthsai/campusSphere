@@ -71,7 +71,7 @@ def desks(scope: ScopeId = Query("both"), db: Session = Depends(get_db), _m: dic
 from typing import Optional  # noqa: E402
 
 from fastapi import File, Form, UploadFile  # noqa: E402
-from fastapi.responses import FileResponse  # noqa: E402
+from backend.app.core import storage  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 from backend.app.accreditation import catalog as C  # noqa: E402
@@ -259,10 +259,8 @@ def ws_evidence_file(evidence_id: int, db: Session = Depends(get_db), current: d
     e = db.get(AccrEvidenceModel, evidence_id)
     if not e or e.kind != "file":
         raise HTTPException(status_code=404, detail="Not found")
-    path = W.evidence_path(e.filename)
-    if not path.exists():
-        raise HTTPException(status_code=410, detail="The file is no longer available")
-    return FileResponse(path, media_type=e.mime, filename=e.original or e.filename, headers={"Cache-Control": "private, no-store"})
+    return storage.send(W.evidence_key(e.filename), e.mime, {"Cache-Control": "private, no-store"}, filename=e.original or e.filename,
+                        missing_status=410, missing_detail="The file is no longer available")
 
 
 @router.delete("/workspace/evidence/{evidence_id}", summary="Withdraw evidence (kept in the history)")

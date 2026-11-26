@@ -35,10 +35,15 @@ def _slot_label(day, period):
     return f"{DAY_NAMES[int(day)]} P{int(period)}"
 
 
+def _opt(v):
+    """pandas turns a missing value (no lab batch, no faculty) into NaN, which JSON cannot carry."""
+    return None if pd.isna(v) else v
+
+
 def _session_view(r):
     return {
         "entry_id": int(r.entry_id), "subject": r.subject, "section": r.section,
-        "batch": r.batch, "faculty": r.faculty_name, "kind": r.kind,
+        "batch": _opt(r.batch), "faculty": _opt(r.faculty_name), "kind": r.kind,
         "day": int(r.day), "period": int(r.period), "slot": _slot_label(r.day, r.period),
         "time": f"{r.start_time}–{r.end_time}", "classroom_id": r.classroom_id,
         "capacity": int(r.capacity), "enrolled": int(r.enrolled),

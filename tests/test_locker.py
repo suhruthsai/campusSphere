@@ -166,7 +166,7 @@ check("the student cannot delete a college document", call("DELETE", f"/locker/f
 check("the student can share it", call("POST", f"/locker/items/{add['ref']}/share", tok["student"], body={"hours": 1})[0] == 200)
 
 # ── College documents: what the college website publishes ───────────────────
-COLLEGE = ROOT / "private_uploads" / "college"
+COLLEGE = LOCKER.parent / "college"
 COLLEGE.mkdir(parents=True, exist_ok=True)
 stored = f"locker-test-{uuid.uuid4().hex}.pdf"
 (COLLEGE / stored).write_bytes(PDF)

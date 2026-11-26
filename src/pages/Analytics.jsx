@@ -4,7 +4,7 @@ import { BookOpen, Building2, CalendarRange, Users } from 'lucide-react';
 import PageTransition from '../components/PageTransition.jsx';
 import MetricCard from '../components/dashboard/MetricCard.jsx';
 import { DashboardHeading } from './StudentDashboard.jsx';
-import { timetableApi } from '../utils/api.js';
+import { authApi, timetableApi } from '../utils/api.js';
 import { DAY_SHORT as DAYS } from '../utils/campus.js';
 
 
@@ -25,8 +25,14 @@ function Bar({ label, sub, value, max, suffix = '' }) {
 export default function Analytics() {
   const [s, setS] = useState(null);
   const [error, setError] = useState('');
-  useEffect(() => { timetableApi.stats().then(setS).catch((e) => setError(e.message)); }, []);
+  const [allowed, setAllowed] = useState(null);
+  // College-wide analytics (every teacher's load) is for HODs, the Principal and admins
+  useEffect(() => { authApi.roles().then((r) => setAllowed(!!r.analytics)).catch(() => setAllowed(false)); }, []);
+  useEffect(() => { if (allowed) timetableApi.stats().then(setS).catch((e) => setError(e.message)); }, [allowed]);
 
+  if (allowed === false) {
+    return <PageTransition className="mx-auto max-w-7xl px-4 pt-28"><p className="text-slate-400">Campus analytics is for HODs, the Principal and admins.</p></PageTransition>;
+  }
   if (error) return <PageTransition className="mx-auto max-w-7xl px-4 pt-28"><p className="text-rose-300">{error}</p></PageTransition>;
   if (!s) return <PageTransition className="mx-auto max-w-7xl px-4 pt-28"><p className="text-slate-400">Loading…</p></PageTransition>;
 

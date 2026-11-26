@@ -10,6 +10,7 @@ python-multipart>=0.0.9
 websockets>=12.0
 httpx>=0.27.0
 psycopg2-binary>=2.9.9
+boto3>=1.34             # file storage in Cloudflare R2 / any S3 bucket (STORAGE_BACKEND=s3; loaded on first use)
 reportlab>=4.2          # student-services certificates (PDF + QR code)
 beautifulsoup4>=4.12    # Mitra's knowledge base: reading the college website
 pypdf>=4.2              # ... and the PDFs it hosts

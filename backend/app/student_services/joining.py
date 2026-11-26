@@ -1,11 +1,9 @@
 # Joining after TGEAPCET counselling: what a new student must provide, which documents apply
 # to whom, and private storage for the uploaded copies.
-import os
 import uuid
 from datetime import date
-from pathlib import Path
 
-from backend.app.core.config import ROOT_DIR
+from backend.app.core import storage
 from backend.app.models.admissions import JoiningDocRuleModel
 
 CATEGORIES = ["OC", "BC-A", "BC-B", "BC-C", "BC-D", "BC-E", "SC", "ST", "EWS"]
@@ -119,8 +117,7 @@ def required_docs(db, admission) -> list[dict]:
     return [d for d in rules(db) if applies(d, admission)]
 
 
-# ── Private storage ────────────────────────────────────────────────────────────
-PRIVATE_DIR = Path(os.getenv("PRIVATE_UPLOADS_DIR", ROOT_DIR / "private_uploads")) / "admissions"
+# ── Private storage (local disk or the R2 bucket: backend/app/core/storage.py) ───────
 MAX_DOC_BYTES = 5 * 1024 * 1024
 # Detected from the file's first bytes, not trusted from the name or browser
 SIGNATURES = [
@@ -134,6 +131,13 @@ class UploadError(ValueError):
     pass
 
 
+def _check_name(stored_name: str) -> str:
+    # stored names are always our own uuid + extension; refuse anything else
+    if not stored_name or "/" in stored_name or "\\" in stored_name or ".." in stored_name:
+        raise UploadError("Invalid file reference")
+    return stored_name
+
+
 def save_document(admission_id: int, upload, images_only: bool = False) -> dict:
     """Validate and store an uploaded file; returns stored_name, content_type, size_bytes."""
     head = upload.file.read(8)
@@ -143,33 +147,19 @@ def save_document(admission_id: int, upload, images_only: bool = False) -> dict:
     ctype, ext = match
     if images_only and ctype == "application/pdf":
         raise UploadError("The photo must be a JPG or PNG image")
-
-    folder = PRIVATE_DIR / str(admission_id)
-    folder.mkdir(parents=True, exist_ok=True)
     stored = f"{uuid.uuid4().hex}{ext}"
-    path = folder / stored
-    size = len(head)
-    with open(path, "wb") as f:
-        f.write(head)
-        while chunk := upload.file.read(1024 * 1024):
-            size += len(chunk)
-            if size > MAX_DOC_BYTES:
-                f.close()
-                path.unlink(missing_ok=True)
-                raise UploadError("Files must be 5 MB or smaller")
-            f.write(chunk)
-    return {"stored_name": stored, "content_type": ctype, "size_bytes": size}
+    try:
+        saved = storage.save_upload(document_key(admission_id, stored), head, upload.file, MAX_DOC_BYTES, ctype)
+    except storage.TooLarge:
+        raise UploadError("Files must be 5 MB or smaller") from None
+    return {"stored_name": stored, "content_type": ctype, "size_bytes": saved["size"]}
 
 
-def document_path(admission_id: int, stored_name: str) -> Path:
-    # stored_name is always our own uuid + extension; refuse anything else
-    if "/" in stored_name or "\\" in stored_name or ".." in stored_name:
-        raise UploadError("Invalid file reference")
-    return PRIVATE_DIR / str(admission_id) / stored_name
+def document_key(admission_id: int, stored_name: str) -> str:
+    return storage.key("admissions", str(int(admission_id)), _check_name(stored_name))
 
 
-ISSUED_DIR = PRIVATE_DIR.parent / "issued"   # final documents uploaded by the Exam Cell
-MAX_ISSUED_BYTES = 10 * 1024 * 1024
+MAX_ISSUED_BYTES = 10 * 1024 * 1024   # final documents uploaded by the Exam Cell ("issued/...")
 
 
 def save_issued_pdf(upload) -> str:
@@ -177,30 +167,20 @@ def save_issued_pdf(upload) -> str:
     head = upload.file.read(5)
     if head != b"%PDF-":
         raise UploadError("Upload the prepared document as a PDF")
-    ISSUED_DIR.mkdir(parents=True, exist_ok=True)
     stored = f"{uuid.uuid4().hex}.pdf"
-    path = ISSUED_DIR / stored
-    size = len(head)
-    with open(path, "wb") as f:
-        f.write(head)
-        while chunk := upload.file.read(1024 * 1024):
-            size += len(chunk)
-            if size > MAX_ISSUED_BYTES:
-                f.close()
-                path.unlink(missing_ok=True)
-                raise UploadError("The PDF must be 10 MB or smaller")
-            f.write(chunk)
+    try:
+        storage.save_upload(issued_key(stored), head, upload.file, MAX_ISSUED_BYTES, "application/pdf")
+    except storage.TooLarge:
+        raise UploadError("The PDF must be 10 MB or smaller") from None
     return stored
 
 
-def issued_path(stored_name: str) -> Path:
-    if not stored_name or "/" in stored_name or "\\" in stored_name or ".." in stored_name:
-        raise UploadError("Invalid file reference")
-    return ISSUED_DIR / stored_name
+def issued_key(stored_name: str) -> str:
+    return storage.key("issued", _check_name(stored_name))
 
 
 def delete_document_file(admission_id: int, stored_name: str) -> None:
     try:
-        document_path(admission_id, stored_name).unlink(missing_ok=True)
+        storage.delete(document_key(admission_id, stored_name))
     except UploadError:
         pass

@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import Optional
-import os, uuid
+import mimetypes, os, uuid
+
+from backend.app.core import storage
 
 from backend.app.db.session import get_db
 from backend.app.core.security import require_admin, require_staff
@@ -9,10 +11,10 @@ from backend.app.models.campus import RoomMediaModel
 
 router = APIRouter()
 
-MEDIA_DIR = "media_uploads"
+# Files are stored under the key media/<name> (backend/app/core/storage.py: ./media_uploads locally, or the R2
+# bucket) and served publicly at /media/<name> by main.py
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".webm"}
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
-os.makedirs(MEDIA_DIR, exist_ok=True)
 
 
 @router.get("/{building_id}", summary="Get all media for a building")
@@ -47,18 +49,13 @@ def upload_room_media(
         raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
     uploaded_by = _staff["name"]
 
-    # Save file to disk (random name, so the client cannot choose the path)
+    # Random name, so the client cannot choose the path
     filename = f"{uuid.uuid4().hex}{ext}"
-    filepath = os.path.join(MEDIA_DIR, filename)
-    written = 0
-    with open(filepath, "wb") as f:
-        while chunk := file.file.read(1024 * 1024):
-            written += len(chunk)
-            if written > MAX_UPLOAD_BYTES:
-                f.close()
-                os.remove(filepath)
-                raise HTTPException(status_code=413, detail="File too large (max 25 MB)")
-            f.write(chunk)
+    try:
+        storage.save_upload(storage.key("media", filename), b"", file.file, MAX_UPLOAD_BYTES,
+                            mimetypes.guess_type(filename)[0] or "application/octet-stream")
+    except storage.TooLarge:
+        raise HTTPException(status_code=413, detail="File too large (max 25 MB)") from None
 
     media = RoomMediaModel(
         building_id=building_id,

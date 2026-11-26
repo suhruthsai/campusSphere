@@ -4,8 +4,11 @@ person sees only the desks that are theirs (an HOD gets Substitutions for their 
 Cell, a clearance officer the No-dues desk, the Principal Accreditation) and a student sees Joining or Leaving
 only while it applies to them.
 """
+from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from backend.app.core.security import get_current_user
+from backend.app.db.session import get_db
 from backend.app.models.admissions import AdmissionModel
 from backend.app.models.leaving import ClearanceOfficerModel, ExitModel
 from backend.app.models.services import ApproverAssignmentModel, StudentProfileModel
@@ -53,6 +56,8 @@ def user_roles(db: Session, current: dict) -> dict:
         "clearance_units": sorted({f"{o.unit}:{_dept(o.department)}" if o.department else o.unit for o in officer}),
         "clearance_officer": bool(officer),
         "approver": mentor or bool(held & set(APPROVER_ASSIGNMENTS)),
+        # College-wide analytics (every teacher's load, room forecasts): HODs, the Principal and admins
+        "analytics": role == "admin" or principal or bool(hod_departments),
         "joining_open": False,
         "leaving_open": False,
         "placements_open": False,
@@ -70,3 +75,17 @@ def user_roles(db: Session, current: dict) -> dict:
         # Placements: final years (jobs) and pre-final years (internships)
         out["placements_open"] = bool(profile and profile.year in (3, 4))
     return out
+
+
+ANALYTICS_ONLY = "Campus analytics and room forecasts are for HODs, the Principal and admins."
+
+
+def sees_analytics(db: Session, current: dict) -> bool:
+    return user_roles(db, current)["analytics"]
+
+
+def require_analytics(db: Session = Depends(get_db), current: dict = Depends(get_current_user)) -> dict:
+    """Dependency: HODs, the Principal and admins (see user_roles' "analytics")."""
+    if not sees_analytics(db, current):
+        raise HTTPException(status_code=403, detail=ANALYTICS_ONLY)
+    return current

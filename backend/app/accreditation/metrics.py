@@ -283,19 +283,21 @@ def teaching_continuity(c: Ctx) -> dict:
 def attendance(c: Ctx) -> dict:
     # Marked class attendance (Attendance page) is the real record; headcounts are the fallback
     from backend.app.models.attendance import AttendanceMarkModel, AttendanceSessionModel
-    sessions = [s for s in c.db.query(AttendanceSessionModel).all() if s.timetable_entry_id in c.entry_ids]
-    if sessions:
-        dept_of = {s.id: s.department for s in sessions}
-        marks = c.db.query(AttendanceMarkModel).filter(AttendanceMarkModel.session_id.in_(list(dept_of))).all()
-        per = defaultdict(lambda: [0, 0])
-        for m in marks:
-            per[dept_of[m.session_id]][1] += 1
-            per[dept_of[m.session_id]][0] += m.status in ("present", "late")
+    from sqlalchemy import case, func
+    in_scope = AttendanceSessionModel.timetable_entry_id.in_(sorted(c.entry_ids))
+    n_sessions = c.db.query(func.count(AttendanceSessionModel.id)).filter(in_scope).scalar() or 0
+    if n_sessions:
+        # Counted in SQL: loading ~100k mark rows as objects cost ~120 MB and ~10 s per request
+        rows = (c.db.query(AttendanceSessionModel.department, func.count(AttendanceMarkModel.id),
+                           func.sum(case((AttendanceMarkModel.status.in_(("present", "late")), 1), else_=0)))
+                .join(AttendanceMarkModel, AttendanceMarkModel.session_id == AttendanceSessionModel.id)
+                .filter(in_scope).group_by(AttendanceSessionModel.department).all())
+        per = {dept: [int(present or 0), int(held)] for dept, held, present in rows}
         att, held = sum(v[0] for v in per.values()), sum(v[1] for v in per.values())
         return {
             "title": "Class attendance",
             "value": f"{100 * att / held:.0f}% average" if held else "No marks yet",
-            "detail": f"Marked period by period by faculty: {len(sessions)} periods, {held:,} student marks.",
+            "detail": f"Marked period by period by faculty: {n_sessions} periods, {held:,} student marks.",
             "status": "live" if held else "missing",
             "source": _src("attendance_marks", held),
             "table": _table(["Department", "Marks", "Average attendance"],

@@ -46,6 +46,7 @@ SUITES = {
     "research": ["test_research.py", DB, ENV],
     "institution": ["test_institution.py", DB, ENV, CREDS],
     "readiness": ["test_readiness.py", DB, ENV, CREDS],
+    "password_reset": ["test_password_reset.py", DB, ENV],
 }
 
 missing = [p for p in (DB, CREDS, ENV) if not p.exists()]

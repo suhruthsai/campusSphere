@@ -39,6 +39,8 @@ def _allowed_departments(db: Session, current: dict) -> Optional[set]:
 @router.get("/departments", summary="Departments I can see the report for")
 def report_departments(db: Session = Depends(get_db), current: dict = Depends(get_current_user)):
     allowed = _allowed_departments(db, current)
+    if allowed is not None and not allowed:   # not an HOD, the Principal or management: say so, not "no data"
+        raise HTTPException(status_code=403, detail="Department reports are for the HOD of the department, the Principal and management.")
     have = sorted({d for (d,) in db.query(AttendanceSessionModel.department).distinct() if d})
     return [d for d in have if allowed is None or d in allowed]
 

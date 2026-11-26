@@ -8,12 +8,23 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from backend.app.core.security import get_current_user, require_admin, require_staff
+from backend.app.core.roles import require_analytics
+from backend.app.core.security import require_admin, require_staff
 from backend.app.db.session import get_db
 from backend.app.models.campus import ClassroomModel, ClassSessionLogModel, TimetableEntryModel
-from backend.app.ai.utilization import model as M
 from backend.app.ai.utilization.calendar import HISTORY_WEEKS, enrolled_for
-from backend.app.ai.utilization.recommend import build_report
+
+# The model and report modules pull in pandas + scikit-learn (~110 MB). They are imported on the
+# first analytics request, not at startup, so a small (512 MB) server isn't carrying them all the time.
+def _model():
+    from backend.app.ai.utilization import model
+    return model
+
+
+def build_report(db: Session, week: int):
+    from backend.app.ai.utilization.recommend import build_report as _build
+    return _build(db, week)
+
 
 router = APIRouter()
 
@@ -23,23 +34,23 @@ _report_lock = threading.Lock()
 
 
 def _cache_key(db: Session, week: int):
-    info = M.get_bundle(db)["info"]
+    info = _model().get_bundle(db)["info"]
     n_sessions = db.query(ClassSessionLogModel.id).count()
     return (week, info["trained_at"], n_sessions)
 
 
 @router.get("/model", summary="Utilization model: algorithm, evaluation and feature importance")
-def model_info(db: Session = Depends(get_db), _user: dict = Depends(get_current_user)):
-    return M.get_bundle(db)["info"]
+def model_info(db: Session = Depends(get_db), _user: dict = Depends(require_analytics)):
+    return _model().get_bundle(db)["info"]
 
 
-@router.get("/report", summary="Next-week utilization forecast with recommendations (admin/faculty)")
+@router.get("/report", summary="Next-week utilization forecast with recommendations (HODs, the Principal, admins)")
 def utilization_report(
     week: Optional[int] = Query(None, ge=1, le=HISTORY_WEEKS + 4, description="Semester week (default: next week)"),
     db: Session = Depends(get_db),
-    _staff: dict = Depends(require_staff),
+    _viewer: dict = Depends(require_analytics),
 ):
-    week = week or M.default_forecast_week()
+    week = week or _model().default_forecast_week()
     key = _cache_key(db, week)
     with _report_lock:
         if key not in _report_cache:
@@ -50,7 +61,7 @@ def utilization_report(
 
 @router.post("/train", summary="Retrain the utilization model on all recorded history (admin)")
 def retrain(db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
-    info = M.train(db)
+    info = _model().train(db)
     _report_cache.clear()
     return info
 
