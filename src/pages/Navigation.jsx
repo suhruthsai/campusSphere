@@ -1,12 +1,10 @@
-// Route finder: real buildings and rooms, walking distance and time from the campus path network,
-// and "show on the campus map" which draws the same route in the 3D twin.
-import { Building2, DoorOpen, Map, MapPin, Navigation2, Search } from 'lucide-react';
+// Route finder: real buildings and rooms, walking distance and time from the campus path network.
+import { Building2, DoorOpen, MapPin, Navigation2, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import PageTransition from '../components/PageTransition.jsx';
 import { btnPrimary, inputCls, labelCls } from '../components/services/requestUi.jsx';
 import { buildingsApi, classroomsApi } from '../utils/api.js';
-import { useCampusStore } from '../store/useCampusStore.js';
 import { floorName } from '../utils/campus.js';
 import SectionTabs, { FIND_TABS } from '../components/layout/SectionTabs.jsx';
 
@@ -17,7 +15,6 @@ const EXTRA_PLACES = [
 const WALK_SPEED = 1.4;   // metres per second, an average walking pace
 
 export default function Navigation() {
-  const navigate = useNavigate();
   const [params] = useSearchParams();
   const [places, setPlaces] = useState([]);
   const [rooms, setRooms] = useState([]);
@@ -62,7 +59,6 @@ export default function Navigation() {
   useEffect(() => { if (params.get('to') && places.length) findRoute(params.get('to')); }, [places.length]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = (r) => { setTo(r.building); setQuery(''); findRoute(r.building, from, r.room || null); };
-  const showOnMap = () => { useCampusStore.getState().setRouteRequest(route.from, route.to); navigate('/'); };
 
   return (
     <PageTransition className="mx-auto min-h-screen max-w-5xl px-4 pb-20 pt-28 sm:px-6">
@@ -132,7 +128,6 @@ export default function Navigation() {
                   Inside {nameOf(route.to)}: <b>{route.room.name}</b> is on the {floorName(route.room.floor, true)}.
                 </p>
               )}
-              <button className={btnPrimary} onClick={showOnMap}><Map size={15} /> Show on the campus map</button>
             </div>
           )}
         </section>

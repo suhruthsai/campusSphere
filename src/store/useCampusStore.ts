@@ -10,8 +10,6 @@ interface CampusState {
   chatTarget: string | null; // null for global guide, or student id
   aiFlyTarget: { id: string, ts: number } | null; // name of building to fly to
   aiHighlightTypes: string[]; // types of buildings to highlight
-  routeRequest: { from: string, to: string, ts: number } | null; // asked for by the Navigation page
-  setRouteRequest: (from: string, to: string) => void;
   
   weatherData: { temp: number, isDay: boolean, condition: string, code: number } | null;
   isRaining: boolean;
@@ -50,7 +48,6 @@ export const useCampusStore = create<CampusState>((set, get) => ({
   chatTarget: null,
   aiFlyTarget: null,
   aiHighlightTypes: [],
-  routeRequest: null,
   weatherData: null,
   isRaining: false,
 
@@ -90,7 +87,6 @@ export const useCampusStore = create<CampusState>((set, get) => ({
   addChatMessage: (msg) => set((state) => ({ chatMessages: [...state.chatMessages, msg] })),
   setAIFlyTarget: (target) => set({ aiFlyTarget: target ? { id: target, ts: Date.now() } : null }),
   setAIHighlightTypes: (types) => set({ aiHighlightTypes: types }),
-  setRouteRequest: (from, to) => set({ routeRequest: { from, to, ts: Date.now() } }),
   
   fetchWeather: async () => {
     try {

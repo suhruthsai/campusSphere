@@ -7,7 +7,7 @@ import { useCampusStore } from '../../store/useCampusStore.js';
 import ClassroomInfoPanel from '../timetable/ClassroomInfoPanel.jsx';
 // The room walkthrough is a second large 3D scene; load it only when a room is opened
 const RoomInterior3DModal = lazy(() => import('./RoomInterior3DModal.jsx'));
-import { buildingsApi, classroomsApi, joiningApi, leavingApi, servicesApi, timetableApi } from '../../utils/api.js';
+import { classroomsApi, joiningApi, leavingApi, servicesApi, timetableApi } from '../../utils/api.js';
 import { PLACE_NAMES } from '../joining/joiningUi.jsx';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -554,14 +554,6 @@ export default function SuhruthDigitalTwin() {
   const room3DOpenRef = useRef(false);
   useEffect(() => { room3DOpenRef.current = !!room3DModal; }, [room3DModal]);
   const [simulatedDateTime, setSimulatedDateTime] = useState(null);
-  const [fromBuilding, setFromBuilding]         = useState('cant');
-  const [toBuilding, setToBuilding]             = useState('lib');
-  const [routeInfo, setRouteInfo]               = useState(null);
-  const [routeMode, setRouteMode]               = useState('walk');
-  // A route asked for by the Navigation page
-  const routeRequest = useCampusStore((state) => state.routeRequest);
-  const pendingRouteRef = useRef(null);
-  const [routeNonce, setRouteNonce] = useState(0);   // re-runs the draw even if the panel already shows this pair
   const [isNightMode, setIsNightMode]           = useState(false);
   const [cameraMode, setCameraMode]             = useState('orbit');
   // Live campus: classes in session per building, the campus clock phase and the real sun
@@ -608,10 +600,6 @@ export default function SuhruthDigitalTwin() {
   const rainSystemRef   = useRef(null);
   const floor1Ref       = useRef([]);
   const floor2Ref       = useRef([]);
-  const routeLineRef    = useRef(null);
-  const routeDotRef     = useRef(null);
-  const routeAnimTRef   = useRef(0);
-  const routePtsRef     = useRef(null);
   const streetLightsRef = useRef([]);
   const nightLightsRef  = useRef([]);
   const glowPoolsRef    = useRef(null);
@@ -4628,24 +4616,6 @@ export default function SuhruthDigitalTwin() {
       applyHighlight(floor1Ref.current);
       applyHighlight(floor2Ref.current);
 
-      if (routePtsRef.current && routePtsRef.current.length > 1) {
-        const speed = 12;
-        let total = 0;
-        const pts = routePtsRef.current;
-        for (let i = 0; i < pts.length - 1; i++) total += pts[i].distanceTo(pts[i + 1]);
-        routeAnimTRef.current = (routeAnimTRef.current + dt * speed) % total;
-        let acc = 0;
-        for (let i = 0; i < pts.length - 1; i++) {
-          const segLen = pts[i].distanceTo(pts[i + 1]);
-          if (routeAnimTRef.current <= acc + segLen) {
-            const t = (routeAnimTRef.current - acc) / segLen;
-            routeDotRef.current?.position.lerpVectors(pts[i], pts[i + 1], t);
-            break;
-          }
-          acc += segLen;
-        }
-      }
-
       // ── Animate Walking Students ──────────────────────────────────────────────
       const time = clock.getElapsedTime();
       activeWalkers.forEach((w) => {
@@ -4907,20 +4877,6 @@ export default function SuhruthDigitalTwin() {
 
   const joiningNext = joining && joining.status !== 'enrolled' ? joining.progress.find((p) => !p.done) : null;
 
-  useEffect(() => {
-    const req = pendingRouteRef.current;
-    if (!req || fromBuilding !== req.from || toBuilding !== req.to) return undefined;
-    // The scene may still be building on first load; try until it's ready
-    const timer = setInterval(() => {
-      if (!sceneRef.current) return;
-      clearInterval(timer);
-      pendingRouteRef.current = null;
-      handleFindRoute();
-      useCampusStore.setState({ routeRequest: null });
-    }, 300);
-    return () => clearInterval(timer);
-  }, [fromBuilding, toBuilding, routeNonce]);   // eslint-disable-line react-hooks/exhaustive-deps
-
   // ── Handle Day/Night Toggle ────────────────────────────────────────────────
   useEffect(() => {
     nightRef.current = isNightMode;
@@ -5010,74 +4966,6 @@ export default function SuhruthDigitalTwin() {
     });
   };
 
-  // ── A route asked for elsewhere (Navigation page): fill the panel, then draw it ──
-  useEffect(() => {
-    if (!routeRequest) return;
-    pendingRouteRef.current = routeRequest;
-    setRouteMode('walk');
-    setFromBuilding(routeRequest.from);
-    setToBuilding(routeRequest.to);
-    setRouteNonce((n) => n + 1);
-  }, [routeRequest]);
-
-  // ── Handle Find Route ──────────────────────────────────────────────────────
-  const handleFindRoute = async () => {
-    if (fromBuilding === toBuilding) return;
-    
-    let result;
-    try {
-      result = await buildingsApi.route(fromBuilding, toBuilding, routeMode);
-    } catch (err) {
-      setRouteInfo({ error: 'Failed to fetch route from API.' });
-      return;
-    }
-
-    const scene = sceneRef.current;
-    if (!scene) return;
-
-    // Clear previous route
-    if (routeLineRef.current) { scene.remove(routeLineRef.current); routeLineRef.current = null; }
-    if (routeDotRef.current)  { scene.remove(routeDotRef.current);  routeDotRef.current  = null; }
-
-    // Draw route line
-    const pts = result.path_coords.map((coord) => new THREE.Vector3(coord.x, 0.6, coord.z));
-    routePtsRef.current = pts;
-
-    const geo = new THREE.BufferGeometry().setFromPoints(pts);
-    const mat = new THREE.LineBasicMaterial({ color: routeMode === 'drive' ? 0xF59E0B : 0x00E5FF, linewidth: 3 });
-    const line = new THREE.Line(geo, mat);
-    scene.add(line);
-    routeLineRef.current = line;
-
-    // Draw animated marker dot
-    const dotGeo = new THREE.SphereGeometry(1.1, 16, 16);
-    const dotMat = new THREE.MeshStandardMaterial({ color: routeMode === 'drive' ? 0xF59E0B : 0x00E5FF, emissive: routeMode === 'drive' ? 0xF59E0B : 0x00E5FF, emissiveIntensity: 0.6 });
-    const dot = new THREE.Mesh(dotGeo, dotMat);
-    dot.position.copy(pts[0]);
-    scene.add(dot);
-    routeDotRef.current = dot;
-    routeAnimTRef.current = 0;
-
-    const meters = result.distance.toFixed(0);
-    const mins = Math.max(1, Math.round(result.distance / 1.4 / 60));
-    setRouteInfo({
-      fromName: BUILDINGS.find((b) => b.id === fromBuilding)?.name,
-      toName: BUILDINGS.find((b) => b.id === toBuilding)?.name,
-      meters,
-      mins
-    });
-  };
-
-  const handleClearRoute = () => {
-    const scene = sceneRef.current;
-    if (scene) {
-      if (routeLineRef.current) { scene.remove(routeLineRef.current); routeLineRef.current = null; }
-      if (routeDotRef.current)  { scene.remove(routeDotRef.current);  routeDotRef.current  = null; }
-    }
-    routePtsRef.current = null;
-    setRouteInfo(null);
-  };
-
   return (
     <div
       ref={navBoxRef}
@@ -5147,59 +5035,6 @@ export default function SuhruthDigitalTwin() {
 
       {/* ── Map controls: move, rotate, tilt, zoom, reset ───────────────────── */}
       <NavPad navRef={navRef} zoomListenerRef={zoomListenerRef} crowded={Boolean(selectedBuilding)} />
-
-      {/* ── Navigation / Routing Panel ──────────────────────────────────────── */}
-      <div className="pointer-events-auto absolute top-4 left-4 z-20 w-48 sm:w-56 rounded-xl border border-white/10 bg-[#141a22]/90 p-3.5 backdrop-blur-md">
-        <h2 className="mb-2 text-xs font-bold tracking-wider text-slate-200">WALKING ROUTE</h2>
-        
-        <label className="block font-mono text-[10px] text-slate-400 mb-1">FROM</label>
-        <select
-          value={fromBuilding}
-          onChange={(e) => setFromBuilding(e.target.value)}
-          className="mb-2 w-full rounded-md border border-white/15 bg-[#1a2029] px-2.5 py-1 text-xs text-[#e8e6dd] outline-none"
-        >
-          {BUILDINGS.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
-
-        <label className="block font-mono text-[10px] text-slate-400 mb-1">TO</label>
-        <select
-          value={toBuilding}
-          onChange={(e) => setToBuilding(e.target.value)}
-          className="mb-3 w-full rounded-md border border-white/15 bg-[#1a2029] px-2.5 py-1 text-xs text-[#e8e6dd] outline-none"
-        >
-          {BUILDINGS.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
-
-
-
-        <div className="flex gap-2">
-          <button
-            onClick={handleFindRoute}
-            className="flex-1 rounded-md bg-[#F5A623] px-3 py-1.5 font-mono text-xs font-bold text-[#1c1206] transition hover:bg-[#e0951a]"
-          >
-            Find Route
-          </button>
-          <button
-            onClick={handleClearRoute}
-            className="rounded-md border border-white/15 bg-transparent px-3 py-1.5 font-mono text-xs text-slate-300 transition hover:bg-white/10"
-          >
-            Clear
-          </button>
-        </div>
-
-        {routeInfo && (
-          <div className="mt-3 border-t border-white/10 pt-2 font-mono text-xs text-slate-200">
-            {routeInfo.error ? (
-              <p className="text-red-400">{routeInfo.error}</p>
-            ) : (
-              <>
-                <p><b className={routeInfo.mode === 'drive' ? "text-[#F59E0B]" : "text-[#00E5FF]"}>{routeInfo.fromName}</b> → <b className={routeInfo.mode === 'drive' ? "text-[#F59E0B]" : "text-[#00E5FF]"}>{routeInfo.toName}</b></p>
-                <p className="mt-1 text-[11px] text-slate-400">{routeInfo.meters} m · ~{routeInfo.mins} min {routeInfo.mode}</p>
-              </>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* ── Floor & Night Mode Toggle Bar ───────────────────────────────────── */}
       <div className="pointer-events-auto absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-1.5 rounded-xl border border-white/10 bg-[#141a22]/90 p-1.5 backdrop-blur-md">
@@ -5393,7 +5228,7 @@ export default function SuhruthDigitalTwin() {
           </div>
         ) : (
           <p className="text-[11px] text-slate-400 leading-relaxed">
-            Select any building to see its name, type, departments, and real-world GPS position. Use Walking Route to navigate.
+            Select any building to see its name, type, departments, and real-world GPS position.
           </p>
         )}
       </div>
