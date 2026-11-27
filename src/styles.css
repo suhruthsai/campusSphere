@@ -77,6 +77,7 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: clip;               /* phones: body's overflow-x alone doesn't stop sideways scrolling (iOS) */
   background: var(--bg);
 }
 

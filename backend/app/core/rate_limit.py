@@ -86,6 +86,12 @@ def client_ip(request: Request) -> str:
     Reading from the right stops attackers from dodging per-IP limits by sending
     a fake X-Forwarded-For.
     """
+    # Requests proxied by the Vercel frontend (vercel.json rewrites /api to this server) arrive from Vercel's
+    # edge, so every visitor would share one IP and one login limit. Vercel sets this header to the visitor's
+    # real IP. A caller going straight to this server could fake it, but only to dodge its own limit.
+    vercel_ip = request.headers.get("x-vercel-forwarded-for", "").split(",")[0].strip()
+    if vercel_ip:
+        return vercel_ip
     hops = settings.TRUSTED_PROXY_HOPS
     if hops > 0:
         xff = request.headers.get("x-forwarded-for", "")

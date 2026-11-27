@@ -1,9 +1,29 @@
 // ── Shared API client — auto-attaches JWT, handles 401 ────────────────────────
 
-// Backend origin. Empty in local dev (Vite proxies /api and /ws to the backend);
-// in production set VITE_API_URL, e.g. https://campussphere-backend.onrender.com
+// Backend origin (VITE_API_URL, e.g. https://campussphere-backend.onrender.com). Used for WebSockets only.
+// REST calls go to this site's own /api: Vite proxies it in dev, and vercel.json rewrites it to the backend
+// in production. Same-origin requests work on every Vercel address (production, branch and per-deploy URLs,
+// which the backend's CORS list would otherwise reject with "Failed to fetch") and on mobile networks that
+// block the backend's domain. Set VITE_API_DIRECT=1 to call the backend directly instead.
 export const API_ORIGIN = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
-const BASE_URL = `${API_ORIGIN}/api/v1`;
+const BASE_URL = `${import.meta.env.VITE_API_DIRECT === '1' ? API_ORIGIN : ''}/api/v1`;
+
+const OFFLINE_MSG = "Can't reach the CampusSphere server right now. If it was idle it may be waking up: try again in a minute.";
+
+/** fetch() with a readable error when the server can't be reached (the browser only says "Failed to fetch"),
+ *  and one quiet retry for reads, which covers the free server waking up or restarting. */
+async function apiFetch(url, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
+  try {
+    return await fetch(url, options);
+  } catch (e) {
+    if (method === 'GET') {
+      await new Promise((r) => setTimeout(r, 2500));
+      try { return await fetch(url, options); } catch { /* fall through */ }
+    }
+    throw new Error(OFFLINE_MSG);
+  }
+}
 
 /** Absolute WebSocket URL for a backend path like '/ws/timetable'. The token is deliberately not in
  *  it: a query string ends up in the server's access log, the proxy's log and the browser's history. */
@@ -38,7 +58,7 @@ async function request(path, options = {}) {
     ...(options.headers || {}),
   };
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await apiFetch(`${BASE_URL}${path}`, {
     ...options,
     headers,
   });
@@ -118,7 +138,7 @@ export const aiApi = {
 
 // ── Mitra, the walking 3D guide (public: visitors and parents use it without an account) ─
 async function guideFetch(path, options = {}) {
-  const res = await fetch(`${BASE_URL}/ai/guide${path}`, {
+  const res = await apiFetch(`${BASE_URL}/ai/guide${path}`, {
     ...options,
     headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}), ...(options.headers || {}) },
   });
@@ -161,7 +181,7 @@ export const knowledgeApi = {
     fd.append('file', file);
     fd.append('title', title || '');
     fd.append('link', link || '');
-    const res = await fetch(`${BASE_URL}/knowledge/upload`, {
+    const res = await apiFetch(`${BASE_URL}/knowledge/upload`, {
       method: 'POST', headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {}, body: fd,
     });
     const body = await res.json().catch(() => ({}));
@@ -218,7 +238,7 @@ export const timetableApi = {
     const fd = new FormData();
     fd.append('file', file);
     const token = localStorage.getItem('campussphere_token');
-    return fetch(`${BASE_URL}/timetable/import/csv?dry_run=${dryRun}`, {
+    return apiFetch(`${BASE_URL}/timetable/import/csv?dry_run=${dryRun}`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: fd,
@@ -298,7 +318,7 @@ async function uploadFile(path, file, fields = {}) {
   const fd = new FormData();
   fd.append('file', file);
   Object.entries(fields).forEach(([k, v]) => { if (v) fd.append(k, v); });
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await apiFetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
     body: fd,
@@ -312,7 +332,7 @@ async function uploadFile(path, file, fields = {}) {
 
 /** Fetch an authenticated file as a blob (PDFs, uploaded documents). */
 async function requestBlob(path) {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await apiFetch(`${BASE_URL}${path}`, {
     headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
   });
   if (!res.ok) {
@@ -417,7 +437,7 @@ export const obeApi = {
     fd.append('name', name); fd.append('kind', kind);
     if (held_on) fd.append('held_on', held_on);
     fd.append('file', file);
-    const res = await fetch(`${BASE_URL}/obe/courses/${id}/assessments`, {
+    const res = await apiFetch(`${BASE_URL}/obe/courses/${id}/assessments`, {
       method: 'POST', headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {}, body: fd,
     });
     const body = await res.json().catch(() => ({}));
@@ -469,7 +489,7 @@ export const accreditationApi = {
     const fd = new FormData();
     Object.entries({ framework, code, programme, year, title, signed }).forEach(([k, v]) => fd.append(k, String(v)));
     fd.append('file', file);
-    const res = await fetch(`${BASE_URL}/accreditation/workspace/evidence`, {
+    const res = await apiFetch(`${BASE_URL}/accreditation/workspace/evidence`, {
       method: 'POST', headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {}, body: fd,
     });
     const body = await res.json().catch(() => ({}));
@@ -560,7 +580,7 @@ const lockerForm = async (path, fields, file) => {
   const fd = new FormData();
   Object.entries(fields).forEach(([k, v]) => fd.append(k, v ?? ''));
   fd.append('file', file);
-  const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {}, body: fd });
+  const res = await apiFetch(`${BASE_URL}${path}`, { method: 'POST', headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {}, body: fd });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
   return body;

@@ -5037,7 +5037,7 @@ export default function SuhruthDigitalTwin() {
       <NavPad navRef={navRef} zoomListenerRef={zoomListenerRef} crowded={Boolean(selectedBuilding)} />
 
       {/* ── Floor & Night Mode Toggle Bar ───────────────────────────────────── */}
-      <div className="pointer-events-auto absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-1.5 rounded-xl border border-white/10 bg-[#141a22]/90 p-1.5 backdrop-blur-md">
+      <div className="pointer-events-auto absolute bottom-[5.25rem] left-2 right-2 z-20 flex gap-1.5 overflow-x-auto rounded-xl border border-white/10 bg-[#141a22]/90 p-1.5 backdrop-blur-md [scrollbar-width:none] sm:bottom-4 sm:left-1/2 sm:right-auto sm:max-w-[calc(100%-2rem)] sm:-translate-x-1/2 [&>*]:shrink-0 [&>button]:whitespace-nowrap">
         {[
           { key: 'all', label: 'All Floors' },
           { key: '1',   label: 'Ground Floor' },
@@ -5124,7 +5124,7 @@ export default function SuhruthDigitalTwin() {
       )}
 
       {/* ── Info Panel (Selected Building + Real GPS) ───────────────────────── */}
-      <div className="pointer-events-auto absolute bottom-4 right-4 z-20 w-56 sm:w-64 rounded-xl border border-white/10 bg-[#141a22]/90 p-3.5 text-[#e8e6dd] backdrop-blur-md">
+      <div className={`pointer-events-auto absolute right-2 top-16 z-20 w-56 rounded-xl border border-white/10 bg-[#141a22]/90 p-3.5 text-[#e8e6dd] backdrop-blur-md sm:top-auto sm:bottom-4 sm:right-4 sm:block sm:w-64 ${selectedBuilding ? '' : 'hidden'}`}>
         {selectedBuilding ? (
           <div className="relative">
             <button
