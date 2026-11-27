@@ -5,8 +5,8 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://campussphere-backend-88n0.onrender.com/api/:path*" },
-    { "source": "/media/:path*", "destination": "https://campussphere-backend-88n0.onrender.com/media/:path*" },
+    { "source": "/api/(.*)", "destination": "https://campussphere-backend-88n0.onrender.com/api/$1" },
+    { "source": "/media/(.*)", "destination": "https://campussphere-backend-88n0.onrender.com/media/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
