@@ -124,6 +124,21 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+
+@app.middleware("http")
+async def relative_redirects(request, call_next):
+    """Keep redirects on the address the visitor is using. The site proxies /api through Vercel, but the
+    trailing-slash redirect names this server's own host (…onrender.com), which would send the browser
+    around the proxy (and fail on Vercel's preview addresses). A path-only Location works either way."""
+    response = await call_next(request)
+    loc = response.headers.get("location")
+    if loc and response.status_code in (301, 302, 307, 308):
+        own = f"{request.url.scheme}://{request.url.netloc}"
+        if loc.startswith(own):
+            response.headers["location"] = loc[len(own):] or "/"
+    return response
+
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
