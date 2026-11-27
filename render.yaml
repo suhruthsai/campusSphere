@@ -14,7 +14,9 @@ services:
     # --proxy-headers keeps https:// in redirects; client IPs for rate limiting come
     # from TRUSTED_PROXY_HOPS instead (see backend/app/core/rate_limit.py)
     startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
-    healthCheckPath: /health
+    # /ping doesn't touch the database. Render calls it every few seconds; /health (SELECT 1) there would keep
+    # Neon awake whenever this service is, using up Neon's free compute hours.
+    healthCheckPath: /ping
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9

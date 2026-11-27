@@ -301,7 +301,8 @@ the server won't fetch them by itself.
 | `SARVAM_API_KEY` | Optional: Sarvam AI key for Mitra's Telugu / Hindi / English voice |
 | `CORS_ORIGINS`, `FRONTEND_URL` | Your Vercel URL, e.g. `https://campussphere.vercel.app` (fill in after step 4, then redeploy) |
 
-`SECRET_KEY` is generated automatically. Render checks `/health` to confirm the API and database are up.
+`SECRET_KEY` is generated automatically. Render checks `/ping` (the API is up; it doesn't touch the database, so Neon can still suspend when idle).
+`/health` also checks the database: open it yourself after a deploy, but don't poll it.
 `render.yaml` also sets the small-server options (`WARM_UTILIZATION_MODEL=false`, `BACKGROUND_CRAWLS=false`,
 `MALLOC_ARENA_MAX=2`) that keep the API at ~160 MB idle and ~330 MB at most, well inside 512 MB.
 
@@ -320,7 +321,8 @@ docker run -p 8000:8000 --env-file .env campussphere-backend
 
 **Free-tier caveats**
 - Render's free web service sleeps after 15 minutes without requests; the first request after that takes ~1 minute.
-  A free uptime monitor (UptimeRobot, cron-job.org) calling `/health` every 10 minutes keeps it awake.
+  A free uptime monitor (UptimeRobot, cron-job.org) calling `/ping` every 5–10 minutes keeps it awake. Use `/ping`,
+  not `/health`: a monitor on `/health` keeps Neon awake too and uses up its free compute hours (~100 a month).
 - The disk is wiped on every restart, so files must go to the bucket (`STORAGE_BACKEND=s3`, set in `render.yaml`).
   The trained classroom-utilization model is on that disk too: after a restart, the first analytics request
   retrains it (~20 s).

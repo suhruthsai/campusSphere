@@ -144,9 +144,16 @@ def media_file(filename: str):
     return storage.send(storage.key("media", filename), mimetypes.guess_type(filename)[0],
                         {"Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff"})
 
-@app.get("/health", include_in_schema=False)
+@app.api_route("/ping", methods=["GET", "HEAD"], include_in_schema=False)
+def ping():
+    """Liveness only: never touches the database. Render's health check (every few seconds) and the uptime
+    monitor call this, so Neon can still suspend when nobody uses the app and stays inside its free hours."""
+    return {"status": "ok"}
+
+
+@app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
 def health():
-    """Health check for the hosting platform — verifies the DB is reachable."""
+    """Full check: verifies the DB is reachable. For people and deploy checks, not for frequent polling."""
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
